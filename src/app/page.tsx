@@ -9,6 +9,7 @@ import { NotesGrid } from '@/components/NotesGrid';
 import { NoteModal } from '@/components/NoteModal';
 import { DrawingModal } from '@/components/DrawingModal';
 import { LabelManagerModal } from '@/components/LabelManagerModal';
+import { LocalFolderModal } from '@/components/LocalFolderModal';
 import { Note, NoteDrawing } from '@/types/note';
 
 function KeepApp() {
@@ -20,6 +21,8 @@ function KeepApp() {
     drawingNoteId,
     isLabelModalOpen,
     setIsLabelModalOpen,
+    isLocalFolderModalOpen,
+    setIsLocalFolderModalOpen,
     updateNote,
     addNote,
     currentFilter,
@@ -95,6 +98,12 @@ function KeepApp() {
       <LabelManagerModal
         isOpen={isLabelModalOpen}
         onClose={() => setIsLabelModalOpen(false)}
+      />
+
+      {/* Local Paste Media Folder Modal */}
+      <LocalFolderModal
+        isOpen={isLocalFolderModalOpen}
+        onClose={() => setIsLocalFolderModalOpen(false)}
       />
     </div>
   );

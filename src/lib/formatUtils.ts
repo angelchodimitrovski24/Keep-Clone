@@ -322,7 +322,24 @@ export function convertMarkdownToHtml(content: string): string {
       continue;
     }
 
-    // 5. Normal paragraph
+    // 5. Markdown Image line: ![alt](path)
+    const imgMatch = trimmed.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
+    if (imgMatch) {
+      closeOpenLists();
+      const fileName = imgMatch[1] || 'image';
+      const rawPath = imgMatch[2];
+      const isHttpOrApi = rawPath.startsWith('http') || rawPath.startsWith('/api/');
+      const lastSlash = Math.max(rawPath.lastIndexOf('/'), rawPath.lastIndexOf('\\'));
+      const folderPart = lastSlash > 0 ? rawPath.substring(0, lastSlash) : '';
+      const basePart = lastSlash >= 0 ? rawPath.substring(lastSlash + 1) : rawPath;
+      const serveUrl = isHttpOrApi
+        ? rawPath
+        : `/api/local-media?folder=${encodeURIComponent(folderPart)}&file=${encodeURIComponent(basePart)}`;
+      result += `<div data-keep-media="true" data-is-image="true" data-file-name="${fileName}" data-saved-path="${rawPath}" data-serve-url="${serveUrl}" data-markdown-link="${trimmed}"><div class="keep-media-md">${trimmed}</div><img src="${serveUrl}" alt="${fileName}" class="keep-media-img" /></div>`;
+      continue;
+    }
+
+    // 6. Normal paragraph
     closeOpenLists();
     result += `<p>${formatInline(rawLine)}</p>`;
   }

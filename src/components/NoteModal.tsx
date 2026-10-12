@@ -19,6 +19,7 @@ import { KeepFormattingBar } from './KeepFormattingBar';
 import { KeepWysiwygEditor, KeepWysiwygEditorHandle } from './KeepWysiwygEditor';
 import { useKeep } from '@/context/KeepContext';
 import { GoogleKeepFormatCommand } from '@/lib/formatUtils';
+import { extractFilesFromClipboard } from '@/lib/localPaste';
 
 interface NoteModalProps {
   note: Note | null;
@@ -194,6 +195,27 @@ export const NoteModal: React.FC<NoteModalProps> = ({
     >
       <div
         onClick={(e) => e.stopPropagation()}
+        onPaste={(e) => {
+          if (e.defaultPrevented || isList) return;
+          const files = extractFilesFromClipboard(e.clipboardData);
+          if (files.length > 0) {
+            e.preventDefault();
+            editorRef.current?.insertLocalFiles(files);
+          }
+        }}
+        onDragOver={(e) => {
+          if (!isList && e.dataTransfer?.types?.includes('Files')) {
+            e.preventDefault();
+          }
+        }}
+        onDrop={(e) => {
+          if (e.defaultPrevented || isList) return;
+          const files = extractFilesFromClipboard(e.dataTransfer);
+          if (files.length > 0) {
+            e.preventDefault();
+            editorRef.current?.insertLocalFiles(files);
+          }
+        }}
         className={`w-full max-w-3xl min-h-[460px] max-h-[92vh] rounded-2xl shadow-2xl border flex flex-col transition-all duration-150 ${colorClasses}`}
       >
         {/* Images Gallery */}

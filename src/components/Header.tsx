@@ -16,6 +16,7 @@ import {
   Download,
   Upload,
   FolderDown,
+  FolderOpen,
 } from 'lucide-react';
 import { useKeep } from '@/context/KeepContext';
 import { NOTE_COLORS } from '@/lib/constants';
@@ -41,6 +42,8 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
     exportDataJSON,
     importDataJSON,
     currentFilter,
+    localMediaFolder,
+    setIsLocalFolderModalOpen,
   } = useKeep();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -195,6 +198,25 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
 
       {/* Action controls */}
       <div className="flex items-center gap-1 text-stone-600 dark:text-stone-300 shrink-0">
+        {/* Choose Local Paste Folder */}
+        <button
+          type="button"
+          onClick={() => setIsLocalFolderModalOpen(true)}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-400/15 hover:bg-amber-400/25 text-amber-800 dark:text-amber-300 border border-amber-400/30 transition-colors text-xs font-medium mr-1"
+          title={
+            localMediaFolder
+              ? `Local Paste Folder: ${localMediaFolder} (Click to change)`
+              : 'Choose local folder for pasted images & files'
+          }
+        >
+          <FolderOpen className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400" />
+          <span className="hidden sm:inline max-w-[140px] truncate">
+            {localMediaFolder
+              ? localMediaFolder.split(/[\\/]/).filter(Boolean).pop() || 'Local Folder'
+              : 'Choose Folder'}
+          </span>
+        </button>
+
         {/* Layout Toggle */}
         <button
           type="button"

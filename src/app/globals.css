@@ -172,3 +172,51 @@ body {
   list-style-type: decimal;
   padding-left: 1.25rem;
 }
+
+/* Rendered local media attachments (images & files) in Note Cards */
+.keep-media-block {
+  margin: 0.5rem 0;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(150, 150, 150, 0.25);
+  background: rgba(128, 128, 128, 0.04);
+  overflow: hidden;
+}
+
+.keep-media-md {
+  padding: 0.25rem 0.6rem;
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 0.7rem;
+  color: rgba(120, 120, 120, 0.9);
+  background: rgba(128, 128, 128, 0.07);
+  border-bottom: 1px solid rgba(150, 150, 150, 0.18);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.keep-media-img {
+  display: block;
+  max-height: 14rem;
+  width: auto;
+  max-width: 100%;
+  object-fit: contain;
+  padding: 0.35rem;
+  border-radius: 0.5rem;
+}
+
+.keep-media-file-link {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #d97706;
+  text-decoration: none;
+}
+
+.keep-media-file-link:hover {
+  text-decoration: underline;
+  background: rgba(128, 128, 128, 0.06);
+}
+

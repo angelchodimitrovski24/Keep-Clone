@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useEffect, useImperativeHandle, forwardRef } from 'react';
-import { useEditor, EditorContent } from '@tiptap/react';
+import React, { useEffect, useImperativeHandle, forwardRef, useState, useCallback, useRef } from 'react';
+import { useEditor, EditorContent, Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
@@ -9,11 +9,15 @@ import Underline from '@tiptap/extension-underline';
 import Placeholder from '@tiptap/extension-placeholder';
 import { KeepFormattingBar } from './KeepFormattingBar';
 import { GoogleKeepFormatCommand, convertMarkdownToHtml } from '@/lib/formatUtils';
+import { KeepMediaExtension } from '@/lib/keepMediaExtension';
+import { extractFilesFromClipboard, copyFilesToLocalFolder } from '@/lib/localPaste';
+import { Loader2 } from 'lucide-react';
 
 export interface KeepWysiwygEditorHandle {
   handleFormat: (cmd: GoogleKeepFormatCommand) => void;
   focus: () => void;
   getHTML: () => string;
+  insertLocalFiles: (files: File[]) => Promise<void>;
 }
 
 export interface KeepWysiwygEditorProps {
@@ -37,8 +41,45 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
     },
     ref
   ) => {
+    const [isCopyingFiles, setIsCopyingFiles] = useState(false);
+    const editorInstanceRef = useRef<Editor | null>(null);
+
     // Convert any raw markdown to proper HTML for initial Tiptap load
     const initialHtml = convertMarkdownToHtml(content);
+
+    const processAndInsertFiles = useCallback(async (files: File[]) => {
+      const activeEditor = editorInstanceRef.current;
+      if (!activeEditor || files.length === 0) return;
+
+      try {
+        setIsCopyingFiles(true);
+        const savedFiles = await copyFilesToLocalFolder(files);
+        if (savedFiles.length > 0) {
+          const nodesToInsert = savedFiles.flatMap((file) => [
+            {
+              type: 'keepMedia',
+              attrs: {
+                isImage: file.isImage,
+                fileName: file.fileName,
+                savedPath: file.savedPath,
+                serveUrl: file.serveUrl,
+                markdownLink: file.markdownLink,
+                fileSize: file.size,
+              },
+            },
+            {
+              type: 'paragraph',
+            },
+          ]);
+
+          activeEditor.chain().focus().insertContent(nodesToInsert).run();
+        }
+      } catch (err) {
+        console.error('Failed to paste and copy files to local folder:', err);
+      } finally {
+        setIsCopyingFiles(false);
+      }
+    }, []);
 
     const editor = useEditor({
       extensions: [
@@ -52,6 +93,7 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
         TaskItem.configure({
           nested: true,
         }),
+        KeepMediaExtension,
         Placeholder.configure({
           placeholder,
         }),
@@ -65,8 +107,30 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
         attributes: {
           class: `w-full ${minHeightClass} outline-none text-sm text-stone-800 dark:text-stone-200 leading-relaxed`,
         },
+        handlePaste: (_view, event) => {
+          const files = extractFilesFromClipboard(event.clipboardData);
+          if (files.length > 0) {
+            event.preventDefault();
+            processAndInsertFiles(files);
+            return true;
+          }
+          return false;
+        },
+        handleDrop: (_view, event) => {
+          const files = extractFilesFromClipboard(event.dataTransfer);
+          if (files.length > 0) {
+            event.preventDefault();
+            processAndInsertFiles(files);
+            return true;
+          }
+          return false;
+        },
       },
     });
+
+    useEffect(() => {
+      editorInstanceRef.current = editor;
+    }, [editor]);
 
     // Synchronize external content changes (e.g. switching notes)
     useEffect(() => {
@@ -127,12 +191,22 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
         handleFormat,
         focus: () => editor?.commands.focus(),
         getHTML: () => editor?.getHTML() || '',
+        insertLocalFiles: processAndInsertFiles,
       }),
-      [editor]
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      [editor, processAndInsertFiles]
     );
 
     return (
-      <div className={`w-full flex flex-col ${className}`}>
+      <div className={`w-full flex flex-col relative ${className}`}>
+        {/* Copying indicator badge */}
+        {isCopyingFiles && (
+          <div className="mb-2 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-500/15 text-amber-700 dark:text-amber-300 text-xs font-medium w-fit animate-pulse">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            Copying pasted file(s) to local folder…
+          </div>
+        )}
+
         {/* WYSIWYG Editable Canvas */}
         <div className="flex-1 py-1 cursor-text" onClick={() => editor?.commands.focus()}>
           <EditorContent editor={editor} />
@@ -150,4 +224,5 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
 );
 
 KeepWysiwygEditor.displayName = 'KeepWysiwygEditor';
+
 

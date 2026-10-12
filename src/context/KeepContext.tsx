@@ -32,6 +32,8 @@ interface KeepContextType {
   isDrawingModalOpen: boolean;
   drawingNoteId: string | null;
   isLabelModalOpen: boolean;
+  localMediaFolder: string;
+  isLocalFolderModalOpen: boolean;
 
   // Setters
   setCurrentFilter: (filter: ViewFilter, labelName?: string) => void;
@@ -41,6 +43,8 @@ interface KeepContextType {
   setEditingNote: (note: Note | null) => void;
   setIsDrawingModalOpen: (open: boolean, noteId?: string | null) => void;
   setIsLabelModalOpen: (open: boolean) => void;
+  setLocalMediaFolder: (folder: string) => void;
+  setIsLocalFolderModalOpen: (open: boolean) => void;
 
   // Selection
   toggleSelectNote: (id: string) => void;
@@ -94,17 +98,35 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
   const [isDrawingModalOpen, setIsDrawingModalOpenState] = useState(false);
   const [drawingNoteId, setDrawingNoteId] = useState<string | null>(null);
   const [isLabelModalOpen, setIsLabelModalOpen] = useState(false);
+  const [localMediaFolder, setLocalMediaFolderState] = useState('');
+  const [isLocalFolderModalOpen, setIsLocalFolderModalOpen] = useState(false);
 
   // Initialize data from IndexedDB
   const loadInitialData = useCallback(async () => {
     try {
       setIsLoading(true);
-      const [storedNotes, storedLabels, storedLayout, storedDark] = await Promise.all([
+      const [storedNotes, storedLabels, storedLayout, storedDark, storedFolder] = await Promise.all([
         getAllNotesFromDB(),
         getAllLabelsFromDB(),
         getSettingFromDB<LayoutViewMode>('layoutMode', 'grid'),
         getSettingFromDB<boolean>('darkMode', false),
+        getSettingFromDB<string>('localMediaFolder', ''),
       ]);
+
+      if (storedFolder) {
+        setLocalMediaFolderState(storedFolder);
+      } else {
+        // Initialize with default server local-media path
+        fetch('/api/local-media?action=default')
+          .then((r) => r.json())
+          .then((d) => {
+            if (d?.defaultFolder) {
+              setLocalMediaFolderState(d.defaultFolder);
+              saveSettingToDB('localMediaFolder', d.defaultFolder);
+            }
+          })
+          .catch(() => {});
+      }
 
       // Seed with sample welcome notes if empty
       if (storedNotes.length === 0 && storedLabels.length === 0) {
@@ -236,6 +258,12 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
   const setIsDrawingModalOpen = useCallback((open: boolean, noteId?: string | null) => {
     setIsDrawingModalOpenState(open);
     setDrawingNoteId(noteId || null);
+  }, []);
+
+  // Local media folder setter
+  const setLocalMediaFolder = useCallback((folder: string) => {
+    setLocalMediaFolderState(folder);
+    saveSettingToDB('localMediaFolder', folder);
   }, []);
 
   // Selection handlers
@@ -523,6 +551,8 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
       isDrawingModalOpen,
       drawingNoteId,
       isLabelModalOpen,
+      localMediaFolder,
+      isLocalFolderModalOpen,
       setCurrentFilter,
       setSearchQuery,
       setLayoutMode,
@@ -530,6 +560,8 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
       setEditingNote,
       setIsDrawingModalOpen,
       setIsLabelModalOpen,
+      setLocalMediaFolder,
+      setIsLocalFolderModalOpen,
       toggleSelectNote,
       clearSelection,
       selectAllNotes,
@@ -568,12 +600,15 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
       isDrawingModalOpen,
       drawingNoteId,
       isLabelModalOpen,
+      localMediaFolder,
+      isLocalFolderModalOpen,
       setCurrentFilter,
       setSearchQuery,
       setLayoutMode,
       setDarkMode,
       setEditingNote,
       setIsDrawingModalOpen,
+      setLocalMediaFolder,
       toggleSelectNote,
       clearSelection,
       selectAllNotes,

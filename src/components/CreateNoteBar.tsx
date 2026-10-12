@@ -17,6 +17,7 @@ import { KeepWysiwygEditor, KeepWysiwygEditorHandle } from './KeepWysiwygEditor'
 import { NoteColor, NoteBackgroundTheme, TodoItem, NoteDrawing } from '@/types/note';
 import { getNoteColorClasses } from '@/lib/constants';
 import { GoogleKeepFormatCommand } from '@/lib/formatUtils';
+import { extractFilesFromClipboard } from '@/lib/localPaste';
 
 interface CreateNoteBarProps {
   onOpenDrawingModal?: () => void;
@@ -191,6 +192,27 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
   return (
     <div className="w-full max-w-2xl mx-auto mb-8 px-4" ref={containerRef}>
       <div
+        onPaste={(e) => {
+          if (e.defaultPrevented || isList) return;
+          const files = extractFilesFromClipboard(e.clipboardData);
+          if (files.length > 0) {
+            e.preventDefault();
+            editorRef.current?.insertLocalFiles(files);
+          }
+        }}
+        onDragOver={(e) => {
+          if (!isList && e.dataTransfer?.types?.includes('Files')) {
+            e.preventDefault();
+          }
+        }}
+        onDrop={(e) => {
+          if (e.defaultPrevented || isList) return;
+          const files = extractFilesFromClipboard(e.dataTransfer);
+          if (files.length > 0) {
+            e.preventDefault();
+            editorRef.current?.insertLocalFiles(files);
+          }
+        }}
         className={`rounded-2xl shadow-xl border relative transition-all ${colorClasses}`}
       >
         {/* Attached Images */}
