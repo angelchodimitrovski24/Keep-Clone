@@ -1,23 +1,32 @@
 'use client';
 
-import React, { useEffect, useImperativeHandle, forwardRef, useState, useCallback, useRef } from 'react';
+import React, {
+  useEffect,
+  useImperativeHandle,
+  forwardRef,
+  useState,
+  useCallback,
+  useRef,
+} from 'react';
 import { useEditor, EditorContent, Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
-import Underline from '@tiptap/extension-underline';
 import Placeholder from '@tiptap/extension-placeholder';
 import { KeepFormattingBar } from './KeepFormattingBar';
 import { GoogleKeepFormatCommand, convertMarkdownToHtml } from '@/lib/formatUtils';
 import { KeepMediaExtension } from '@/lib/keepMediaExtension';
-import { extractFilesFromClipboard, copyFilesToLocalFolder } from '@/lib/localPaste';
+import {
+  extractClipboardPayload,
+  copyFilesToLocalFolder,
+} from '@/lib/localPaste';
 import { Loader2 } from 'lucide-react';
 
 export interface KeepWysiwygEditorHandle {
   handleFormat: (cmd: GoogleKeepFormatCommand) => void;
   focus: () => void;
   getHTML: () => string;
-  insertLocalFiles: (files: File[]) => Promise<void>;
+  insertLocalFiles: (files: File[], imageUrls?: string[]) => Promise<void>;
 }
 
 export interface KeepWysiwygEditorProps {
@@ -27,6 +36,8 @@ export interface KeepWysiwygEditorProps {
   isFormattingOpen?: boolean;
   className?: string;
   minHeightClass?: string;
+  autoFocus?: boolean;
+  listenWindowPaste?: boolean;
 }
 
 export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwygEditorProps>(
@@ -38,48 +49,87 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
       isFormattingOpen = false,
       className = '',
       minHeightClass = 'min-h-[180px]',
+      autoFocus = false,
+      listenWindowPaste = true,
     },
     ref
   ) => {
     const [isCopyingFiles, setIsCopyingFiles] = useState(false);
     const editorInstanceRef = useRef<Editor | null>(null);
+    const onChangeRef = useRef(onChange);
+
+    useEffect(() => {
+      onChangeRef.current = onChange;
+    }, [onChange]);
 
     // Convert any raw markdown to proper HTML for initial Tiptap load
     const initialHtml = convertMarkdownToHtml(content);
 
-    const processAndInsertFiles = useCallback(async (files: File[]) => {
-      const activeEditor = editorInstanceRef.current;
-      if (!activeEditor || files.length === 0) return;
+    const processAndInsertFiles = useCallback(
+      async (files: File[], imageUrls: string[] = []) => {
+        if (files.length === 0 && imageUrls.length === 0) return;
 
-      try {
-        setIsCopyingFiles(true);
-        const savedFiles = await copyFilesToLocalFolder(files);
-        if (savedFiles.length > 0) {
-          const nodesToInsert = savedFiles.flatMap((file) => [
-            {
-              type: 'keepMedia',
-              attrs: {
-                isImage: file.isImage,
-                fileName: file.fileName,
-                savedPath: file.savedPath,
-                serveUrl: file.serveUrl,
-                markdownLink: file.markdownLink,
-                fileSize: file.size,
+        try {
+          setIsCopyingFiles(true);
+          // Synchronously starts FormData upload before any await
+          const savedFiles = await copyFilesToLocalFolder(files, undefined, imageUrls);
+          const activeEditor = editorInstanceRef.current;
+
+          if (savedFiles.length > 0 && activeEditor) {
+            const nodesToInsert = savedFiles.flatMap((file) => [
+              {
+                type: 'keepMedia',
+                attrs: {
+                  isImage: file.isImage,
+                  fileName: file.fileName,
+                  savedPath: file.savedPath,
+                  serveUrl: file.serveUrl,
+                  markdownLink: file.markdownLink,
+                  fileSize: file.size,
+                },
               },
-            },
-            {
-              type: 'paragraph',
-            },
-          ]);
+              {
+                type: 'paragraph',
+              },
+            ]);
 
-          activeEditor.chain().focus().insertContent(nodesToInsert).run();
+            activeEditor.chain().focus().insertContent(nodesToInsert).run();
+            onChangeRef.current(activeEditor.getHTML());
+          }
+        } catch (err) {
+          console.error('Failed to paste and copy files to local folder:', err);
+        } finally {
+          setIsCopyingFiles(false);
         }
-      } catch (err) {
-        console.error('Failed to paste and copy files to local folder:', err);
-      } finally {
-        setIsCopyingFiles(false);
-      }
-    }, []);
+      },
+      []
+    );
+
+    const handleClipboardDataTransfer = useCallback(
+      (
+        clipboardData: DataTransfer | null,
+        rawEvent: Event | React.SyntheticEvent
+      ): boolean => {
+        // Prevent double handling of the same event
+        const nativeEvt = ('nativeEvent' in rawEvent ? rawEvent.nativeEvent : rawEvent) as Event & {
+          __keepPasteHandled?: boolean;
+        };
+        if (nativeEvt.__keepPasteHandled) return true;
+
+        const { files, imageUrls } = extractClipboardPayload(clipboardData);
+        if (files.length > 0 || imageUrls.length > 0) {
+          nativeEvt.__keepPasteHandled = true;
+          rawEvent.preventDefault();
+          if ('stopPropagation' in rawEvent) {
+            rawEvent.stopPropagation();
+          }
+          processAndInsertFiles(files, imageUrls);
+          return true;
+        }
+        return false;
+      },
+      [processAndInsertFiles]
+    );
 
     const editor = useEditor({
       extensions: [
@@ -88,7 +138,6 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
             levels: [1, 2],
           },
         }),
-        Underline,
         TaskList,
         TaskItem.configure({
           nested: true,
@@ -99,31 +148,20 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
         }),
       ],
       content: initialHtml,
+      autofocus: autoFocus ? 'end' : false,
       immediatelyRender: false,
       onUpdate: ({ editor }) => {
-        onChange(editor.getHTML());
+        onChangeRef.current(editor.getHTML());
       },
       editorProps: {
         attributes: {
           class: `w-full ${minHeightClass} outline-none text-sm text-stone-800 dark:text-stone-200 leading-relaxed`,
         },
         handlePaste: (_view, event) => {
-          const files = extractFilesFromClipboard(event.clipboardData);
-          if (files.length > 0) {
-            event.preventDefault();
-            processAndInsertFiles(files);
-            return true;
-          }
-          return false;
+          return handleClipboardDataTransfer(event.clipboardData, event);
         },
         handleDrop: (_view, event) => {
-          const files = extractFilesFromClipboard(event.dataTransfer);
-          if (files.length > 0) {
-            event.preventDefault();
-            processAndInsertFiles(files);
-            return true;
-          }
-          return false;
+          return handleClipboardDataTransfer(event.dataTransfer, event);
         },
       },
     });
@@ -132,13 +170,33 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
       editorInstanceRef.current = editor;
     }, [editor]);
 
+    // Global window paste listener when this editor is active
+    // Catches Ctrl+V even when the user hasn't clicked inside the paragraph yet!
+    useEffect(() => {
+      if (!listenWindowPaste) return;
+
+      const onWindowPaste = (e: ClipboardEvent) => {
+        handleClipboardDataTransfer(e.clipboardData, e);
+      };
+
+      window.addEventListener('paste', onWindowPaste);
+      return () => {
+        window.removeEventListener('paste', onWindowPaste);
+      };
+    }, [listenWindowPaste, handleClipboardDataTransfer]);
+
     // Synchronize external content changes (e.g. switching notes)
     useEffect(() => {
       if (editor) {
         const currentHtml = editor.getHTML();
         if (content !== currentHtml) {
-          // If content is empty and editor is empty, skip
-          if (!content.trim() && editor.getText().trim() === '') return;
+          if (
+            !content.trim() &&
+            editor.getText().trim() === '' &&
+            !currentHtml.includes('data-keep-media')
+          ) {
+            return;
+          }
 
           const converted = convertMarkdownToHtml(content);
           if (converted !== currentHtml) {
@@ -198,7 +256,20 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
     );
 
     return (
-      <div className={`w-full flex flex-col relative ${className}`}>
+      <div
+        className={`w-full flex flex-col relative ${className}`}
+        onPasteCapture={(e) => {
+          handleClipboardDataTransfer(e.clipboardData, e);
+        }}
+        onDropCapture={(e) => {
+          handleClipboardDataTransfer(e.dataTransfer, e);
+        }}
+        onDragOver={(e) => {
+          if (e.dataTransfer?.types?.includes('Files')) {
+            e.preventDefault();
+          }
+        }}
+      >
         {/* Copying indicator badge */}
         {isCopyingFiles && (
           <div className="mb-2 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-500/15 text-amber-700 dark:text-amber-300 text-xs font-medium w-fit animate-pulse">
@@ -224,5 +295,3 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
 );
 
 KeepWysiwygEditor.displayName = 'KeepWysiwygEditor';
-
-

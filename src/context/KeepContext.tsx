@@ -17,6 +17,7 @@ import {
   exportAllData,
   importAllData,
 } from '@/lib/db';
+import { setSyncLocalMediaFolder } from '@/lib/localPaste';
 
 interface KeepContextType {
   notes: Note[];
@@ -115,6 +116,7 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
 
       if (storedFolder) {
         setLocalMediaFolderState(storedFolder);
+        setSyncLocalMediaFolder(storedFolder);
       } else {
         // Initialize with default server local-media path
         fetch('/api/local-media?action=default')
@@ -122,6 +124,7 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
           .then((d) => {
             if (d?.defaultFolder) {
               setLocalMediaFolderState(d.defaultFolder);
+              setSyncLocalMediaFolder(d.defaultFolder);
               saveSettingToDB('localMediaFolder', d.defaultFolder);
             }
           })
@@ -263,6 +266,7 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
   // Local media folder setter
   const setLocalMediaFolder = useCallback((folder: string) => {
     setLocalMediaFolderState(folder);
+    setSyncLocalMediaFolder(folder);
     saveSettingToDB('localMediaFolder', folder);
   }, []);
 

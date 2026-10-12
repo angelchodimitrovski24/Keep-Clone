@@ -19,7 +19,7 @@ import { KeepFormattingBar } from './KeepFormattingBar';
 import { KeepWysiwygEditor, KeepWysiwygEditorHandle } from './KeepWysiwygEditor';
 import { useKeep } from '@/context/KeepContext';
 import { GoogleKeepFormatCommand } from '@/lib/formatUtils';
-import { extractFilesFromClipboard } from '@/lib/localPaste';
+import { extractClipboardPayload, copyFilesToLocalFolder } from '@/lib/localPaste';
 
 interface NoteModalProps {
   note: Note | null;
@@ -75,13 +75,14 @@ export const NoteModal: React.FC<NoteModalProps> = ({
   if (!isOpen || !note) return null;
 
   const handleSaveAndClose = async () => {
+    const latestContent = editorRef.current?.getHTML() || content;
     const finalTodos = newTodoInput.trim()
       ? [...todos, { id: 'todo-' + Date.now(), text: newTodoInput.trim(), completed: false }]
       : todos;
 
     await updateNote(note.id, {
       title: title.trim(),
-      content: content.trim(),
+      content: latestContent.trim(),
       isList,
       todos: finalTodos,
       color,
@@ -169,19 +170,31 @@ export const NoteModal: React.FC<NoteModalProps> = ({
     editorRef.current?.handleFormat(cmd);
   };
 
-  const handleAddImage = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
+  const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const fileList = e.target.files;
+    if (!fileList || fileList.length === 0) return;
+    const filesArray = Array.from(fileList);
+    e.target.value = '';
 
-    Array.from(files).forEach((file) => {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        if (event.target?.result) {
-          setImages((prev) => [...prev, event.target!.result as string]);
+    if (editorRef.current) {
+      await editorRef.current.insertLocalFiles(filesArray);
+    } else {
+      try {
+        const saved = await copyFilesToLocalFolder(filesArray);
+        if (saved.length > 0) {
+          const htmlBlocks = saved
+            .map((f) =>
+              f.isImage
+                ? `<div data-keep-media="true" data-is-image="true" data-file-name="${f.fileName}" data-saved-path="${f.savedPath}" data-serve-url="${f.serveUrl}" data-markdown-link="${f.markdownLink}" data-file-size="${f.size}"><div class="keep-media-md">${f.markdownLink}</div><img src="${f.serveUrl}" alt="${f.fileName}" class="keep-media-img" /></div><p></p>`
+                : `<div data-keep-media="true" data-is-image="false" data-file-name="${f.fileName}" data-saved-path="${f.savedPath}" data-serve-url="${f.serveUrl}" data-markdown-link="${f.markdownLink}" data-file-size="${f.size}"><div class="keep-media-md">${f.markdownLink}</div><a href="${f.serveUrl}" target="_blank" rel="noopener noreferrer" class="keep-media-file-link">📎 ${f.fileName}</a></div><p></p>`
+            )
+            .join('');
+          setContent((prev) => prev + htmlBlocks);
         }
-      };
-      reader.readAsDataURL(file);
-    });
+      } catch (err) {
+        console.error('Failed to add image to local folder:', err);
+      }
+    }
   };
 
   const activeTodos = todos.filter((t) => !t.completed);
@@ -196,11 +209,14 @@ export const NoteModal: React.FC<NoteModalProps> = ({
       <div
         onClick={(e) => e.stopPropagation()}
         onPaste={(e) => {
-          if (e.defaultPrevented || isList) return;
-          const files = extractFilesFromClipboard(e.clipboardData);
-          if (files.length > 0) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          if (e.defaultPrevented || isList || (e.nativeEvent as any)?.__keepPasteHandled) return;
+          const { files, imageUrls } = extractClipboardPayload(e.clipboardData);
+          if (files.length > 0 || imageUrls.length > 0) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (e.nativeEvent as any).__keepPasteHandled = true;
             e.preventDefault();
-            editorRef.current?.insertLocalFiles(files);
+            editorRef.current?.insertLocalFiles(files, imageUrls);
           }
         }}
         onDragOver={(e) => {
@@ -209,11 +225,14 @@ export const NoteModal: React.FC<NoteModalProps> = ({
           }
         }}
         onDrop={(e) => {
-          if (e.defaultPrevented || isList) return;
-          const files = extractFilesFromClipboard(e.dataTransfer);
-          if (files.length > 0) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          if (e.defaultPrevented || isList || (e.nativeEvent as any)?.__keepPasteHandled) return;
+          const { files, imageUrls } = extractClipboardPayload(e.dataTransfer);
+          if (files.length > 0 || imageUrls.length > 0) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (e.nativeEvent as any).__keepPasteHandled = true;
             e.preventDefault();
-            editorRef.current?.insertLocalFiles(files);
+            editorRef.current?.insertLocalFiles(files, imageUrls);
           }
         }}
         className={`w-full max-w-3xl min-h-[460px] max-h-[92vh] rounded-2xl shadow-2xl border flex flex-col transition-all duration-150 ${colorClasses}`}
@@ -403,6 +422,8 @@ export const NoteModal: React.FC<NoteModalProps> = ({
                 onChange={setContent}
                 placeholder="Take a note…"
                 minHeightClass="min-h-[240px]"
+                autoFocus={true}
+                listenWindowPaste={true}
               />
             )}
           </div>

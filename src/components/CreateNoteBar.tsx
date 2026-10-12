@@ -17,14 +17,14 @@ import { KeepWysiwygEditor, KeepWysiwygEditorHandle } from './KeepWysiwygEditor'
 import { NoteColor, NoteBackgroundTheme, TodoItem, NoteDrawing } from '@/types/note';
 import { getNoteColorClasses } from '@/lib/constants';
 import { GoogleKeepFormatCommand } from '@/lib/formatUtils';
-import { extractFilesFromClipboard } from '@/lib/localPaste';
+import { extractClipboardPayload, copyFilesToLocalFolder } from '@/lib/localPaste';
 
 interface CreateNoteBarProps {
   onOpenDrawingModal?: () => void;
 }
 
 export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal }) => {
-  const { addNote, selectedLabel } = useKeep();
+  const { addNote, selectedLabel, editingNote } = useKeep();
   const [isExpanded, setIsExpanded] = useState(false);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
@@ -42,6 +42,44 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
 
   const containerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<KeepWysiwygEditorHandle>(null);
+
+  // If CreateNoteBar is collapsed and no modal is open, allow Ctrl+V anywhere on the page to start a note with the pasted image/file
+  React.useEffect(() => {
+    if (isExpanded || editingNote) return;
+
+    const handleGlobalCollapsedPaste = async (e: ClipboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+        return;
+      }
+      const { files, imageUrls } = extractClipboardPayload(e.clipboardData);
+      if (files.length === 0 && imageUrls.length === 0) return;
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (e as any).__keepPasteHandled = true;
+      e.preventDefault();
+      setIsExpanded(true);
+
+      try {
+        const saved = await copyFilesToLocalFolder(files, undefined, imageUrls);
+        if (saved.length > 0) {
+          const htmlBlocks = saved
+            .map((f) =>
+              f.isImage
+                ? `<div data-keep-media="true" data-is-image="true" data-file-name="${f.fileName}" data-saved-path="${f.savedPath}" data-serve-url="${f.serveUrl}" data-markdown-link="${f.markdownLink}" data-file-size="${f.size}"><div class="keep-media-md">${f.markdownLink}</div><img src="${f.serveUrl}" alt="${f.fileName}" class="keep-media-img" /></div><p></p>`
+                : `<div data-keep-media="true" data-is-image="false" data-file-name="${f.fileName}" data-saved-path="${f.savedPath}" data-serve-url="${f.serveUrl}" data-markdown-link="${f.markdownLink}" data-file-size="${f.size}"><div class="keep-media-md">${f.markdownLink}</div><a href="${f.serveUrl}" target="_blank" rel="noopener noreferrer" class="keep-media-file-link">📎 ${f.fileName}</a></div><p></p>`
+            )
+            .join('');
+          setContent((prev) => prev + htmlBlocks);
+        }
+      } catch (err) {
+        console.error('Collapsed paste failed:', err);
+      }
+    };
+
+    window.addEventListener('paste', handleGlobalCollapsedPaste);
+    return () => window.removeEventListener('paste', handleGlobalCollapsedPaste);
+  }, [isExpanded, editingNote]);
 
   const resetForm = () => {
     setTitle('');
@@ -61,9 +99,11 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
   };
 
   const handleSaveAndClose = async () => {
-    // Only save if note has any actual content
+    const latestContent = editorRef.current?.getHTML() || content;
     const hasTodos = todos.some((t) => t.text.trim().length > 0);
-    const hasText = title.trim().length > 0 || content.trim().length > 0;
+    const hasText =
+      title.trim().length > 0 ||
+      (latestContent.trim().length > 0 && latestContent.trim() !== '<p></p>');
     const hasMedia = images.length > 0 || drawings.length > 0;
 
     if (hasText || hasTodos || hasMedia) {
@@ -73,7 +113,7 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
 
       await addNote({
         title: title.trim(),
-        content: content.trim(),
+        content: latestContent.trim(),
         isList,
         todos: finalTodos,
         color,
@@ -88,20 +128,32 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
     resetForm();
   };
 
-  // Convert uploaded image to base64
-  const handleAddImage = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
+  // Copy selected files to local folder & insert markdown link + rendered preview
+  const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const fileList = e.target.files;
+    if (!fileList || fileList.length === 0) return;
+    const filesArray = Array.from(fileList);
+    e.target.value = '';
 
-    Array.from(files).forEach((file) => {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        if (event.target?.result) {
-          setImages((prev) => [...prev, event.target!.result as string]);
+    if (editorRef.current) {
+      await editorRef.current.insertLocalFiles(filesArray);
+    } else {
+      try {
+        const saved = await copyFilesToLocalFolder(filesArray);
+        if (saved.length > 0) {
+          const htmlBlocks = saved
+            .map((f) =>
+              f.isImage
+                ? `<div data-keep-media="true" data-is-image="true" data-file-name="${f.fileName}" data-saved-path="${f.savedPath}" data-serve-url="${f.serveUrl}" data-markdown-link="${f.markdownLink}" data-file-size="${f.size}"><div class="keep-media-md">${f.markdownLink}</div><img src="${f.serveUrl}" alt="${f.fileName}" class="keep-media-img" /></div><p></p>`
+                : `<div data-keep-media="true" data-is-image="false" data-file-name="${f.fileName}" data-saved-path="${f.savedPath}" data-serve-url="${f.serveUrl}" data-markdown-link="${f.markdownLink}" data-file-size="${f.size}"><div class="keep-media-md">${f.markdownLink}</div><a href="${f.serveUrl}" target="_blank" rel="noopener noreferrer" class="keep-media-file-link">📎 ${f.fileName}</a></div><p></p>`
+            )
+            .join('');
+          setContent((prev) => prev + htmlBlocks);
         }
-      };
-      reader.readAsDataURL(file);
-    });
+      } catch (err) {
+        console.error('Failed to add image to local folder:', err);
+      }
+    }
   };
 
   const handleAddTodoItem = () => {
@@ -193,11 +245,14 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
     <div className="w-full max-w-2xl mx-auto mb-8 px-4" ref={containerRef}>
       <div
         onPaste={(e) => {
-          if (e.defaultPrevented || isList) return;
-          const files = extractFilesFromClipboard(e.clipboardData);
-          if (files.length > 0) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          if (e.defaultPrevented || isList || (e.nativeEvent as any)?.__keepPasteHandled) return;
+          const { files, imageUrls } = extractClipboardPayload(e.clipboardData);
+          if (files.length > 0 || imageUrls.length > 0) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (e.nativeEvent as any).__keepPasteHandled = true;
             e.preventDefault();
-            editorRef.current?.insertLocalFiles(files);
+            editorRef.current?.insertLocalFiles(files, imageUrls);
           }
         }}
         onDragOver={(e) => {
@@ -206,11 +261,14 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
           }
         }}
         onDrop={(e) => {
-          if (e.defaultPrevented || isList) return;
-          const files = extractFilesFromClipboard(e.dataTransfer);
-          if (files.length > 0) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          if (e.defaultPrevented || isList || (e.nativeEvent as any)?.__keepPasteHandled) return;
+          const { files, imageUrls } = extractClipboardPayload(e.dataTransfer);
+          if (files.length > 0 || imageUrls.length > 0) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (e.nativeEvent as any).__keepPasteHandled = true;
             e.preventDefault();
-            editorRef.current?.insertLocalFiles(files);
+            editorRef.current?.insertLocalFiles(files, imageUrls);
           }
         }}
         className={`rounded-2xl shadow-xl border relative transition-all ${colorClasses}`}
@@ -316,6 +374,8 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
               onChange={setContent}
               placeholder="Take a note…"
               minHeightClass="min-h-[100px]"
+              autoFocus={true}
+              listenWindowPaste={!editingNote}
             />
           )}
 

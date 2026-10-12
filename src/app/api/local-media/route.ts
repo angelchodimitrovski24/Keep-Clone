@@ -113,11 +113,29 @@ export async function POST(req: NextRequest) {
     }
 
     const uploadedFiles = formData.getAll('files') as File[];
-    if (!uploadedFiles || uploadedFiles.length === 0) {
+    const imageUrlsRaw = formData.get('imageUrls') as string | null;
+    const imageUrls: string[] = imageUrlsRaw ? JSON.parse(imageUrlsRaw) : [];
+
+    if ((!uploadedFiles || uploadedFiles.length === 0) && imageUrls.length === 0) {
       return NextResponse.json({ error: 'No files provided' }, { status: 400 });
     }
 
     const savedResults = [];
+
+    const makeTimestampName = (ext: string) => {
+      const now = new Date();
+      const stamp =
+        now.getFullYear().toString() +
+        String(now.getMonth() + 1).padStart(2, '0') +
+        String(now.getDate()).padStart(2, '0') +
+        '-' +
+        String(now.getHours()).padStart(2, '0') +
+        String(now.getMinutes()).padStart(2, '0') +
+        String(now.getSeconds()).padStart(2, '0') +
+        '-' +
+        String(now.getMilliseconds()).padStart(3, '0');
+      return `pasted-${stamp}${ext || '.png'}`;
+    };
 
     for (const file of uploadedFiles) {
       const arrayBuffer = await file.arrayBuffer();
@@ -135,29 +153,17 @@ export async function POST(req: NextRequest) {
           ? '.webp'
           : '';
 
-      // If unnamed clipboard screenshot (usually "image.png" or "blob")
       if (
         !originalName ||
         originalName === 'image.png' ||
         originalName === 'image.jpg' ||
         originalName === 'blob'
       ) {
-        const now = new Date();
-        const stamp =
-          now.getFullYear().toString() +
-          String(now.getMonth() + 1).padStart(2, '0') +
-          String(now.getDate()).padStart(2, '0') +
-          '-' +
-          String(now.getHours()).padStart(2, '0') +
-          String(now.getMinutes()).padStart(2, '0') +
-          String(now.getSeconds()).padStart(2, '0') +
-          '-' +
-          String(now.getMilliseconds()).padStart(3, '0');
-        originalName = `pasted-${stamp}${extFromMime || '.png'}`;
+        originalName = makeTimestampName(extFromMime || '.png');
       }
 
       const { finalName, fullPath } = getUniqueFilePath(targetFolder, originalName);
-      fs.writeFileSync(fullPath, buffer);
+      fs.writeFileSync(/*turbopackIgnore: true*/ fullPath, buffer);
 
       const ext = path.extname(finalName);
       const isImage = isImageExtension(ext, file.type);
@@ -172,12 +178,71 @@ export async function POST(req: NextRequest) {
         savedPath: normalizedPath,
         serveUrl,
         isImage,
-        size: file.size,
+        size: buffer.length,
         mimeType: file.type || MIME_MAP[ext.toLowerCase()] || 'application/octet-stream',
         markdownLink: isImage
           ? `![${finalName}](${normalizedPath})`
           : `[${finalName}](${normalizedPath})`,
       });
+    }
+
+    // Also process any pasted HTML <img> data URLs or remote URLs
+    for (const imgUrl of imageUrls) {
+      try {
+        let buffer: Buffer | null = null;
+        let mimeType = 'image/png';
+        let desiredName = makeTimestampName('.png');
+
+        if (imgUrl.startsWith('data:image/')) {
+          const match = imgUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+          if (match) {
+            mimeType = match[1];
+            buffer = Buffer.from(match[2], 'base64');
+            const ext = mimeType.includes('jpeg') || mimeType.includes('jpg')
+              ? '.jpg'
+              : mimeType.includes('gif')
+              ? '.gif'
+              : mimeType.includes('webp')
+              ? '.webp'
+              : '.png';
+            desiredName = makeTimestampName(ext);
+          }
+        } else if (imgUrl.startsWith('http://') || imgUrl.startsWith('https://')) {
+          const res = await fetch(imgUrl);
+          if (res.ok) {
+            const ab = await res.arrayBuffer();
+            buffer = Buffer.from(ab);
+            mimeType = res.headers.get('content-type') || 'image/png';
+            const urlPath = new URL(imgUrl).pathname;
+            const base = path.basename(urlPath);
+            desiredName = base && /\.(png|jpe?g|gif|webp|svg|bmp)$/i.test(base)
+              ? base
+              : makeTimestampName('.png');
+          }
+        }
+
+        if (buffer && buffer.length > 0) {
+          const { finalName, fullPath } = getUniqueFilePath(targetFolder, desiredName);
+          fs.writeFileSync(/*turbopackIgnore: true*/ fullPath, buffer);
+          const normalizedPath = fullPath.replace(/\\/g, '/');
+          const serveUrl = `/api/local-media?folder=${encodeURIComponent(
+            targetFolder
+          )}&file=${encodeURIComponent(finalName)}`;
+
+          savedResults.push({
+            fileName: finalName,
+            folderPath: targetFolder,
+            savedPath: normalizedPath,
+            serveUrl,
+            isImage: true,
+            size: buffer.length,
+            mimeType,
+            markdownLink: `![${finalName}](${normalizedPath})`,
+          });
+        }
+      } catch (e) {
+        console.warn('Skipped invalid pasted image URL:', e);
+      }
     }
 
     return NextResponse.json({
