@@ -100,6 +100,62 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
               </li>
             );
           },
+          code: ({ node, className, children, ...props }) => {
+            const isInline = !className && !String(children).includes('\n');
+            if (isInline) {
+              return (
+                <code
+                  {...props}
+                  className="font-mono text-[0.85em] px-1.5 py-0.5 rounded bg-black/5 dark:bg-white/10 text-rose-600 dark:text-rose-400 border border-black/5 dark:border-white/5"
+                >
+                  {children}
+                </code>
+              );
+            }
+            return (
+              <code {...props} className={className}>
+                {children}
+              </code>
+            );
+          },
+          pre: ({ node, children, ...props }) => {
+            return (
+              <pre
+                {...props}
+                className="font-mono text-xs p-3.5 my-2.5 rounded-xl bg-stone-900 text-stone-100 dark:bg-stone-950 dark:text-stone-200 overflow-x-auto border border-black/10 dark:border-white/10 leading-relaxed"
+              >
+                {children}
+              </pre>
+            );
+          },
+          blockquote: ({ node, children, ...props }) => (
+            <blockquote
+              {...props}
+              className="border-l-3 border-amber-500 pl-3 my-2 text-stone-600 dark:text-stone-400 italic"
+            >
+              {children}
+            </blockquote>
+          ),
+          hr: ({ node, ...props }) => (
+            <hr {...props} className="my-3 border-stone-200 dark:border-stone-700" />
+          ),
+          table: ({ node, children, ...props }) => (
+            <div className="overflow-x-auto my-2">
+              <table {...props} className="min-w-full text-xs border-collapse border border-stone-200 dark:border-stone-700">
+                {children}
+              </table>
+            </div>
+          ),
+          th: ({ node, children, ...props }) => (
+            <th {...props} className="border border-stone-200 dark:border-stone-700 bg-black/5 dark:bg-white/5 px-2.5 py-1.5 font-semibold text-left">
+              {children}
+            </th>
+          ),
+          td: ({ node, children, ...props }) => (
+            <td {...props} className="border border-stone-200 dark:border-stone-700 px-2.5 py-1.5">
+              {children}
+            </td>
+          ),
           input: ({ node, ...props }) => {
             if (props.type === 'checkbox') {
               const currentIdx = checkboxCount++;

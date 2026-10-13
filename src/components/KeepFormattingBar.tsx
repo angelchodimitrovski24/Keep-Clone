@@ -5,6 +5,8 @@ import {
   Bold,
   Italic,
   Underline,
+  Code,
+  SquareCode,
   List,
   ListOrdered,
   CheckSquare,
@@ -62,7 +64,7 @@ export const KeepFormattingBar: React.FC<KeepFormattingBarProps> = ({
         type="button"
         onClick={() => onFormat('bold')}
         className="p-1.5 rounded-md hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors"
-        title="Bold"
+        title="Bold (**text**)"
       >
         <Bold className="w-4 h-4 font-bold" />
       </button>
@@ -71,7 +73,7 @@ export const KeepFormattingBar: React.FC<KeepFormattingBarProps> = ({
         type="button"
         onClick={() => onFormat('italic')}
         className="p-1.5 rounded-md hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors"
-        title="Italic"
+        title="Italic (*text*)"
       >
         <Italic className="w-4 h-4" />
       </button>
@@ -83,6 +85,24 @@ export const KeepFormattingBar: React.FC<KeepFormattingBarProps> = ({
         title="Underline"
       >
         <Underline className="w-4 h-4" />
+      </button>
+
+      <button
+        type="button"
+        onClick={() => onFormat('code')}
+        className="p-1.5 rounded-md hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors font-mono text-xs font-semibold"
+        title="Inline code (`code`)"
+      >
+        <Code className="w-4 h-4" />
+      </button>
+
+      <button
+        type="button"
+        onClick={() => onFormat('code-block')}
+        className="p-1.5 rounded-md hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors"
+        title="Code block (```code```)"
+      >
+        <SquareCode className="w-4 h-4" />
       </button>
 
       {/* Divider */}

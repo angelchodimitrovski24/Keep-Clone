@@ -275,6 +275,12 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
         case 'checkbox-list':
           editor.chain().focus().toggleTaskList().run();
           break;
+        case 'code':
+          editor.chain().focus().toggleCode().run();
+          break;
+        case 'code-block':
+          editor.chain().focus().toggleCodeBlock().run();
+          break;
         case 'clear':
           editor.chain().focus().unsetAllMarks().clearNodes().run();
           break;

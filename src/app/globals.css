@@ -131,6 +131,75 @@ body {
   text-decoration: underline;
 }
 
+/* Inline Code Styling */
+.ProseMirror code,
+.keep-rendered code,
+.keep-markdown :not(pre) > code {
+  font-family: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.85em;
+  padding: 0.15em 0.4em;
+  border-radius: 0.35rem;
+  background-color: rgba(125, 125, 125, 0.12);
+  color: #e11d48;
+  border: 1px solid rgba(125, 125, 125, 0.15);
+  word-break: break-word;
+}
+
+@media (prefers-color-scheme: dark) {
+  .ProseMirror code,
+  .keep-rendered code,
+  .keep-markdown :not(pre) > code {
+    color: #fb7185;
+  }
+}
+
+/* Fenced Code Blocks */
+.ProseMirror pre,
+.keep-rendered pre,
+.keep-markdown pre {
+  font-family: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.85rem;
+  background: #18181b;
+  color: #f4f4f5;
+  padding: 0.85rem 1rem;
+  border-radius: 0.75rem;
+  margin: 0.65rem 0;
+  overflow-x: auto;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  line-height: 1.5;
+}
+
+.ProseMirror pre code,
+.keep-rendered pre code,
+.keep-markdown pre code {
+  background: transparent !important;
+  color: inherit !important;
+  padding: 0 !important;
+  border: none !important;
+  font-size: inherit !important;
+  border-radius: 0 !important;
+}
+
+/* Blockquotes */
+.ProseMirror blockquote,
+.keep-rendered blockquote,
+.keep-markdown blockquote {
+  border-left: 3px solid #f59e0b;
+  padding-left: 0.85rem;
+  margin: 0.6rem 0;
+  color: rgba(120, 120, 120, 0.9);
+  font-style: italic;
+}
+
+/* Horizontal Rules */
+.ProseMirror hr,
+.keep-rendered hr,
+.keep-markdown hr {
+  border: none;
+  border-top: 1px solid rgba(150, 150, 150, 0.25);
+  margin: 0.85rem 0;
+}
+
 .ProseMirror img,
 .keep-rendered img {
   display: block;

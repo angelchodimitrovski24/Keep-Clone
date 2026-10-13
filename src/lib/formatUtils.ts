@@ -8,6 +8,8 @@ export type GoogleKeepFormatCommand =
   | 'bullet-list'
   | 'number-list'
   | 'checkbox-list'
+  | 'code'
+  | 'code-block'
   | 'clear';
 
 export function applyKeepFormatting(
@@ -68,7 +70,7 @@ export function applyKeepFormatting(
     };
   }
 
-  // Inline formatting: Bold, Italic, Underline, Clear
+  // Inline formatting: Bold, Italic, Underline, Code, Code Block, Clear
   const selectedText = text.substring(start, end);
   const before = text.substring(0, start);
   const after = text.substring(end);
@@ -92,6 +94,16 @@ export function applyKeepFormatting(
       prefix = '<u>';
       suffix = '</u>';
       replacement = selectedText || 'Underlined text';
+      break;
+    case 'code':
+      prefix = '`';
+      suffix = '`';
+      replacement = selectedText || 'code';
+      break;
+    case 'code-block':
+      prefix = '```\n';
+      suffix = '\n```';
+      replacement = selectedText || 'code here';
       break;
     case 'clear':
       replacement = selectedText
@@ -267,6 +279,9 @@ export function convertMarkdownToHtml(content: string): string {
   let inTaskList = false;
   let inBulletList = false;
   let inNumberList = false;
+  let inCodeBlock = false;
+  let codeBlockLang = '';
+  let codeBlockLines: string[] = [];
 
   const closeOpenLists = () => {
     if (inTaskList) {
@@ -288,23 +303,48 @@ export function convertMarkdownToHtml(content: string): string {
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
+      .replace(/`([^`]+)`/g, '<code>$1</code>')
       .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
       .replace(/\*(.*?)\*/g, '<em>$1</em>')
       .replace(/_(.*?)_/g, '<u>$1</u>')
       .replace(/~~(.*?)~~/g, '<s>$1</s>')
-      .replace(/`([^`]+)`/g, '<code>$1</code>');
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-blue-600 dark:text-blue-400 underline hover:opacity-80">$1</a>');
   };
 
   for (let i = 0; i < lines.length; i++) {
     const rawLine = lines[i];
     const trimmed = rawLine.trim();
 
+    // 1. Fenced Code Block delimiters: ``` or ```lang
+    if (trimmed.startsWith('```')) {
+      closeOpenLists();
+      if (!inCodeBlock) {
+        inCodeBlock = true;
+        codeBlockLang = trimmed.substring(3).trim();
+        codeBlockLines = [];
+      } else {
+        inCodeBlock = false;
+        const codeText = codeBlockLines
+          .join('\n')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;');
+        result += `<pre><code${codeBlockLang ? ` class="language-${codeBlockLang}"` : ''}>${codeText}</code></pre>`;
+      }
+      continue;
+    }
+
+    if (inCodeBlock) {
+      codeBlockLines.push(rawLine);
+      continue;
+    }
+
     if (!trimmed) {
       closeOpenLists();
       continue;
     }
 
-    // 1. Task List item: - [ ] or - [x] or [ ] or [x]
+    // 2. Task List item: - [ ] or - [x] or [ ] or [x]
     const taskMatch = rawLine.match(/^\s*(?:[-*+]\s+)?\[([ xX])\]\s*(.*)$/);
     if (taskMatch) {
       if (inBulletList) { result += '</ul>'; inBulletList = false; }
@@ -319,7 +359,7 @@ export function convertMarkdownToHtml(content: string): string {
       continue;
     }
 
-    // 2. Headings: # or ##
+    // 3. Headings: # or ##
     const h1Match = rawLine.match(/^#\s+(.*)$/);
     if (h1Match) {
       closeOpenLists();
@@ -333,7 +373,22 @@ export function convertMarkdownToHtml(content: string): string {
       continue;
     }
 
-    // 3. Bullet list: - or *
+    // 4. Blockquotes: > quote
+    const bqMatch = rawLine.match(/^\s*>\s*(.*)$/);
+    if (bqMatch) {
+      closeOpenLists();
+      result += `<blockquote><p>${formatInline(bqMatch[1])}</p></blockquote>`;
+      continue;
+    }
+
+    // 5. Horizontal rules: --- or *** or ___
+    if (/^([-*_]){3,}$/.test(trimmed)) {
+      closeOpenLists();
+      result += `<hr />`;
+      continue;
+    }
+
+    // 6. Bullet list: - or *
     const bulletMatch = rawLine.match(/^\s*[-*+]\s+(.*)$/);
     if (bulletMatch) {
       if (inTaskList) { result += '</ul>'; inTaskList = false; }
@@ -346,7 +401,7 @@ export function convertMarkdownToHtml(content: string): string {
       continue;
     }
 
-    // 4. Number list: 1.
+    // 7. Number list: 1.
     const numberMatch = rawLine.match(/^\s*\d+\.\s+(.*)$/);
     if (numberMatch) {
       if (inTaskList) { result += '</ul>'; inTaskList = false; }
@@ -359,7 +414,7 @@ export function convertMarkdownToHtml(content: string): string {
       continue;
     }
 
-    // 5. Markdown Image line: ![alt](path)
+    // 8. Markdown Image line: ![alt](path)
     const imgMatch = trimmed.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
     if (imgMatch) {
       closeOpenLists();
@@ -370,9 +425,19 @@ export function convertMarkdownToHtml(content: string): string {
       continue;
     }
 
-    // 6. Normal paragraph
+    // 9. Normal paragraph
     closeOpenLists();
     result += `<p>${formatInline(rawLine)}</p>`;
+  }
+
+  // Close unclosed code block if file ends inside code block
+  if (inCodeBlock) {
+    const codeText = codeBlockLines
+      .join('\n')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+    result += `<pre><code${codeBlockLang ? ` class="language-${codeBlockLang}"` : ''}>${codeText}</code></pre>`;
   }
 
   closeOpenLists();
