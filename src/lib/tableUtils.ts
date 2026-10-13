@@ -76,7 +76,7 @@ export function convertTableLinesToHtml(lines: string[]): string {
   let theadHtml = '<thead class="bg-black/5 dark:bg-white/5 border-b border-stone-200 dark:border-stone-700 font-semibold text-stone-850 dark:text-stone-200"><tr>';
   for (let i = 0; i < headerCells.length; i++) {
     const alignClass = alignments[i] || 'text-left';
-    theadHtml += `<th class="px-3.5 py-2.5 font-semibold text-xs sm:text-sm tracking-wide border-r border-stone-200/50 dark:border-stone-800 last:border-r-0 ${alignClass}">${formatCellContent(headerCells[i])}</th>`;
+    theadHtml += `<th class="px-3.5 py-2.5 font-semibold tracking-wide border-r border-stone-200/50 dark:border-stone-800 last:border-r-0 ${alignClass}">${formatCellContent(headerCells[i])}</th>`;
   }
   theadHtml += '</tr></thead>';
 
@@ -91,13 +91,84 @@ export function convertTableLinesToHtml(lines: string[]): string {
     for (let c = 0; c < headerCells.length; c++) {
       const cellContent = rowCells[c] ?? '';
       const alignClass = alignments[c] || 'text-left';
-      tbodyHtml += `<td class="px-3.5 py-2 text-xs sm:text-sm border-r border-stone-200/40 dark:border-stone-800/60 last:border-r-0 ${alignClass}">${formatCellContent(cellContent)}</td>`;
+      tbodyHtml += `<td class="px-3.5 py-2 border-r border-stone-200/40 dark:border-stone-800/60 last:border-r-0 ${alignClass}">${formatCellContent(cellContent)}</td>`;
     }
     tbodyHtml += '</tr>';
   }
   tbodyHtml += '</tbody>';
 
   return `<div class="keep-table-wrapper my-3 overflow-x-auto rounded-xl border border-stone-200 dark:border-stone-700/80 shadow-xs bg-white/80 dark:bg-stone-900/60 backdrop-blur-xs"><table class="keep-table w-full text-left border-collapse">${theadHtml}${tbodyHtml}</table></div>`;
+}
+
+/**
+ * Formats a non-table line, recognizing headings (#, ##, ###, ####) and styling them
+ */
+export function formatNonTableContent(line: string): string {
+  const trimmed = line.trim();
+  if (!trimmed) return '';
+
+  // Check if it is a heading: # Title, ## Title, ### Title, #### Title
+  // e.g. ### **Core Functional Comparison** or <p>### **Core Functional Comparison**</p>
+  const pHeadingMatch = trimmed.match(/^<p[^>]*>(?:<strong>)?\s*(#{1,4})\s+([\s\S]*?)<\/p>$/i);
+  if (pHeadingMatch) {
+    const level = pHeadingMatch[1].length;
+    const content = pHeadingMatch[2].replace(/<\/strong>$/, '').trim();
+    return `<h${level}>${formatCellContent(content)}</h${level}>`;
+  }
+
+  const headingMatch = trimmed.match(/^(?:<strong>)?\s*(#{1,4})\s+(.*)$/);
+  if (headingMatch) {
+    const level = headingMatch[1].length;
+    const content = headingMatch[2].replace(/<\/strong>$/, '').trim();
+    return `<h${level}>${formatCellContent(content)}</h${level}>`;
+  }
+
+  if (
+    trimmed.startsWith('<div') ||
+    trimmed.startsWith('<table') ||
+    trimmed.startsWith('<h1') ||
+    trimmed.startsWith('<h2') ||
+    trimmed.startsWith('<h3') ||
+    trimmed.startsWith('<h4') ||
+    trimmed.startsWith('<p') ||
+    trimmed.startsWith('<ul') ||
+    trimmed.startsWith('<ol') ||
+    trimmed.startsWith('<blockquote') ||
+    trimmed.startsWith('<hr')
+  ) {
+    return trimmed;
+  }
+
+  return `<p>${formatCellContent(trimmed)}</p>`;
+}
+
+/**
+ * Normalizes any markdown headings in HTML strings (e.g. <p>### Heading</p> or raw ### Heading)
+ * into semantic <h1>-<h4> tags with inline markdown formatting.
+ */
+export function normalizeHtmlHeadings(html: string): string {
+  if (!html) return '';
+  return html
+    .replace(/<p[^>]*>(?:<strong>)?\s*####\s+([\s\S]*?)<\/p>/gi, (_m, inner) => {
+      const cleaned = inner.replace(/<\/strong>$/, '').trim();
+      return `<h4>${formatCellContent(cleaned)}</h4>`;
+    })
+    .replace(/<p[^>]*>(?:<strong>)?\s*###\s+([\s\S]*?)<\/p>/gi, (_m, inner) => {
+      const cleaned = inner.replace(/<\/strong>$/, '').trim();
+      return `<h3>${formatCellContent(cleaned)}</h3>`;
+    })
+    .replace(/<p[^>]*>(?:<strong>)?\s*##\s+([\s\S]*?)<\/p>/gi, (_m, inner) => {
+      const cleaned = inner.replace(/<\/strong>$/, '').trim();
+      return `<h2>${formatCellContent(cleaned)}</h2>`;
+    })
+    .replace(/<p[^>]*>(?:<strong>)?\s*#\s+([\s\S]*?)<\/p>/gi, (_m, inner) => {
+      const cleaned = inner.replace(/<\/strong>$/, '').trim();
+      return `<h1>${formatCellContent(cleaned)}</h1>`;
+    })
+    .replace(/(?:^|\n)\s*(#{1,4})\s+([^\n<]+)(?:\n|$)/g, (_m, hashes, text) => {
+      const level = hashes.length;
+      return `\n<h${level}>${formatCellContent(text.trim())}</h${level}>\n`;
+    });
 }
 
 /**
@@ -135,7 +206,8 @@ function processTableInLines(lines: string[]): { result: string[]; hasTable: boo
  * Searches for and renders Markdown tables within HTML content or raw text
  */
 export function renderMarkdownTablesInHtml(htmlOrText: string): string {
-  if (!htmlOrText || !htmlOrText.includes('|')) return htmlOrText;
+  if (!htmlOrText) return htmlOrText;
+  if (!htmlOrText.includes('|')) return normalizeHtmlHeadings(htmlOrText);
   let processed = htmlOrText;
 
   // Case 1: Detect tables inside a paragraph separated by <br> tags (even with surrounding heading/text lines)
@@ -149,7 +221,7 @@ export function renderMarkdownTablesInHtml(htmlOrText: string): string {
       .map((item) => {
         const trimmed = item.trim();
         if (trimmed.startsWith('<div class="keep-table-wrapper"')) return trimmed;
-        return trimmed ? `<p>${trimmed}</p>` : '';
+        return formatNonTableContent(trimmed);
       })
       .filter(Boolean)
       .join('');
@@ -172,7 +244,7 @@ export function renderMarkdownTablesInHtml(htmlOrText: string): string {
       .map((item) => {
         const trimmed = item.trim();
         if (trimmed.startsWith('<div class="keep-table-wrapper"')) return trimmed;
-        return trimmed ? `<p>${trimmed}</p>` : '';
+        return formatNonTableContent(trimmed);
       })
       .filter(Boolean)
       .join('');
@@ -182,8 +254,14 @@ export function renderMarkdownTablesInHtml(htmlOrText: string): string {
   const lines = processed.split(/\r?\n/);
   const { result, hasTable } = processTableInLines(lines);
   if (hasTable) {
-    processed = result.join('\n');
+    processed = result
+      .map((item) => {
+        const trimmed = item.trim();
+        if (trimmed.startsWith('<div class="keep-table-wrapper"')) return trimmed;
+        return formatNonTableContent(trimmed);
+      })
+      .join('\n');
   }
 
-  return processed;
+  return normalizeHtmlHeadings(processed);
 }

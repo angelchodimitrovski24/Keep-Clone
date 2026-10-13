@@ -74,7 +74,9 @@ body {
   height: 0;
 }
 
-.ProseMirror h1 {
+.ProseMirror h1,
+.keep-rendered h1,
+.keep-markdown h1 {
   font-size: 1.35rem;
   font-weight: 700;
   margin-top: 0.5rem;
@@ -82,11 +84,33 @@ body {
   line-height: 1.3;
 }
 
-.ProseMirror h2 {
+.ProseMirror h2,
+.keep-rendered h2,
+.keep-markdown h2 {
   font-size: 1.15rem;
   font-weight: 600;
   margin-top: 0.45rem;
   margin-bottom: 0.25rem;
+  line-height: 1.3;
+}
+
+.ProseMirror h3,
+.keep-rendered h3,
+.keep-markdown h3 {
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin-top: 0.4rem;
+  margin-bottom: 0.25rem;
+  line-height: 1.3;
+}
+
+.ProseMirror h4,
+.keep-rendered h4,
+.keep-markdown h4 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin-top: 0.35rem;
+  margin-bottom: 0.2rem;
   line-height: 1.3;
 }
 
@@ -231,18 +255,6 @@ body {
 .keep-rendered p {
   margin-bottom: 0.35rem;
 }
-.keep-rendered h1 {
-  font-size: 1.25rem;
-  font-weight: 700;
-  margin-top: 0.5rem;
-  margin-bottom: 0.35rem;
-}
-.keep-rendered h2 {
-  font-size: 1.1rem;
-  font-weight: 600;
-  margin-top: 0.4rem;
-  margin-bottom: 0.25rem;
-}
 .keep-rendered ul[data-type="taskList"] {
   list-style: none;
   padding: 0;
@@ -327,8 +339,8 @@ body {
 .ProseMirror table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.8125rem;
-  line-height: 1.4;
+  font-size: var(--note-font-size, 15px);
+  line-height: 1.45;
   text-align: left;
 }
 
@@ -352,12 +364,14 @@ body {
   font-weight: 600;
   white-space: nowrap;
   border: 1px solid rgba(140, 140, 140, 0.2);
+  font-size: var(--note-font-size, 15px);
 }
 
 .keep-table td,
 .ProseMirror td {
   padding: 0.45rem 0.75rem;
   border: 1px solid rgba(140, 140, 140, 0.15);
+  font-size: var(--note-font-size, 15px);
 }
 
 .keep-table tbody tr,

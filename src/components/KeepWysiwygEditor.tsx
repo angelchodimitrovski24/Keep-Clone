@@ -160,12 +160,12 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
           return true;
         }
 
-        // Intercept pasted markdown tables or markdown content
+        // Intercept pasted markdown tables, headings or markdown content
         const plainText = clipboardData?.getData('text/plain');
         if (
           plainText &&
-          plainText.includes('|') &&
-          /\|?\s*:?-+:?\s*\|/.test(plainText)
+          (/(?:^|\n)\s*#{1,4}\s+/.test(plainText) ||
+            (plainText.includes('|') && /\|?\s*:?-+:?\s*\|/.test(plainText)))
         ) {
           const activeEditor = editorInstanceRef.current;
           if (activeEditor) {
@@ -226,7 +226,7 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
       },
       editorProps: {
         attributes: {
-          class: `w-full ${minHeightClass} outline-none text-sm text-stone-800 dark:text-stone-200 leading-relaxed`,
+          class: `w-full ${minHeightClass} outline-none text-stone-800 dark:text-stone-200 leading-relaxed`,
         },
         handlePaste: (_view, event) => {
           return handleClipboardDataTransfer(event.clipboardData, event);

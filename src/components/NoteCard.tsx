@@ -305,7 +305,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
                 </div>
               ) : (
                 activeNote.content && (
-                  <div className="max-h-72 overflow-hidden text-sm text-stone-700 dark:text-stone-300 leading-relaxed font-normal">
+                  <div className="max-h-72 overflow-hidden text-stone-700 dark:text-stone-300 leading-relaxed font-normal">
                     <MarkdownRenderer
                       content={activeNote.content}
                       onOpenLinkedNote={handleOpenLinkedNote}

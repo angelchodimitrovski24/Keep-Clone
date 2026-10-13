@@ -544,7 +544,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
                 )}
               </div>
             ) : isPreviewMode ? (
-              <div className="min-h-[240px] py-1 text-sm text-stone-800 dark:text-stone-200 leading-relaxed overflow-x-auto">
+              <div className="min-h-[240px] py-1 text-stone-800 dark:text-stone-200 leading-relaxed overflow-x-auto">
                 <MarkdownRenderer
                   content={content}
                   onOpenLinkedNote={(titleOrId) => {

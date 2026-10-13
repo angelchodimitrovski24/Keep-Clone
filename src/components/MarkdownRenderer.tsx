@@ -32,12 +32,6 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
   if (isHtml) {
     let html = renderMarkdownImagesInString(content);
     html = renderMarkdownTablesInHtml(html);
-    // Format any raw markdown heading lines inside paragraphs into proper heading elements
-    html = html
-      .replace(/<p[^>]*>####\s+([\s\S]*?)<\/p>/gi, '<h4 class="text-sm font-semibold mt-2 mb-1">$1</h4>')
-      .replace(/<p[^>]*>###\s+([\s\S]*?)<\/p>/gi, '<h3 class="text-base font-semibold mt-2.5 mb-1">$1</h3>')
-      .replace(/<p[^>]*>##\s+([\s\S]*?)<\/p>/gi, '<h2 class="text-lg font-bold mt-3 mb-1.5">$1</h2>')
-      .replace(/<p[^>]*>#\s+([\s\S]*?)<\/p>/gi, '<h1 class="text-xl font-bold mt-3.5 mb-2">$1</h1>');
     const renderedHtml = formatWikiLinksInHtml(html);
     return (
       <div
@@ -175,7 +169,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
           ),
           table: ({ node, children, ...props }) => (
             <div className="keep-table-wrapper my-3 overflow-x-auto rounded-xl border border-stone-200 dark:border-stone-700/80 shadow-xs bg-white/80 dark:bg-stone-900/60 backdrop-blur-xs">
-              <table {...props} className="keep-table w-full text-left border-collapse text-xs sm:text-sm">
+              <table {...props} className="keep-table w-full text-left border-collapse">
                 {children}
               </table>
             </div>
