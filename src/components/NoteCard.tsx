@@ -191,7 +191,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
           </div>
         ) : (
           note.content && (
-            <div className="line-clamp-8 text-sm text-stone-700 dark:text-stone-300 leading-relaxed font-normal">
+            <div className="max-h-72 overflow-hidden text-sm text-stone-700 dark:text-stone-300 leading-relaxed font-normal">
               <MarkdownRenderer
                 content={note.content}
                 onToggleCheckbox={(idx, checked) => {

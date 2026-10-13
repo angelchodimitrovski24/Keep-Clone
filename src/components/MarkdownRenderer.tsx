@@ -5,7 +5,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
 
-import { toggleHtmlCheckbox } from '@/lib/formatUtils';
+import { toggleHtmlCheckbox, resolveLocalMediaUrl, renderMarkdownImagesInString } from '@/lib/formatUtils';
 
 interface MarkdownRendererProps {
   content: string;
@@ -26,10 +26,11 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
   const isHtml = /<[a-z][\s\S]*>/i.test(content);
 
   if (isHtml) {
+    const renderedHtml = renderMarkdownImagesInString(content);
     return (
       <div
         className={`keep-rendered ${className}`}
-        dangerouslySetInnerHTML={{ __html: content }}
+        dangerouslySetInnerHTML={{ __html: renderedHtml }}
         onClick={(e) => {
           // Allow clicking checkboxes in rendered HTML directly from note cards
           const target = e.target as HTMLElement;
@@ -67,6 +68,25 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
               onClick={(e) => e.stopPropagation()}
             />
           ),
+          img: ({ node, src, alt, ...props }) => {
+            const rawSrc = typeof src === 'string' ? src : '';
+            const resolvedSrc = resolveLocalMediaUrl(rawSrc);
+            return (
+              <span className="block my-2">
+                <span className="block text-xs font-mono text-stone-400 select-all my-0.5 truncate max-w-full">
+                  ![{alt || 'image'}]({rawSrc})
+                </span>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  {...props}
+                  src={resolvedSrc}
+                  alt={alt || 'Image'}
+                  className="rounded-xl max-h-80 w-auto my-1 border border-black/10 dark:border-white/10"
+                  loading="lazy"
+                />
+              </span>
+            );
+          },
           li: ({ node, children, className: liClassName, ...props }) => {
             const isTaskList = liClassName?.includes('task-list-item');
             return (

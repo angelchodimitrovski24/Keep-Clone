@@ -131,6 +131,17 @@ body {
   text-decoration: underline;
 }
 
+.ProseMirror img,
+.keep-rendered img {
+  display: block;
+  max-height: 22rem;
+  width: auto;
+  max-width: 100%;
+  border-radius: 0.75rem;
+  margin: 0.5rem 0;
+  object-fit: contain;
+}
+
 /* Static rendered preview styles */
 .keep-rendered {
   word-break: break-word;

@@ -215,14 +215,51 @@ export function toggleMarkdownCheckbox(
   return updatedLines.join('\n');
 }
 
+export function resolveLocalMediaUrl(rawPath: string): string {
+  if (!rawPath) return '';
+  const trimmed = rawPath.trim();
+  if (
+    trimmed.startsWith('http://') ||
+    trimmed.startsWith('https://') ||
+    trimmed.startsWith('data:image/') ||
+    trimmed.startsWith('/api/')
+  ) {
+    return trimmed;
+  }
+
+  const normalized = trimmed.replace(/\\/g, '/');
+  const lastSlash = normalized.lastIndexOf('/');
+  let folder = '';
+  let file = normalized;
+
+  if (lastSlash !== -1) {
+    folder = normalized.substring(0, lastSlash);
+    file = normalized.substring(lastSlash + 1);
+  }
+
+  return `/api/local-media?folder=${encodeURIComponent(folder)}&file=${encodeURIComponent(file)}`;
+}
+
+/**
+ * Replaces any markdown image patterns ![alt](path) with standard rendered HTML <img>
+ */
+export function renderMarkdownImagesInString(str: string): string {
+  if (!str) return '';
+  return str.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_match, alt, rawPath) => {
+    const serveUrl = resolveLocalMediaUrl(rawPath.trim());
+    const displayAlt = alt || 'image';
+    return `<div class="my-2"><p class="text-xs font-mono text-stone-400 select-all my-0.5">![${displayAlt}](${rawPath})</p><img src="${serveUrl}" alt="${displayAlt}" class="rounded-xl max-h-96 w-auto my-1 border border-black/10 dark:border-white/10" loading="lazy" /></div>`;
+  });
+}
+
 /**
  * Converts Markdown string or plain text to standard Google Keep HTML for Tiptap
  */
 export function convertMarkdownToHtml(content: string): string {
   if (!content) return '';
-  // If already HTML, return as-is
+  // If already HTML, also ensure any embedded markdown images inside tags get rendered
   if (/<[a-z][\s\S]*>/i.test(content)) {
-    return content;
+    return renderMarkdownImagesInString(content);
   }
 
   const lines = content.split('\n');
@@ -328,14 +365,8 @@ export function convertMarkdownToHtml(content: string): string {
       closeOpenLists();
       const fileName = imgMatch[1] || 'image';
       const rawPath = imgMatch[2];
-      const isHttpOrApi = rawPath.startsWith('http') || rawPath.startsWith('/api/');
-      const lastSlash = Math.max(rawPath.lastIndexOf('/'), rawPath.lastIndexOf('\\'));
-      const folderPart = lastSlash > 0 ? rawPath.substring(0, lastSlash) : '';
-      const basePart = lastSlash >= 0 ? rawPath.substring(lastSlash + 1) : rawPath;
-      const serveUrl = isHttpOrApi
-        ? rawPath
-        : `/api/local-media?folder=${encodeURIComponent(folderPart)}&file=${encodeURIComponent(basePart)}`;
-      result += `<div data-keep-media="true" data-is-image="true" data-file-name="${fileName}" data-saved-path="${rawPath}" data-serve-url="${serveUrl}" data-markdown-link="${trimmed}"><div class="keep-media-md">${trimmed}</div><img src="${serveUrl}" alt="${fileName}" class="keep-media-img" /></div>`;
+      const serveUrl = resolveLocalMediaUrl(rawPath);
+      result += `<div class="my-2"><p class="text-xs font-mono text-stone-400 select-all my-0.5">![${fileName}](${rawPath})</p><img src="${serveUrl}" alt="${fileName}" class="rounded-xl max-h-96 w-auto my-1 border border-black/10 dark:border-white/10" loading="lazy" /></div>`;
       continue;
     }
 

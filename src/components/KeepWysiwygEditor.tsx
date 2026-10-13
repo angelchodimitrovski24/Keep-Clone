@@ -13,6 +13,7 @@ import StarterKit from '@tiptap/starter-kit';
 import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
 import Placeholder from '@tiptap/extension-placeholder';
+import Image from '@tiptap/extension-image';
 import { KeepFormattingBar } from './KeepFormattingBar';
 import { GoogleKeepFormatCommand, convertMarkdownToHtml } from '@/lib/formatUtils';
 import { KeepMediaExtension } from '@/lib/keepMediaExtension';
@@ -76,22 +77,52 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
           const activeEditor = editorInstanceRef.current;
 
           if (savedFiles.length > 0 && activeEditor) {
-            const nodesToInsert = savedFiles.flatMap((file) => [
-              {
-                type: 'keepMedia',
-                attrs: {
-                  isImage: file.isImage,
-                  fileName: file.fileName,
-                  savedPath: file.savedPath,
-                  serveUrl: file.serveUrl,
-                  markdownLink: file.markdownLink,
-                  fileSize: file.size,
-                },
-              },
-              {
-                type: 'paragraph',
-              },
-            ]);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const nodesToInsert: any[] = [];
+
+            for (const file of savedFiles) {
+              if (file.isImage) {
+                // 1. Text paragraph with the actual Markdown link: ![filename.png](path)
+                nodesToInsert.push({
+                  type: 'paragraph',
+                  content: [
+                    {
+                      type: 'text',
+                      text: file.markdownLink,
+                    },
+                  ],
+                });
+                // 2. Rendered image directly below it
+                nodesToInsert.push({
+                  type: 'image',
+                  attrs: {
+                    src: file.serveUrl,
+                    alt: file.fileName,
+                    title: file.savedPath,
+                  },
+                });
+                // 3. Empty paragraph to allow continuing to write
+                nodesToInsert.push({
+                  type: 'paragraph',
+                });
+              } else {
+                // Non-image file attachment: insert rich media block + markdown link
+                nodesToInsert.push({
+                  type: 'keepMedia',
+                  attrs: {
+                    isImage: false,
+                    fileName: file.fileName,
+                    savedPath: file.savedPath,
+                    serveUrl: file.serveUrl,
+                    markdownLink: file.markdownLink,
+                    fileSize: file.size,
+                  },
+                });
+                nodesToInsert.push({
+                  type: 'paragraph',
+                });
+              }
+            }
 
             activeEditor.chain().focus().insertContent(nodesToInsert).run();
             onChangeRef.current(activeEditor.getHTML());
@@ -141,6 +172,13 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
         TaskList,
         TaskItem.configure({
           nested: true,
+        }),
+        Image.configure({
+          inline: false,
+          allowBase64: true,
+          HTMLAttributes: {
+            class: 'rounded-xl max-h-96 w-auto my-2 border border-black/10 dark:border-white/10 shadow-xs cursor-pointer',
+          },
         }),
         KeepMediaExtension,
         Placeholder.configure({
