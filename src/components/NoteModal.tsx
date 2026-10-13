@@ -15,6 +15,7 @@ import {
   Lock,
   Eye,
   EyeOff,
+  History,
 } from 'lucide-react';
 import { Note, NoteColor, NoteBackgroundTheme, TodoItem, NoteDrawing } from '@/types/note';
 import { getNoteColorClasses } from '@/lib/constants';
@@ -55,6 +56,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
     categories,
     unlockedCategoryNames,
     setUnlockCategoryModalTarget,
+    setVersionHistoryNote,
   } = useKeep();
 
   const [title, setTitle] = useState('');
@@ -343,7 +345,8 @@ export const NoteModal: React.FC<NoteModalProps> = ({
               placeholder="Title"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="w-full bg-transparent font-semibold text-xl text-stone-900 dark:text-stone-100 placeholder:text-stone-400 outline-none"
+              className="w-full bg-transparent font-semibold text-stone-900 dark:text-stone-100 placeholder:text-stone-400 outline-none"
+              style={{ fontSize: 'calc(var(--note-font-size, 15px) * 1.25)' }}
             />
             {note.isEncrypted && (
               <span className="shrink-0 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30">
@@ -352,6 +355,32 @@ export const NoteModal: React.FC<NoteModalProps> = ({
             )}
           </div>
           <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => {
+                const rawContent = editorRef.current?.getHTML() || content;
+                const latestContent = renderMarkdownTablesInHtml(rawContent);
+                const currentSnapshotNote: Note = {
+                  ...note,
+                  title: title.trim(),
+                  content: latestContent.trim(),
+                  todos,
+                  isList,
+                  color,
+                  theme,
+                };
+                setVersionHistoryNote(currentSnapshotNote);
+              }}
+              className="p-2 rounded-full transition-colors text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-black/10 relative"
+              title={`Version history (${note.versions?.length || 1} versions)`}
+            >
+              <History className="w-5 h-5" />
+              {note.versions && note.versions.length > 1 && (
+                <span className="absolute -top-0.5 -right-0.5 px-1 bg-amber-500 text-white text-[9px] font-bold rounded-full min-w-3.5 text-center leading-tight">
+                  {note.versions.length}
+                </span>
+              )}
+            </button>
             {!isList && (
               <button
                 type="button"
@@ -462,7 +491,8 @@ export const NoteModal: React.FC<NoteModalProps> = ({
                           });
                         }
                       }}
-                      className="flex-1 bg-transparent text-sm outline-none text-stone-800 dark:text-stone-200"
+                      className="flex-1 bg-transparent outline-none text-stone-800 dark:text-stone-200"
+                      style={{ fontSize: 'var(--note-font-size, 15px)' }}
                     />
                     <button
                       type="button"
@@ -488,7 +518,8 @@ export const NoteModal: React.FC<NoteModalProps> = ({
                         handleAddTodo();
                       }
                     }}
-                    className="flex-1 bg-transparent text-sm outline-none placeholder:text-stone-400 text-stone-800 dark:text-stone-200"
+                    className="flex-1 bg-transparent outline-none placeholder:text-stone-400 text-stone-800 dark:text-stone-200"
+                    style={{ fontSize: 'var(--note-font-size, 15px)' }}
                   />
                 </div>
 
@@ -527,7 +558,8 @@ export const NoteModal: React.FC<NoteModalProps> = ({
                                   prev.map((t) => (t.id === todo.id ? { ...t, text: val } : t))
                                 );
                               }}
-                              className="flex-1 bg-transparent text-sm line-through text-stone-400 dark:text-stone-500 outline-none"
+                              className="flex-1 bg-transparent line-through text-stone-400 dark:text-stone-500 outline-none"
+                              style={{ fontSize: 'var(--note-font-size, 15px)' }}
                             />
                             <button
                               type="button"

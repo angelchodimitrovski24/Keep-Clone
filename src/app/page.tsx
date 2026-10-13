@@ -14,6 +14,7 @@ import { CategoryPillsBar } from '@/components/CategoryPillsBar';
 import { LocalFolderModal } from '@/components/LocalFolderModal';
 import { SettingsModal } from '@/components/SettingsModal';
 import { UnlockCategoryModal } from '@/components/UnlockCategoryModal';
+import { NoteVersionModal } from '@/components/NoteVersionModal';
 import { Note, NoteDrawing } from '@/types/note';
 
 function KeepApp() {
@@ -126,6 +127,9 @@ function KeepApp() {
 
       {/* Settings Modal */}
       <SettingsModal />
+
+      {/* Note Version History Modal */}
+      <NoteVersionModal />
     </div>
   );
 }

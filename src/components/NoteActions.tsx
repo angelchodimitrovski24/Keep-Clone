@@ -16,6 +16,7 @@ import {
   Lock,
   Link2,
   Folder,
+  History,
 } from 'lucide-react';
 import { Note, NoteColor, NoteBackgroundTheme } from '@/types/note';
 import { NOTE_COLORS, NOTE_THEMES } from '@/lib/constants';
@@ -37,6 +38,7 @@ interface NoteActionsProps {
   onSelectCategory?: (categoryName: string | null) => void;
   onEncrypt?: () => void;
   onLinkNote?: () => void;
+  onOpenVersions?: () => void;
   showFormattingToggle?: boolean;
   isFormattingOpen?: boolean;
   onToggleFormatting?: () => void;
@@ -60,6 +62,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
   onSelectCategory,
   onEncrypt,
   onLinkNote,
+  onOpenVersions,
   showFormattingToggle = false,
   isFormattingOpen = false,
   onToggleFormatting,
@@ -508,6 +511,27 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
               >
                 <Copy className="w-4 h-4" />
                 Clone note (Make a copy)
+              </button>
+            )}
+
+            {onOpenVersions && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMenu(false);
+                  onOpenVersions();
+                }}
+                className="w-full text-left px-3.5 py-2.5 sm:py-2 flex items-center justify-between hover:bg-stone-100 dark:hover:bg-stone-700"
+              >
+                <div className="flex items-center gap-2.5">
+                  <History className="w-4 h-4 text-amber-500" />
+                  <span>Version history</span>
+                </div>
+                {note.versions && note.versions.length > 1 && (
+                  <span className="text-[10px] bg-amber-500/15 text-amber-700 dark:text-amber-300 font-semibold px-1.5 py-0.5 rounded-full">
+                    {note.versions.length}
+                  </span>
+                )}
               </button>
             )}
 

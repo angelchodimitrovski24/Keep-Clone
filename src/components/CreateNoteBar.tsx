@@ -336,7 +336,8 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
             placeholder="Title"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            className="w-full bg-transparent font-semibold text-stone-900 dark:text-stone-100 text-base placeholder:text-stone-500 outline-none"
+            style={{ fontSize: 'calc(var(--note-font-size, 15px) * 1.15)' }}
+            className="w-full bg-transparent font-semibold text-stone-900 dark:text-stone-100 placeholder:text-stone-500 outline-none"
           />
           <button
             type="button"
@@ -373,7 +374,8 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
                         prev.map((t) => (t.id === todo.id ? { ...t, text: val } : t))
                       );
                     }}
-                    className={`flex-1 bg-transparent text-sm outline-none ${
+                    style={{ fontSize: 'var(--note-font-size, 15px)' }}
+                    className={`flex-1 bg-transparent outline-none ${
                       todo.completed ? 'line-through text-stone-400 dark:text-stone-500' : ''
                     }`}
                   />
@@ -400,7 +402,8 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
                       handleAddTodoItem();
                     }
                   }}
-                  className="flex-1 bg-transparent text-sm outline-none placeholder:text-stone-400"
+                  style={{ fontSize: 'var(--note-font-size, 15px)' }}
+                  className="flex-1 bg-transparent outline-none placeholder:text-stone-400"
                 />
               </div>
             </div>

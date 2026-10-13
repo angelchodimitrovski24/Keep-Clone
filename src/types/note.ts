@@ -65,9 +65,23 @@ export interface Note {
   encryptedData?: EncryptedNoteBundle | null;
   linkedNoteIds?: string[]; // IDs of linked notes
   category?: string | null; // Note category name
+  versions?: NoteVersion[]; // Revisions history
   createdAt: number;
   updatedAt: number;
   order: number;
+}
+
+export interface NoteVersion {
+  id: string;
+  timestamp: number;
+  title: string;
+  content: string;
+  isList: boolean;
+  todos: TodoItem[];
+  color: NoteColor;
+  theme: NoteBackgroundTheme;
+  changeSummary?: string;
+  wordCount?: number;
 }
 
 export interface Label {
@@ -99,5 +113,5 @@ export type ViewFilter =
 
 export type LayoutViewMode = 'grid' | 'list';
 
-export type FontSizeOption = 'small' | 'medium' | 'large' | 'xlarge';
+export type FontSizeOption = 'small' | 'medium' | 'large' | 'xlarge' | 'huge' | 'max' | string;
 export type AppThemeMode = 'system' | 'light' | 'dark';

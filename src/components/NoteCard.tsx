@@ -49,6 +49,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
     setEditingNote,
     unlockedCategoryNames,
     setUnlockCategoryModalTarget,
+    setVersionHistoryNote,
   } = useKeep();
 
   const [showUnlockModal, setShowUnlockModal] = useState(false);
@@ -278,14 +279,17 @@ export const NoteCard: React.FC<NoteCardProps> = ({
             {/* Note Content */}
             <div className="p-4 pt-3 flex-1 flex flex-col justify-start">
               {activeNote.title && (
-                <h3 className="font-semibold text-stone-900 dark:text-stone-100 text-base mb-1.5 tracking-tight line-clamp-2">
+                <h3
+                  className="font-semibold text-stone-900 dark:text-stone-100 mb-1.5 tracking-tight line-clamp-2"
+                  style={{ fontSize: 'calc(var(--note-font-size, 15px) * 1.15)' }}
+                >
                   {activeNote.title}
                 </h3>
               )}
 
               {/* List items view */}
               {activeNote.isList ? (
-                <div className="space-y-1.5 my-1 text-sm">
+                <div className="space-y-1.5 my-1" style={{ fontSize: 'var(--note-font-size, 15px)' }}>
                   {activeTodos.slice(0, 8).map((todo) => (
                     <div
                       key={todo.id}
@@ -425,6 +429,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
               }
               onAddReminder={(reminder) => updateNote(note.id, { reminder })}
               onToggleLabel={handleToggleLabel}
+              onOpenVersions={() => setVersionHistoryNote(note)}
             />
           </div>
         )}

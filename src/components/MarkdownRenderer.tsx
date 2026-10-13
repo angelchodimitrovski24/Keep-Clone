@@ -150,7 +150,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
             return (
               <pre
                 {...props}
-                className="font-mono text-xs p-3.5 my-2.5 rounded-xl bg-stone-900 text-stone-100 dark:bg-stone-950 dark:text-stone-200 overflow-x-auto border border-black/10 dark:border-white/10 leading-relaxed"
+                className="font-mono p-3.5 my-2.5 rounded-xl bg-stone-900 text-stone-100 dark:bg-stone-950 dark:text-stone-200 overflow-x-auto border border-black/10 dark:border-white/10 leading-relaxed"
               >
                 {children}
               </pre>

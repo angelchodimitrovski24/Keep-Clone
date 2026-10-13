@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
-import { Note, Label, Category, ViewFilter, LayoutViewMode, FontSizeOption, AppThemeMode } from '@/types/note';
+import { Note, NoteVersion, Label, Category, ViewFilter, LayoutViewMode, FontSizeOption, AppThemeMode } from '@/types/note';
 import {
   getAllNotesFromDB,
   getAllLabelsFromDB,
@@ -29,6 +29,22 @@ import {
   lockCategoryInSession as lockCategoryInSessionStore,
 } from '@/lib/encryptionSession';
 
+export function getFontSizeInPx(size: FontSizeOption | string): string {
+  switch (size) {
+    case 'small': return '13.5px';
+    case 'medium': return '15px';
+    case 'large': return '17px';
+    case 'xlarge': return '20px';
+    case 'huge': return '24px';
+    case 'max': return '28px';
+    default:
+      if (/^\d+(\.\d+)?(px)?$/.test(size)) {
+        return size.endsWith('px') ? size : `${size}px`;
+      }
+      return '15px';
+  }
+}
+
 interface KeepContextType {
   notes: Note[];
   labels: Label[];
@@ -44,6 +60,7 @@ interface KeepContextType {
   fontSize: FontSizeOption;
   selectedNoteIds: string[];
   editingNote: Note | null;
+  versionHistoryNote: Note | null;
   isDrawingModalOpen: boolean;
   drawingNoteId: string | null;
   isLabelModalOpen: boolean;
@@ -60,6 +77,10 @@ interface KeepContextType {
   setThemeMode: (mode: AppThemeMode) => void;
   setFontSize: (size: FontSizeOption) => void;
   setEditingNote: (note: Note | null) => void;
+  setVersionHistoryNote: (note: Note | null) => void;
+  restoreNoteVersion: (noteId: string, versionId: string) => Promise<void>;
+  createNoteSnapshot: (noteId: string, summary?: string) => Promise<void>;
+  deleteNoteVersion: (noteId: string, versionId: string) => Promise<void>;
   setIsDrawingModalOpen: (open: boolean, noteId?: string | null) => void;
   setIsLabelModalOpen: (open: boolean) => void;
   setIsCategoryModalOpen: (open: boolean) => void;
@@ -74,7 +95,7 @@ interface KeepContextType {
 
   // Note CRUD
   addNote: (note: Partial<Note>) => Promise<Note>;
-  updateNote: (id: string, updates: Partial<Note>) => Promise<void>;
+  updateNote: (id: string, updates: Partial<Note>, changeSummary?: string) => Promise<void>;
   togglePinNote: (id: string) => Promise<void>;
   toggleArchiveNote: (id: string) => Promise<void>;
   trashNote: (id: string) => Promise<void>;
@@ -135,6 +156,7 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
   const [selectedNoteIds, setSelectedNoteIds] = useState<string[]>([]);
 
   const [editingNote, setEditingNote] = useState<Note | null>(null);
+  const [versionHistoryNote, setVersionHistoryNote] = useState<Note | null>(null);
   const [isDrawingModalOpen, setIsDrawingModalOpenState] = useState(false);
   const [drawingNoteId, setDrawingNoteId] = useState<string | null>(null);
   const [isLabelModalOpen, setIsLabelModalOpen] = useState(false);
@@ -176,6 +198,7 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
       setFontSizeState(initialFontSize);
       if (typeof document !== 'undefined') {
         document.documentElement.setAttribute('data-font-size', initialFontSize);
+        document.documentElement.style.setProperty('--note-font-size', getFontSizeInPx(initialFontSize));
       }
 
       if (storedFolder) {
@@ -365,6 +388,7 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
     setFontSizeState(size);
     if (typeof document !== 'undefined') {
       document.documentElement.setAttribute('data-font-size', size);
+      document.documentElement.style.setProperty('--note-font-size', getFontSizeInPx(size));
     }
     saveSettingToDB('fontSize', size);
   }, []);
@@ -445,6 +469,18 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
   const addNote = useCallback(
     async (noteData: Partial<Note>): Promise<Note> => {
       const now = Date.now();
+      const initialVersion: NoteVersion = {
+        id: 'ver-' + now,
+        timestamp: now,
+        title: noteData.title || '',
+        content: noteData.content || '',
+        isList: noteData.isList || false,
+        todos: noteData.todos ? JSON.parse(JSON.stringify(noteData.todos)) : [],
+        color: noteData.color || 'default',
+        theme: noteData.theme || 'none',
+        changeSummary: 'Created note',
+      };
+
       const newNote: Note = {
         id: 'note-' + now + '-' + Math.random().toString(36).substring(2, 7),
         title: noteData.title || '',
@@ -464,6 +500,7 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
         linkedNoteIds: noteData.linkedNoteIds || [],
         isEncrypted: noteData.isEncrypted || false,
         encryptedData: noteData.encryptedData || null,
+        versions: [initialVersion],
         createdAt: now,
         updatedAt: now,
         order: now,
@@ -476,13 +513,52 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
     [selectedLabel, selectedCategory]
   );
 
-  const updateNote = useCallback(async (id: string, updates: Partial<Note>) => {
+  const updateNote = useCallback(async (id: string, updates: Partial<Note>, changeSummary?: string) => {
     setNotes((prev) => {
       const target = prev.find((n) => n.id === id);
       if (!target) return prev;
+
+      const hasContentChange =
+        (updates.title !== undefined && updates.title !== target.title) ||
+        (updates.content !== undefined && updates.content !== target.content) ||
+        (updates.isList !== undefined && updates.isList !== target.isList) ||
+        (updates.todos !== undefined && JSON.stringify(updates.todos) !== JSON.stringify(target.todos)) ||
+        (updates.color !== undefined && updates.color !== target.color) ||
+        (updates.theme !== undefined && updates.theme !== target.theme);
+
+      let newVersions = updates.versions !== undefined ? updates.versions : [...(target.versions || [])];
+
+      if (hasContentChange && updates.versions === undefined) {
+        const snapshot: NoteVersion = {
+          id: 'ver-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+          timestamp: target.updatedAt || target.createdAt || Date.now(),
+          title: target.title,
+          content: target.content,
+          isList: target.isList,
+          todos: target.todos ? JSON.parse(JSON.stringify(target.todos)) : [],
+          color: target.color,
+          theme: target.theme,
+          changeSummary: changeSummary || 'Edited note',
+        };
+
+        const lastVer = newVersions[0];
+        const isDuplicate =
+          lastVer &&
+          lastVer.title === snapshot.title &&
+          lastVer.content === snapshot.content &&
+          JSON.stringify(lastVer.todos) === JSON.stringify(snapshot.todos) &&
+          lastVer.color === snapshot.color &&
+          lastVer.theme === snapshot.theme;
+
+        if (!isDuplicate) {
+          newVersions = [snapshot, ...newVersions].slice(0, 50);
+        }
+      }
+
       const updated: Note = {
         ...target,
         ...updates,
+        versions: newVersions,
         updatedAt: Date.now(),
       };
       saveNoteToDB(updated);
@@ -495,7 +571,85 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
       }
       return prev;
     });
+
+    setVersionHistoryNote((prev) => {
+      if (prev && prev.id === id) {
+        return { ...prev, ...updates, updatedAt: Date.now() };
+      }
+      return prev;
+    });
   }, []);
+
+  const restoreNoteVersion = useCallback(
+    async (noteId: string, versionId: string) => {
+      const target = notes.find((n) => n.id === noteId);
+      if (!target || !target.versions) return;
+      const ver = target.versions.find((v) => v.id === versionId);
+      if (!ver) return;
+
+      const preRestoreSnapshot: NoteVersion = {
+        id: 'ver-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+        timestamp: Date.now(),
+        title: target.title,
+        content: target.content,
+        isList: target.isList,
+        todos: target.todos ? JSON.parse(JSON.stringify(target.todos)) : [],
+        color: target.color,
+        theme: target.theme,
+        changeSummary: `Before restoring version from ${new Date(ver.timestamp).toLocaleTimeString()}`,
+      };
+
+      const updatedVersions = [preRestoreSnapshot, ...target.versions].slice(0, 50);
+
+      await updateNote(
+        noteId,
+        {
+          title: ver.title,
+          content: ver.content,
+          isList: ver.isList,
+          todos: ver.todos ? JSON.parse(JSON.stringify(ver.todos)) : [],
+          color: ver.color,
+          theme: ver.theme,
+          versions: updatedVersions,
+        },
+        `Restored version from ${new Date(ver.timestamp).toLocaleTimeString()}`
+      );
+    },
+    [notes, updateNote]
+  );
+
+  const createNoteSnapshot = useCallback(
+    async (noteId: string, summary?: string) => {
+      const target = notes.find((n) => n.id === noteId);
+      if (!target) return;
+
+      const snapshot: NoteVersion = {
+        id: 'ver-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+        timestamp: Date.now(),
+        title: target.title,
+        content: target.content,
+        isList: target.isList,
+        todos: target.todos ? JSON.parse(JSON.stringify(target.todos)) : [],
+        color: target.color,
+        theme: target.theme,
+        changeSummary: summary || 'Manual snapshot checkpoint',
+      };
+
+      const updatedVersions = [snapshot, ...(target.versions || [])].slice(0, 50);
+      await updateNote(noteId, { versions: updatedVersions });
+    },
+    [notes, updateNote]
+  );
+
+  const deleteNoteVersion = useCallback(
+    async (noteId: string, versionId: string) => {
+      const target = notes.find((n) => n.id === noteId);
+      if (!target || !target.versions) return;
+      const updatedVersions = target.versions.filter((v) => v.id !== versionId);
+      await updateNote(noteId, { versions: updatedVersions });
+    },
+    [notes, updateNote]
+  );
 
   const togglePinNote = useCallback(
     async (id: string) => {
@@ -916,6 +1070,7 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
       fontSize,
       selectedNoteIds,
       editingNote,
+      versionHistoryNote,
       isDrawingModalOpen,
       drawingNoteId,
       isLabelModalOpen,
@@ -930,6 +1085,10 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
       setThemeMode,
       setFontSize,
       setEditingNote,
+      setVersionHistoryNote,
+      restoreNoteVersion,
+      createNoteSnapshot,
+      deleteNoteVersion,
       setIsDrawingModalOpen,
       setIsLabelModalOpen,
       setIsCategoryModalOpen,
@@ -988,6 +1147,7 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
       fontSize,
       selectedNoteIds,
       editingNote,
+      versionHistoryNote,
       isDrawingModalOpen,
       drawingNoteId,
       isLabelModalOpen,
@@ -1002,6 +1162,10 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
       setThemeMode,
       setFontSize,
       setEditingNote,
+      setVersionHistoryNote,
+      restoreNoteVersion,
+      createNoteSnapshot,
+      deleteNoteVersion,
       setIsDrawingModalOpen,
       setIsLabelModalOpen,
       setIsCategoryModalOpen,

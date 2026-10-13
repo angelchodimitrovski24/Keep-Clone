@@ -26,7 +26,15 @@ html[data-font-size="large"] {
 }
 
 html[data-font-size="xlarge"] {
-  --note-font-size: 19.5px;
+  --note-font-size: 20px;
+}
+
+html[data-font-size="huge"] {
+  --note-font-size: 24px;
+}
+
+html[data-font-size="max"] {
+  --note-font-size: 28px;
 }
 
 body {
@@ -77,40 +85,40 @@ body {
 .ProseMirror h1,
 .keep-rendered h1,
 .keep-markdown h1 {
-  font-size: 1.35rem;
+  font-size: calc(var(--note-font-size, 15px) * 1.5);
   font-weight: 700;
-  margin-top: 0.5rem;
-  margin-bottom: 0.35rem;
+  margin-top: 0.6em;
+  margin-bottom: 0.35em;
   line-height: 1.3;
 }
 
 .ProseMirror h2,
 .keep-rendered h2,
 .keep-markdown h2 {
-  font-size: 1.15rem;
+  font-size: calc(var(--note-font-size, 15px) * 1.3);
   font-weight: 600;
-  margin-top: 0.45rem;
-  margin-bottom: 0.25rem;
+  margin-top: 0.5em;
+  margin-bottom: 0.25em;
   line-height: 1.3;
 }
 
 .ProseMirror h3,
 .keep-rendered h3,
 .keep-markdown h3 {
-  font-size: 1.05rem;
+  font-size: calc(var(--note-font-size, 15px) * 1.15);
   font-weight: 600;
-  margin-top: 0.4rem;
-  margin-bottom: 0.25rem;
+  margin-top: 0.4em;
+  margin-bottom: 0.2em;
   line-height: 1.3;
 }
 
 .ProseMirror h4,
 .keep-rendered h4,
 .keep-markdown h4 {
-  font-size: 0.95rem;
+  font-size: var(--note-font-size, 15px);
   font-weight: 600;
-  margin-top: 0.35rem;
-  margin-bottom: 0.2rem;
+  margin-top: 0.35em;
+  margin-bottom: 0.2em;
   line-height: 1.3;
 }
 
@@ -193,7 +201,7 @@ body {
 .keep-rendered pre,
 .keep-markdown pre {
   font-family: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 0.85rem;
+  font-size: calc(var(--note-font-size, 15px) * 0.92);
   background: #18181b;
   color: #f4f4f5;
   padding: 0.85rem 1rem;
@@ -219,6 +227,7 @@ body {
 .ProseMirror blockquote,
 .keep-rendered blockquote,
 .keep-markdown blockquote {
+  font-size: var(--note-font-size, 15px);
   border-left: 3px solid #f59e0b;
   padding-left: 0.85rem;
   margin: 0.6rem 0;
