@@ -35,6 +35,14 @@ export type NoteBackgroundTheme =
   | 'travel'
   | 'celebration';
 
+export interface EncryptedNoteBundle {
+  ciphertext: string; // Base64 AES-GCM ciphertext
+  iv: string;         // Base64 12-byte IV
+  salt: string;       // Base64 16-byte PBKDF2 salt
+  hint?: string;      // Password hint
+  timestamp: number;
+}
+
 export interface Note {
   id: string;
   title: string;
@@ -53,6 +61,9 @@ export interface Note {
   drawings?: NoteDrawing[];
   audioRecordings?: { id: string; url: string; duration: number; createdAt: number }[];
   collaborators?: string[]; // email/names for local simulated or user collaboration
+  isEncrypted?: boolean;
+  encryptedData?: EncryptedNoteBundle | null;
+  linkedNoteIds?: string[]; // IDs of linked notes
   createdAt: number;
   updatedAt: number;
   order: number;

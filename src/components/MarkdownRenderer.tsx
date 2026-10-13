@@ -6,12 +6,14 @@ import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
 
 import { toggleHtmlCheckbox, resolveLocalMediaUrl, renderMarkdownImagesInString } from '@/lib/formatUtils';
+import { formatWikiLinksInHtml } from '@/lib/noteLinks';
 
 interface MarkdownRendererProps {
   content: string;
   className?: string;
   onToggleCheckbox?: (lineIndex: number, newChecked: boolean) => void;
   onToggleHtmlCheckbox?: (newHtml: string) => void;
+  onOpenLinkedNote?: (noteTitleOrId: string) => void;
 }
 
 export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
@@ -19,6 +21,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
   className = '',
   onToggleCheckbox,
   onToggleHtmlCheckbox,
+  onOpenLinkedNote,
 }) => {
   if (!content) return null;
 
@@ -26,12 +29,21 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
   const isHtml = /<[a-z][\s\S]*>/i.test(content);
 
   if (isHtml) {
-    const renderedHtml = renderMarkdownImagesInString(content);
+    const renderedHtml = formatWikiLinksInHtml(renderMarkdownImagesInString(content));
     return (
       <div
         className={`keep-rendered ${className}`}
         dangerouslySetInnerHTML={{ __html: renderedHtml }}
         onClick={(e) => {
+          // Handle note link clicks
+          const linkTarget = (e.target as HTMLElement).closest('[data-note-link-title]') as HTMLElement | null;
+          if (linkTarget && onOpenLinkedNote) {
+            e.stopPropagation();
+            const title = linkTarget.getAttribute('data-note-link-title');
+            if (title) onOpenLinkedNote(title);
+            return;
+          }
+
           // Allow clicking checkboxes in rendered HTML directly from note cards
           const target = e.target as HTMLElement;
           if (target && target.tagName === 'INPUT' && (target as HTMLInputElement).type === 'checkbox') {
@@ -53,9 +65,20 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
 
   // Otherwise render Markdown fallback
   let checkboxCount = 0;
+  const processedContent = formatWikiLinksInHtml(content);
 
   return (
-    <div className={`keep-markdown ${className}`}>
+    <div
+      className={`keep-markdown ${className}`}
+      onClick={(e) => {
+        const linkTarget = (e.target as HTMLElement).closest('[data-note-link-title]') as HTMLElement | null;
+        if (linkTarget && onOpenLinkedNote) {
+          e.stopPropagation();
+          const title = linkTarget.getAttribute('data-note-link-title');
+          if (title) onOpenLinkedNote(title);
+        }
+      }}
+    >
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeRaw]}
@@ -177,7 +200,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
           },
         }}
       >
-        {content}
+        {processedContent}
       </ReactMarkdown>
     </div>
   );

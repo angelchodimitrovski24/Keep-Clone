@@ -13,6 +13,8 @@ import {
   Tag,
   CheckSquare,
   RotateCcw,
+  Lock,
+  Link2,
 } from 'lucide-react';
 import { Note, NoteColor, NoteBackgroundTheme } from '@/types/note';
 import { NOTE_COLORS, NOTE_THEMES } from '@/lib/constants';
@@ -31,6 +33,8 @@ interface NoteActionsProps {
   onToggleChecklist?: () => void;
   onAddReminder?: (dateStr: string) => void;
   onToggleLabel?: (labelName: string) => void;
+  onEncrypt?: () => void;
+  onLinkNote?: () => void;
   showFormattingToggle?: boolean;
   isFormattingOpen?: boolean;
   onToggleFormatting?: () => void;
@@ -51,6 +55,8 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
   onToggleChecklist,
   onAddReminder,
   onToggleLabel,
+  onEncrypt,
+  onLinkNote,
   showFormattingToggle = false,
   isFormattingOpen = false,
   onToggleFormatting,
@@ -345,6 +351,40 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
         </button>
       )}
 
+      {/* Encrypt / Lock action */}
+      {onEncrypt && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onEncrypt();
+          }}
+          className={`p-2 sm:p-1.5 rounded-full transition-colors ${
+            note.isEncrypted
+              ? 'text-amber-600 dark:text-amber-400 bg-amber-500/15'
+              : 'hover:bg-black/10 dark:hover:bg-white/10'
+          }`}
+          title={note.isEncrypted ? 'Note is encrypted (Settings)' : 'Encrypt note with password'}
+        >
+          <Lock className="w-4 h-4" />
+        </button>
+      )}
+
+      {/* Link Note action */}
+      {onLinkNote && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onLinkNote();
+          }}
+          className="p-2 sm:p-1.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
+          title="Link to another note"
+        >
+          <Link2 className="w-4 h-4" />
+        </button>
+      )}
+
       {/* More Options dropdown (...) */}
       <div className="relative">
         <button
@@ -378,6 +418,34 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
               >
                 <Trash2 className="w-4 h-4" />
                 Delete note
+              </button>
+            )}
+
+            {onEncrypt && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMenu(false);
+                  onEncrypt();
+                }}
+                className="w-full text-left px-3.5 py-2.5 sm:py-2 flex items-center gap-2.5 hover:bg-stone-100 dark:hover:bg-stone-700"
+              >
+                <Lock className="w-4 h-4" />
+                {note.isEncrypted ? 'Encryption settings' : 'Encrypt note'}
+              </button>
+            )}
+
+            {onLinkNote && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMenu(false);
+                  onLinkNote();
+                }}
+                className="w-full text-left px-3.5 py-2.5 sm:py-2 flex items-center gap-2.5 hover:bg-stone-100 dark:hover:bg-stone-700"
+              >
+                <Link2 className="w-4 h-4" />
+                Link to note
               </button>
             )}
 

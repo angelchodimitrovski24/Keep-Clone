@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Pin,
   X,
@@ -11,6 +11,8 @@ import {
   Clock,
   ChevronDown,
   ChevronRight,
+  Link2,
+  Lock,
 } from 'lucide-react';
 import { Note, NoteColor, NoteBackgroundTheme, TodoItem, NoteDrawing } from '@/types/note';
 import { getNoteColorClasses } from '@/lib/constants';
@@ -20,6 +22,10 @@ import { KeepWysiwygEditor, KeepWysiwygEditorHandle } from './KeepWysiwygEditor'
 import { useKeep } from '@/context/KeepContext';
 import { GoogleKeepFormatCommand } from '@/lib/formatUtils';
 import { extractClipboardPayload, copyFilesToLocalFolder } from '@/lib/localPaste';
+import { EncryptNoteModal } from './EncryptNoteModal';
+import { LinkNoteModal } from './LinkNoteModal';
+import { getBidirectionalLinks } from '@/lib/noteLinks';
+import { getUnlockedNote } from '@/lib/encryptionSession';
 
 interface NoteModalProps {
   note: Note | null;
@@ -34,7 +40,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
   onClose,
   onOpenDrawingModal,
 }) => {
-  const { updateNote, toggleArchiveNote, trashNote, duplicateNote } = useKeep();
+  const { notes, updateNote, toggleArchiveNote, trashNote, duplicateNote, setEditingNote } = useKeep();
 
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
@@ -48,28 +54,48 @@ export const NoteModal: React.FC<NoteModalProps> = ({
   const [reminder, setReminder] = useState<string | null>(null);
   const [images, setImages] = useState<string[]>([]);
   const [drawings, setDrawings] = useState<NoteDrawing[]>([]);
+  const [linkedNoteIds, setLinkedNoteIds] = useState<string[]>([]);
   const [showCompletedTodos, setShowCompletedTodos] = useState(true);
   const [isFormattingOpen, setIsFormattingOpen] = useState(false);
+  const [showEncryptModal, setShowEncryptModal] = useState(false);
+  const [showLinkModal, setShowLinkModal] = useState(false);
 
   const editorRef = useRef<KeepWysiwygEditorHandle | null>(null);
 
   // Sync state when note opens
   useEffect(() => {
     if (note) {
-      setTitle(note.title || '');
-      setContent(note.content || '');
+      const unlocked = note.isEncrypted ? getUnlockedNote(note.id) : undefined;
+      setTitle(unlocked?.title || note.title || '');
+      setContent(unlocked?.content || note.content || '');
       setIsList(note.isList || false);
-      setTodos(note.todos || []);
+      setTodos(unlocked?.todos || note.todos || []);
       setIsPinned(note.isPinned || false);
       setColor(note.color || 'default');
       setTheme(note.theme || 'none');
       setLabels(note.labels || []);
       setReminder(note.reminder || null);
-      setImages(note.images || []);
+      setImages(unlocked?.images || note.images || []);
       setDrawings(note.drawings || []);
+      setLinkedNoteIds(note.linkedNoteIds || []);
       setIsFormattingOpen(false);
     }
   }, [note]);
+
+  const currentNoteForLinks = useMemo(
+    () => ({
+      ...(note || ({} as Note)),
+      title,
+      content,
+      linkedNoteIds,
+    }),
+    [note, title, content, linkedNoteIds]
+  );
+
+  const { outgoing, backlinks } = useMemo(
+    () => (note ? getBidirectionalLinks(currentNoteForLinks, notes) : { outgoing: [], backlinks: [] }),
+    [currentNoteForLinks, notes, note]
+  );
 
 
   if (!isOpen || !note) return null;
@@ -92,6 +118,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
       reminder,
       images,
       drawings,
+      linkedNoteIds,
     });
     onClose();
   };
@@ -276,14 +303,21 @@ export const NoteModal: React.FC<NoteModalProps> = ({
         )}
 
         {/* Header: Title & Pin */}
-        <div className="flex items-center justify-between px-6 pt-5 pb-2 shrink-0">
-          <input
-            type="text"
-            placeholder="Title"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            className="w-full bg-transparent font-semibold text-xl text-stone-900 dark:text-stone-100 placeholder:text-stone-400 outline-none"
-          />
+        <div className="flex items-center justify-between px-6 pt-5 pb-2 shrink-0 gap-3">
+          <div className="flex-1 flex items-center gap-2">
+            <input
+              type="text"
+              placeholder="Title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="w-full bg-transparent font-semibold text-xl text-stone-900 dark:text-stone-100 placeholder:text-stone-400 outline-none"
+            />
+            {note.isEncrypted && (
+              <span className="shrink-0 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30">
+                <Lock className="w-3 h-3" /> Encrypted
+              </span>
+            )}
+          </div>
           <button
             type="button"
             onClick={() => setIsPinned(!isPinned)}
@@ -428,6 +462,63 @@ export const NoteModal: React.FC<NoteModalProps> = ({
             )}
           </div>
 
+          {/* Bidirectional Linked Notes & Backlinks */}
+          {(outgoing.length > 0 || backlinks.length > 0) && (
+            <div className="pt-3 pb-1 border-t border-black/5 dark:border-white/5 space-y-2.5">
+              {outgoing.length > 0 && (
+                <div>
+                  <div className="text-[11px] font-semibold text-stone-500 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                    <Link2 className="w-3 h-3 text-blue-500" />
+                    Outgoing Links ({outgoing.length})
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {outgoing.map((target) => (
+                      <button
+                        key={target.id}
+                        type="button"
+                        onClick={async () => {
+                          await handleSaveAndClose();
+                          const targetNote = notes.find((n) => n.id === target.id);
+                          if (targetNote) setEditingNote(targetNote);
+                        }}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors border border-blue-200/50 dark:border-blue-800/40"
+                      >
+                        <Link2 className="w-3 h-3 text-blue-500" />
+                        {target.title || 'Untitled note'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {backlinks.length > 0 && (
+                <div>
+                  <div className="text-[11px] font-semibold text-stone-500 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                    <span className="text-purple-500 font-bold">↩</span>
+                    Backlinks / Referenced In ({backlinks.length})
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {backlinks.map((source) => (
+                      <button
+                        key={source.id}
+                        type="button"
+                        onClick={async () => {
+                          await handleSaveAndClose();
+                          const sourceNote = notes.find((n) => n.id === source.id);
+                          if (sourceNote) setEditingNote(sourceNote);
+                        }}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900/50 transition-colors border border-purple-200/50 dark:border-purple-800/40"
+                      >
+                        <span className="text-purple-500 font-bold text-[10px]">↩</span>
+                        {source.title || 'Untitled note'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Chips & Timestamp */}
           <div className="pt-2">
             <div className="flex flex-wrap items-center gap-1.5 mb-2">
@@ -504,6 +595,8 @@ export const NoteModal: React.FC<NoteModalProps> = ({
                 prev.includes(lbl) ? prev.filter((l) => l !== lbl) : [...prev, lbl]
               )
             }
+            onEncrypt={() => setShowEncryptModal(true)}
+            onLinkNote={() => setShowLinkModal(true)}
             showFormattingToggle={!isList}
             isFormattingOpen={isFormattingOpen}
             onToggleFormatting={() => setIsFormattingOpen(!isFormattingOpen)}
@@ -518,6 +611,52 @@ export const NoteModal: React.FC<NoteModalProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Encrypt Settings Dialog */}
+      <EncryptNoteModal
+        note={{
+          ...note,
+          title,
+          content,
+          todos,
+          images,
+        }}
+        isOpen={showEncryptModal}
+        onClose={() => setShowEncryptModal(false)}
+        onEncrypted={async (updates) => {
+          await updateNote(note.id, updates);
+          setShowEncryptModal(false);
+          onClose();
+        }}
+        onDecryptedPermanently={async () => {
+          await updateNote(note.id, {
+            isEncrypted: false,
+            encryptedData: null,
+            content,
+            todos,
+            images,
+          });
+          setShowEncryptModal(false);
+        }}
+      />
+
+      {/* Link to another note Modal */}
+      <LinkNoteModal
+        currentNoteId={note.id}
+        notes={notes}
+        isOpen={showLinkModal}
+        onClose={() => setShowLinkModal(false)}
+        onSelectNote={(target) => {
+          const linkSyntax = `[[${target.title || 'Untitled Note'}]]`;
+          if (!isList) {
+            editorRef.current?.insertContent(` ${linkSyntax} `);
+            setContent((prev) => `${prev} ${linkSyntax}`);
+          } else {
+            setContent((prev) => `${prev}\n${linkSyntax}`);
+          }
+          setLinkedNoteIds((prev) => Array.from(new Set([...prev, target.id])));
+        }}
+      />
     </div>
   );
 };

@@ -28,6 +28,7 @@ export interface KeepWysiwygEditorHandle {
   focus: () => void;
   getHTML: () => string;
   insertLocalFiles: (files: File[], imageUrls?: string[]) => Promise<void>;
+  insertContent: (text: string) => void;
 }
 
 export interface KeepWysiwygEditorProps {
@@ -294,6 +295,7 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
         focus: () => editor?.commands.focus(),
         getHTML: () => editor?.getHTML() || '',
         insertLocalFiles: processAndInsertFiles,
+        insertContent: (text: string) => editor?.commands.insertContent(text),
       }),
       // eslint-disable-next-line react-hooks/exhaustive-deps
       [editor, processAndInsertFiles]

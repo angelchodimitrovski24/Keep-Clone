@@ -18,13 +18,14 @@ import { NoteColor, NoteBackgroundTheme, TodoItem, NoteDrawing } from '@/types/n
 import { getNoteColorClasses } from '@/lib/constants';
 import { GoogleKeepFormatCommand } from '@/lib/formatUtils';
 import { extractClipboardPayload, copyFilesToLocalFolder } from '@/lib/localPaste';
+import { LinkNoteModal } from './LinkNoteModal';
 
 interface CreateNoteBarProps {
   onOpenDrawingModal?: () => void;
 }
 
 export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal }) => {
-  const { addNote, selectedLabel, editingNote } = useKeep();
+  const { notes, addNote, selectedLabel, editingNote } = useKeep();
   const [isExpanded, setIsExpanded] = useState(false);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
@@ -38,6 +39,8 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
   const [reminder, setReminder] = useState<string | null>(null);
   const [images, setImages] = useState<string[]>([]);
   const [drawings, setDrawings] = useState<NoteDrawing[]>([]);
+  const [linkedNoteIds, setLinkedNoteIds] = useState<string[]>([]);
+  const [showLinkModal, setShowLinkModal] = useState(false);
   const [isFormattingOpen, setIsFormattingOpen] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -110,6 +113,8 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
     setReminder(null);
     setImages([]);
     setDrawings([]);
+    setLinkedNoteIds([]);
+    setShowLinkModal(false);
     setIsFormattingOpen(false);
     setIsExpanded(false);
   };
@@ -139,6 +144,7 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
         reminder,
         images,
         drawings,
+        linkedNoteIds,
       });
     }
     resetForm();
@@ -448,6 +454,7 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
             onToggleChecklist={() => setIsList(!isList)}
             onAddReminder={(r) => setReminder(r)}
             onToggleLabel={handleToggleLabel}
+            onLinkNote={() => setShowLinkModal(true)}
             showFormattingToggle={!isList}
             isFormattingOpen={isFormattingOpen}
             onToggleFormatting={() => setIsFormattingOpen(!isFormattingOpen)}
@@ -462,6 +469,23 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
           </button>
         </div>
       </div>
+
+      <LinkNoteModal
+        currentNoteId=""
+        notes={notes}
+        isOpen={showLinkModal}
+        onClose={() => setShowLinkModal(false)}
+        onSelectNote={(target) => {
+          const linkSyntax = `[[${target.title || 'Untitled Note'}]]`;
+          if (!isList) {
+            editorRef.current?.insertContent(` ${linkSyntax} `);
+            setContent((prev) => `${prev} ${linkSyntax}`);
+          } else {
+            setContent((prev) => `${prev}\n${linkSyntax}`);
+          }
+          setLinkedNoteIds((prev) => Array.from(new Set([...prev, target.id])));
+        }}
+      />
     </div>
   );
 };
