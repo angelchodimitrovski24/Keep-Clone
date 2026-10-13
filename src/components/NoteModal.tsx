@@ -16,6 +16,10 @@ import {
   Eye,
   EyeOff,
   History,
+  Timer,
+  Play,
+  Pause,
+  Square,
 } from 'lucide-react';
 import { Note, NoteColor, NoteBackgroundTheme, TodoItem, NoteDrawing } from '@/types/note';
 import { getNoteColorClasses } from '@/lib/constants';
@@ -32,6 +36,29 @@ import { LinkNoteModal } from './LinkNoteModal';
 import { getBidirectionalLinks } from '@/lib/noteLinks';
 import { getUnlockedNote } from '@/lib/encryptionSession';
 import { NoteThemeArtwork } from './NoteThemeArtwork';
+
+function formatStopwatchTime(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  if (h > 0) {
+    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  }
+  return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+}
+
+function formatReadingDuration(seconds: number): string {
+  if (!seconds || seconds <= 0) return '0s';
+  if (seconds < 60) return `${seconds}s`;
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  if (m < 60) {
+    return s > 0 ? `${m}m ${s}s` : `${m}m`;
+  }
+  const h = Math.floor(m / 60);
+  const remM = m % 60;
+  return remM > 0 ? `${h}h ${remM}m` : `${h}h`;
+}
 
 interface NoteModalProps {
   note: Note | null;
@@ -57,6 +84,12 @@ export const NoteModal: React.FC<NoteModalProps> = ({
     unlockedCategoryNames,
     setUnlockCategoryModalTarget,
     setVersionHistoryNote,
+    activeStopwatch,
+    startReadingStopwatch,
+    pauseReadingStopwatch,
+    resumeReadingStopwatch,
+    stopAndSaveReadingStopwatch,
+    getNoteReadingStats,
   } = useKeep();
 
   const [title, setTitle] = useState('');
@@ -78,8 +111,23 @@ export const NoteModal: React.FC<NoteModalProps> = ({
   const [isPreviewMode, setIsPreviewMode] = useState(false);
   const [showEncryptModal, setShowEncryptModal] = useState(false);
   const [showLinkModal, setShowLinkModal] = useState(false);
+  const [stopwatchToast, setStopwatchToast] = useState<string | null>(null);
 
   const editorRef = useRef<KeepWysiwygEditorHandle | null>(null);
+
+  const isThisNoteStopwatchActive = Boolean(note && activeStopwatch && activeStopwatch.noteId === note.id);
+  const noteReadingStats = useMemo(
+    () => (note ? getNoteReadingStats(note.id) : { totalSeconds: 0, sessionCount: 0 }),
+    [note, getNoteReadingStats, isThisNoteStopwatchActive]
+  );
+
+  const handleStopStopwatch = async () => {
+    const session = await stopAndSaveReadingStopwatch();
+    if (session) {
+      setStopwatchToast(`Saved ${formatReadingDuration(session.durationSeconds)} reading session!`);
+      setTimeout(() => setStopwatchToast(null), 3500);
+    }
+  };
 
   const categoryObj = useMemo(
     () => (note?.category ? categories.find((c) => c.name === note.category) : null),
@@ -137,6 +185,10 @@ export const NoteModal: React.FC<NoteModalProps> = ({
     const finalTodos = newTodoInput.trim()
       ? [...todos, { id: 'todo-' + Date.now(), text: newTodoInput.trim(), completed: false }]
       : todos;
+
+    if (activeStopwatch && activeStopwatch.noteId === note.id && activeStopwatch.elapsedSeconds > 0) {
+      await stopAndSaveReadingStopwatch();
+    }
 
     await updateNote(note.id, {
       title: title.trim(),
@@ -354,7 +406,70 @@ export const NoteModal: React.FC<NoteModalProps> = ({
               </span>
             )}
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1.5 flex-wrap justify-end">
+            {/* Reading Stopwatch Controls */}
+            {isThisNoteStopwatchActive ? (
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-800 dark:text-emerald-300 animate-in fade-in">
+                <span className="relative flex h-2 w-2">
+                  {activeStopwatch?.isRunning && (
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  )}
+                  <span className={`relative inline-flex rounded-full h-2 w-2 ${activeStopwatch?.isRunning ? 'bg-emerald-500' : 'bg-amber-500'}`}></span>
+                </span>
+                <span className="font-mono font-semibold text-xs min-w-[36px] tracking-tight">
+                  {formatStopwatchTime(activeStopwatch?.elapsedSeconds || 0)}
+                </span>
+                {activeStopwatch?.isRunning ? (
+                  <button
+                    type="button"
+                    onClick={pauseReadingStopwatch}
+                    className="p-1 hover:bg-emerald-500/20 rounded-full transition-colors text-emerald-700 dark:text-emerald-300"
+                    title="Pause stopwatch"
+                  >
+                    <Pause className="w-3.5 h-3.5 fill-current" />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={resumeReadingStopwatch}
+                    className="p-1 hover:bg-emerald-500/20 rounded-full transition-colors text-emerald-700 dark:text-emerald-300"
+                    title="Resume stopwatch"
+                  >
+                    <Play className="w-3.5 h-3.5 fill-current" />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={handleStopStopwatch}
+                  className="px-2 py-0.5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-semibold transition-colors flex items-center gap-1 shadow-xs"
+                  title="Stop and save reading time"
+                >
+                  <Square className="w-2.5 h-2.5 fill-current" />
+                  <span>Stop</span>
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => startReadingStopwatch(note.id, title, category)}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium text-stone-600 dark:text-stone-300 hover:bg-black/10 dark:hover:bg-white/10 transition-colors border border-stone-200 dark:border-stone-700"
+                title={`Start reading stopwatch. Total recorded: ${formatReadingDuration(noteReadingStats.totalSeconds)} (${noteReadingStats.sessionCount} sessions)`}
+              >
+                <Timer className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                <span className="hidden sm:inline">Stopwatch</span>
+                {noteReadingStats.totalSeconds > 0 && (
+                  <span className="text-[10px] text-stone-500 dark:text-stone-400 font-mono">
+                    {formatReadingDuration(noteReadingStats.totalSeconds)}
+                  </span>
+                )}
+              </button>
+            )}
+
+            {stopwatchToast && (
+              <span className="text-[11px] font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 px-2 py-0.5 rounded-full animate-in fade-in">
+                ✓ {stopwatchToast}
+              </span>
+            )}
             <button
               type="button"
               onClick={() => {

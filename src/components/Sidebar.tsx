@@ -13,6 +13,7 @@ import {
   Folder,
   Lock,
   Unlock,
+  BarChart2,
 } from 'lucide-react';
 import { useKeep } from '@/context/KeepContext';
 import { ViewFilter } from '@/types/note';
@@ -45,6 +46,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'reminders', label: 'Reminders', icon: <Bell className="w-5 h-5" /> },
     { id: 'archive', label: 'Archive', icon: <Archive className="w-5 h-5" /> },
     { id: 'trash', label: 'Trash', icon: <Trash2 className="w-5 h-5" /> },
+    { id: 'stats', label: 'Reading Stats', icon: <BarChart2 className="w-5 h-5" /> },
   ];
 
   const handleSelectNav = (id: ViewFilter, labelName?: string) => {

@@ -1,5 +1,5 @@
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
-import { Note, Label, Category } from '@/types/note';
+import { Note, Label, Category, ReadingSession } from '@/types/note';
 
 interface KeepDB extends DBSchema {
   notes: {
@@ -26,6 +26,15 @@ interface KeepDB extends DBSchema {
       'by-name': string;
     };
   };
+  readingSessions: {
+    key: string;
+    value: ReadingSession;
+    indexes: {
+      'by-note': string;
+      'by-date': string;
+      'by-ended': number;
+    };
+  };
   settings: {
     key: string;
     value: unknown;
@@ -33,7 +42,7 @@ interface KeepDB extends DBSchema {
 }
 
 const DB_NAME = 'google-keep-local-db';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 let dbPromise: Promise<IDBPDatabase<KeepDB>> | null = null;
 
@@ -63,6 +72,14 @@ export function getKeepDB() {
         if (!db.objectStoreNames.contains('categories')) {
           const categoryStore = db.createObjectStore('categories', { keyPath: 'id' });
           categoryStore.createIndex('by-name', 'name');
+        }
+
+        // Reading Sessions Store
+        if (!db.objectStoreNames.contains('readingSessions')) {
+          const sessionStore = db.createObjectStore('readingSessions', { keyPath: 'id' });
+          sessionStore.createIndex('by-note', 'noteId');
+          sessionStore.createIndex('by-date', 'dateStr');
+          sessionStore.createIndex('by-ended', 'endedAt');
         }
 
         // Settings Store
@@ -244,6 +261,37 @@ export async function renameCategoryInDB(
   await tx.done;
 }
 
+// ----------------- READING SESSIONS REPOSITORY -----------------
+
+export async function getAllReadingSessionsFromDB(): Promise<ReadingSession[]> {
+  const db = await getKeepDB();
+  if (!db) return [];
+  if (!db.objectStoreNames.contains('readingSessions')) return [];
+  const sessions = await db.getAll('readingSessions');
+  return sessions.sort((a, b) => b.endedAt - a.endedAt);
+}
+
+export async function saveReadingSessionToDB(session: ReadingSession): Promise<void> {
+  const db = await getKeepDB();
+  if (!db) return;
+  if (!db.objectStoreNames.contains('readingSessions')) return;
+  await db.put('readingSessions', session);
+}
+
+export async function deleteReadingSessionFromDB(id: string): Promise<void> {
+  const db = await getKeepDB();
+  if (!db) return;
+  if (!db.objectStoreNames.contains('readingSessions')) return;
+  await db.delete('readingSessions', id);
+}
+
+export async function clearAllReadingSessionsFromDB(): Promise<void> {
+  const db = await getKeepDB();
+  if (!db) return;
+  if (!db.objectStoreNames.contains('readingSessions')) return;
+  await db.clear('readingSessions');
+}
+
 // ----------------- SETTINGS / BACKUP REPOSITORY -----------------
 
 export async function getSettingFromDB<T>(key: string, defaultValue: T): Promise<T> {
@@ -263,17 +311,31 @@ export async function exportAllData(): Promise<{
   notes: Note[];
   labels: Label[];
   categories: Category[];
+  readingSessions?: ReadingSession[];
   exportDate: string;
 }> {
   const db = await getKeepDB();
-  if (!db) return { notes: [], labels: [], categories: [], exportDate: new Date().toISOString() };
+  if (!db) {
+    return {
+      notes: [],
+      labels: [],
+      categories: [],
+      readingSessions: [],
+      exportDate: new Date().toISOString(),
+    };
+  }
   const notes = await db.getAll('notes');
   const labels = await db.getAll('labels');
   const categories = await db.getAll('categories');
+  let readingSessions: ReadingSession[] = [];
+  if (db.objectStoreNames.contains('readingSessions')) {
+    readingSessions = await db.getAll('readingSessions');
+  }
   return {
     notes,
     labels,
     categories,
+    readingSessions,
     exportDate: new Date().toISOString(),
   };
 }
@@ -282,10 +344,15 @@ export async function importAllData(data: {
   notes?: Note[];
   labels?: Label[];
   categories?: Category[];
+  readingSessions?: ReadingSession[];
 }): Promise<void> {
   const db = await getKeepDB();
   if (!db) return;
-  const tx = db.transaction(['notes', 'labels', 'categories'], 'readwrite');
+  const storeNames: Array<'notes' | 'labels' | 'categories' | 'readingSessions'> = ['notes', 'labels', 'categories'];
+  if (db.objectStoreNames.contains('readingSessions')) {
+    storeNames.push('readingSessions');
+  }
+  const tx = db.transaction(storeNames, 'readwrite');
   
   if (data.notes && Array.isArray(data.notes)) {
     for (const note of data.notes) {
@@ -300,6 +367,11 @@ export async function importAllData(data: {
   if (data.categories && Array.isArray(data.categories)) {
     for (const category of data.categories) {
       await tx.objectStore('categories').put(category);
+    }
+  }
+  if (data.readingSessions && Array.isArray(data.readingSessions) && db.objectStoreNames.contains('readingSessions')) {
+    for (const session of data.readingSessions) {
+      await tx.objectStore('readingSessions').put(session);
     }
   }
   await tx.done;

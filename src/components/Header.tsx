@@ -19,6 +19,9 @@ import {
   FolderOpen,
   Copy,
   Settings as SettingsIcon,
+  Timer,
+  Play,
+  Pause,
 } from 'lucide-react';
 import { useKeep } from '@/context/KeepContext';
 import { NOTE_COLORS } from '@/lib/constants';
@@ -50,6 +53,10 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
     localMediaFolder,
     setIsLocalFolderModalOpen,
     setIsSettingsOpen,
+    activeStopwatch,
+    pauseReadingStopwatch,
+    resumeReadingStopwatch,
+    stopAndSaveReadingStopwatch,
   } = useKeep();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -243,6 +250,52 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
 
       {/* Action controls */}
       <div className="flex items-center gap-1 text-stone-600 dark:text-stone-300 shrink-0">
+        {/* Active Reading Stopwatch Live Bar */}
+        {activeStopwatch && (
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-800 dark:text-emerald-300 mr-1 sm:mr-2 text-xs font-medium animate-in fade-in">
+            <span className="relative flex h-2 w-2">
+              {activeStopwatch.isRunning && (
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              )}
+              <span className={`relative inline-flex rounded-full h-2 w-2 ${activeStopwatch.isRunning ? 'bg-emerald-500' : 'bg-amber-500'}`}></span>
+            </span>
+            <span className="hidden md:inline max-w-[110px] truncate" title={activeStopwatch.noteTitle}>
+              {activeStopwatch.noteTitle}
+            </span>
+            <span className="font-mono font-bold tracking-tight">
+              {Math.floor(activeStopwatch.elapsedSeconds / 60).toString().padStart(2, '0')}:{(activeStopwatch.elapsedSeconds % 60).toString().padStart(2, '0')}
+            </span>
+            {activeStopwatch.isRunning ? (
+              <button
+                type="button"
+                onClick={pauseReadingStopwatch}
+                className="p-1 hover:bg-emerald-500/20 rounded-full transition-colors"
+                title="Pause stopwatch"
+              >
+                <Pause className="w-3.5 h-3.5 fill-current" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={resumeReadingStopwatch}
+                className="p-1 hover:bg-emerald-500/20 rounded-full transition-colors"
+                title="Resume stopwatch"
+              >
+                <Play className="w-3.5 h-3.5 fill-current" />
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={async () => {
+                await stopAndSaveReadingStopwatch();
+              }}
+              className="px-2 py-0.5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-semibold transition-colors"
+              title="Stop and save reading session"
+            >
+              Stop
+            </button>
+          </div>
+        )}
         {/* Choose Local Paste Folder */}
         <button
           type="button"

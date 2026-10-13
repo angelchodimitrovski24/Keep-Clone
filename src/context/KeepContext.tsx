@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
-import { Note, NoteVersion, Label, Category, ViewFilter, LayoutViewMode, FontSizeOption, AppThemeMode } from '@/types/note';
+import { Note, NoteVersion, Label, Category, ViewFilter, LayoutViewMode, FontSizeOption, AppThemeMode, ReadingSession, ActiveStopwatch } from '@/types/note';
 import {
   getAllNotesFromDB,
   getAllLabelsFromDB,
@@ -20,6 +20,10 @@ import {
   saveSettingToDB,
   exportAllData,
   importAllData,
+  getAllReadingSessionsFromDB,
+  saveReadingSessionToDB,
+  deleteReadingSessionFromDB,
+  clearAllReadingSessionsFromDB,
 } from '@/lib/db';
 import { setSyncLocalMediaFolder } from '@/lib/localPaste';
 import { hashCategoryPassword, verifyCategoryPassword } from '@/lib/crypto';
@@ -132,6 +136,18 @@ interface KeepContextType {
   unlockCategoryModalTarget: Category | null;
   setUnlockCategoryModalTarget: (category: Category | null) => void;
 
+  // Reading Stopwatch & Stats
+  readingSessions: ReadingSession[];
+  activeStopwatch: ActiveStopwatch | null;
+  startReadingStopwatch: (noteId: string, noteTitle?: string, category?: string | null) => void;
+  pauseReadingStopwatch: () => void;
+  resumeReadingStopwatch: () => void;
+  stopAndSaveReadingStopwatch: () => Promise<ReadingSession | null>;
+  discardReadingStopwatch: () => void;
+  deleteReadingSession: (sessionId: string) => Promise<void>;
+  clearAllReadingStats: () => Promise<void>;
+  getNoteReadingStats: (noteId: string) => { totalSeconds: number; sessionCount: number; lastReadAt?: number };
+
   // Backup / Data
   exportDataJSON: () => Promise<void>;
   importDataJSON: (jsonString: string) => Promise<boolean>;
@@ -143,6 +159,8 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
   const [notes, setNotes] = useState<Note[]>([]);
   const [labels, setLabels] = useState<Label[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [readingSessions, setReadingSessions] = useState<ReadingSession[]>([]);
+  const [activeStopwatch, setActiveStopwatch] = useState<ActiveStopwatch | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   const [currentFilter, setCurrentFilterState] = useState<ViewFilter>('notes');
@@ -180,6 +198,7 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
         storedFolder,
         storedThemeMode,
         storedFontSize,
+        storedReadingSessions,
       ] = await Promise.all([
         getAllNotesFromDB(),
         getAllLabelsFromDB(),
@@ -189,7 +208,10 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
         getSettingFromDB<string>('localMediaFolder', ''),
         getSettingFromDB<AppThemeMode>('themeMode', 'system'),
         getSettingFromDB<FontSizeOption>('fontSize', 'medium'),
+        getAllReadingSessionsFromDB(),
       ]);
+
+      setReadingSessions(storedReadingSessions);
 
       const initialThemeMode = storedThemeMode || 'system';
       const initialFontSize = storedFontSize || 'medium';
@@ -551,7 +573,7 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
           lastVer.theme === snapshot.theme;
 
         if (!isDuplicate) {
-          newVersions = [snapshot, ...newVersions].slice(0, 50);
+          newVersions = [snapshot, ...newVersions];
         }
       }
 
@@ -599,7 +621,7 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
         changeSummary: `Before restoring version from ${new Date(ver.timestamp).toLocaleTimeString()}`,
       };
 
-      const updatedVersions = [preRestoreSnapshot, ...target.versions].slice(0, 50);
+      const updatedVersions = [preRestoreSnapshot, ...target.versions];
 
       await updateNote(
         noteId,
@@ -635,7 +657,7 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
         changeSummary: summary || 'Manual snapshot checkpoint',
       };
 
-      const updatedVersions = [snapshot, ...(target.versions || [])].slice(0, 50);
+      const updatedVersions = [snapshot, ...(target.versions || [])];
       await updateNote(noteId, { versions: updatedVersions });
     },
     [notes, updateNote]
@@ -1026,6 +1048,143 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
     [categories]
   );
 
+  // Active Stopwatch tick interval
+  useEffect(() => {
+    if (!activeStopwatch || !activeStopwatch.isRunning) return;
+    const interval = setInterval(() => {
+      setActiveStopwatch((prev) => {
+        if (!prev || !prev.isRunning) return prev;
+        return {
+          ...prev,
+          elapsedSeconds: prev.elapsedSeconds + 1,
+        };
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [activeStopwatch?.isRunning]);
+
+  const startReadingStopwatch = useCallback(
+    (noteId: string, noteTitle?: string, category?: string | null) => {
+      const note = notes.find((n) => n.id === noteId);
+      const title = noteTitle || note?.title || 'Untitled Note';
+      const cat = category !== undefined ? category : (note?.category || null);
+      setActiveStopwatch({
+        noteId,
+        noteTitle: title,
+        category: cat,
+        elapsedSeconds: 0,
+        isRunning: true,
+        startedAt: Date.now(),
+      });
+    },
+    [notes]
+  );
+
+  const pauseReadingStopwatch = useCallback(() => {
+    setActiveStopwatch((prev) => (prev ? { ...prev, isRunning: false } : null));
+  }, []);
+
+  const resumeReadingStopwatch = useCallback(() => {
+    setActiveStopwatch((prev) => (prev ? { ...prev, isRunning: true } : null));
+  }, []);
+
+  const stopAndSaveReadingStopwatch = useCallback(async (): Promise<ReadingSession | null> => {
+    if (!activeStopwatch) return null;
+    const current = activeStopwatch;
+    const now = Date.now();
+    const duration = current.elapsedSeconds;
+
+    if (duration < 1) {
+      setActiveStopwatch(null);
+      return null;
+    }
+
+    const todayDateStr = new Date(now).toISOString().split('T')[0];
+    const session: ReadingSession = {
+      id: 'session-' + now + '-' + Math.random().toString(36).substring(2, 6),
+      noteId: current.noteId,
+      noteTitle: current.noteTitle,
+      category: current.category || null,
+      durationSeconds: duration,
+      startedAt: current.startedAt,
+      endedAt: now,
+      dateStr: todayDateStr,
+    };
+
+    await saveReadingSessionToDB(session);
+    setReadingSessions((prev) => [session, ...prev]);
+    setActiveStopwatch(null);
+
+    // Update note total reading time
+    setNotes((prev) =>
+      prev.map((n) => {
+        if (n.id === current.noteId) {
+          const updated = {
+            ...n,
+            totalReadingTime: (n.totalReadingTime || 0) + duration,
+          };
+          saveNoteToDB(updated);
+          return updated;
+        }
+        return n;
+      })
+    );
+
+    return session;
+  }, [activeStopwatch]);
+
+  const discardReadingStopwatch = useCallback(() => {
+    setActiveStopwatch(null);
+  }, []);
+
+  const deleteReadingSession = useCallback(
+    async (sessionId: string) => {
+      const session = readingSessions.find((s) => s.id === sessionId);
+      if (!session) return;
+      await deleteReadingSessionFromDB(sessionId);
+      setReadingSessions((prev) => prev.filter((s) => s.id !== sessionId));
+
+      setNotes((prev) =>
+        prev.map((n) => {
+          if (n.id === session.noteId && n.totalReadingTime) {
+            const newTotal = Math.max(0, n.totalReadingTime - session.durationSeconds);
+            const updated = { ...n, totalReadingTime: newTotal };
+            saveNoteToDB(updated);
+            return updated;
+          }
+          return n;
+        })
+      );
+    },
+    [readingSessions]
+  );
+
+  const clearAllReadingStats = useCallback(async () => {
+    await clearAllReadingSessionsFromDB();
+    setReadingSessions([]);
+    setNotes((prev) =>
+      prev.map((n) => {
+        if (n.totalReadingTime) {
+          const updated = { ...n, totalReadingTime: 0 };
+          saveNoteToDB(updated);
+          return updated;
+        }
+        return n;
+      })
+    );
+  }, []);
+
+  const getNoteReadingStats = useCallback(
+    (noteId: string) => {
+      const noteSessions = readingSessions.filter((s) => s.noteId === noteId);
+      const totalSeconds = noteSessions.reduce((acc, s) => acc + s.durationSeconds, 0);
+      const sessionCount = noteSessions.length;
+      const lastReadAt = noteSessions.length > 0 ? noteSessions[0].endedAt : undefined;
+      return { totalSeconds, sessionCount, lastReadAt };
+    },
+    [readingSessions]
+  );
+
   // Backup & Import
   const exportDataJSON = useCallback(async () => {
     const data = await exportAllData();
@@ -1059,6 +1218,8 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
       notes,
       labels,
       categories,
+      readingSessions,
+      activeStopwatch,
       isLoading,
       currentFilter,
       selectedLabel,
@@ -1089,6 +1250,14 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
       restoreNoteVersion,
       createNoteSnapshot,
       deleteNoteVersion,
+      startReadingStopwatch,
+      pauseReadingStopwatch,
+      resumeReadingStopwatch,
+      stopAndSaveReadingStopwatch,
+      discardReadingStopwatch,
+      deleteReadingSession,
+      clearAllReadingStats,
+      getNoteReadingStats,
       setIsDrawingModalOpen,
       setIsLabelModalOpen,
       setIsCategoryModalOpen,
@@ -1136,6 +1305,8 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
       notes,
       labels,
       categories,
+      readingSessions,
+      activeStopwatch,
       isLoading,
       currentFilter,
       selectedLabel,
@@ -1166,6 +1337,14 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
       restoreNoteVersion,
       createNoteSnapshot,
       deleteNoteVersion,
+      startReadingStopwatch,
+      pauseReadingStopwatch,
+      resumeReadingStopwatch,
+      stopAndSaveReadingStopwatch,
+      discardReadingStopwatch,
+      deleteReadingSession,
+      clearAllReadingStats,
+      getNoteReadingStats,
       setIsDrawingModalOpen,
       setIsLabelModalOpen,
       setIsCategoryModalOpen,

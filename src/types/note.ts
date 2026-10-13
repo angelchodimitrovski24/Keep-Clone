@@ -65,10 +65,31 @@ export interface Note {
   encryptedData?: EncryptedNoteBundle | null;
   linkedNoteIds?: string[]; // IDs of linked notes
   category?: string | null; // Note category name
-  versions?: NoteVersion[]; // Revisions history
+  versions?: NoteVersion[]; // Revisions history (unlimited)
+  totalReadingTime?: number; // Total reading time in seconds accumulated across all stopwatch sessions
   createdAt: number;
   updatedAt: number;
   order: number;
+}
+
+export interface ReadingSession {
+  id: string;
+  noteId: string;
+  noteTitle: string;
+  category?: string | null;
+  durationSeconds: number; // Reading duration in seconds
+  startedAt: number; // Timestamp
+  endedAt: number;   // Timestamp
+  dateStr: string;   // YYYY-MM-DD
+}
+
+export interface ActiveStopwatch {
+  noteId: string;
+  noteTitle: string;
+  category?: string | null;
+  elapsedSeconds: number;
+  isRunning: boolean;
+  startedAt: number;
 }
 
 export interface NoteVersion {
@@ -109,7 +130,8 @@ export type ViewFilter =
   | 'category'
   | 'archive'
   | 'trash'
-  | 'search';
+  | 'search'
+  | 'stats';
 
 export type LayoutViewMode = 'grid' | 'list';
 

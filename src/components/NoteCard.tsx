@@ -10,6 +10,7 @@ import {
   CheckSquare,
   Lock,
   Link2,
+  Timer,
 } from 'lucide-react';
 import { Note } from '@/types/note';
 import { getNoteColorClasses } from '@/lib/constants';
@@ -50,6 +51,8 @@ export const NoteCard: React.FC<NoteCardProps> = ({
     unlockedCategoryNames,
     setUnlockCategoryModalTarget,
     setVersionHistoryNote,
+    activeStopwatch,
+    startReadingStopwatch,
   } = useKeep();
 
   const [showUnlockModal, setShowUnlockModal] = useState(false);
@@ -383,6 +386,26 @@ export const NoteCard: React.FC<NoteCardProps> = ({
                     {label}
                   </span>
                 ))}
+
+                {note.totalReadingTime && note.totalReadingTime > 0 && (
+                  <span
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 border border-emerald-500/20"
+                    title={`Total reading time: ${Math.floor(note.totalReadingTime / 60)}m ${note.totalReadingTime % 60}s`}
+                  >
+                    <Timer className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                    <span>{Math.floor(note.totalReadingTime / 60) > 0 ? `${Math.floor(note.totalReadingTime / 60)}m read` : `${note.totalReadingTime}s read`}</span>
+                  </span>
+                )}
+
+                {activeStopwatch?.noteId === note.id && (
+                  <span
+                    className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/20 text-emerald-800 dark:text-emerald-200 border border-emerald-500/30"
+                    title="Reading stopwatch active"
+                  >
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                    <span>Reading now</span>
+                  </span>
+                )}
               </div>
             </div>
           </>
@@ -430,6 +453,10 @@ export const NoteCard: React.FC<NoteCardProps> = ({
               onAddReminder={(reminder) => updateNote(note.id, { reminder })}
               onToggleLabel={handleToggleLabel}
               onOpenVersions={() => setVersionHistoryNote(note)}
+              onStartReading={() => {
+                setEditingNote(note);
+                startReadingStopwatch(note.id, activeNote.title, note.category);
+              }}
             />
           </div>
         )}

@@ -15,6 +15,7 @@ import { LocalFolderModal } from '@/components/LocalFolderModal';
 import { SettingsModal } from '@/components/SettingsModal';
 import { UnlockCategoryModal } from '@/components/UnlockCategoryModal';
 import { NoteVersionModal } from '@/components/NoteVersionModal';
+import { ReadingStatsView } from '@/components/ReadingStatsView';
 import { Note, NoteDrawing } from '@/types/note';
 
 function KeepApp() {
@@ -71,21 +72,27 @@ function KeepApp() {
 
         {/* Notes Feed Container */}
         <main className="flex-1 p-4 md:p-8 overflow-y-auto max-w-[1600px] mx-auto w-full">
-          {/* Category Filter Pills */}
-          <CategoryPillsBar />
+          {currentFilter === 'stats' ? (
+            <ReadingStatsView />
+          ) : (
+            <>
+              {/* Category Filter Pills */}
+              <CategoryPillsBar />
 
-          {/* Note Composer (visible in Notes and Category views) */}
-          {(currentFilter === 'notes' || currentFilter === 'category') && (
-            <CreateNoteBar
-              onOpenDrawingModal={() => setIsDrawingModalOpen(true, null)}
-            />
+              {/* Note Composer (visible in Notes and Category views) */}
+              {(currentFilter === 'notes' || currentFilter === 'category') && (
+                <CreateNoteBar
+                  onOpenDrawingModal={() => setIsDrawingModalOpen(true, null)}
+                />
+              )}
+
+              {/* Notes Grid Display */}
+              <NotesGrid
+                onSelectNote={(note) => setEditingNote(note)}
+                onOpenDrawingModal={(noteId) => setIsDrawingModalOpen(true, noteId)}
+              />
+            </>
           )}
-
-          {/* Notes Grid Display */}
-          <NotesGrid
-            onSelectNote={(note) => setEditingNote(note)}
-            onOpenDrawingModal={(noteId) => setIsDrawingModalOpen(true, noteId)}
-          />
         </main>
       </div>
 

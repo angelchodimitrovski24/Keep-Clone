@@ -17,6 +17,7 @@ import {
   Link2,
   Folder,
   History,
+  Timer,
 } from 'lucide-react';
 import { Note, NoteColor, NoteBackgroundTheme } from '@/types/note';
 import { NOTE_COLORS, NOTE_THEMES } from '@/lib/constants';
@@ -39,6 +40,7 @@ interface NoteActionsProps {
   onEncrypt?: () => void;
   onLinkNote?: () => void;
   onOpenVersions?: () => void;
+  onStartReading?: () => void;
   showFormattingToggle?: boolean;
   isFormattingOpen?: boolean;
   onToggleFormatting?: () => void;
@@ -63,6 +65,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
   onEncrypt,
   onLinkNote,
   onOpenVersions,
+  onStartReading,
   showFormattingToggle = false,
   isFormattingOpen = false,
   onToggleFormatting,
@@ -532,6 +535,20 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                     {note.versions.length}
                   </span>
                 )}
+              </button>
+            )}
+
+            {onStartReading && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMenu(false);
+                  onStartReading();
+                }}
+                className="w-full text-left px-3.5 py-2.5 sm:py-2 flex items-center gap-2.5 hover:bg-stone-100 dark:hover:bg-stone-700 text-emerald-600 dark:text-emerald-400"
+              >
+                <Timer className="w-4 h-4" />
+                <span>Start reading stopwatch</span>
               </button>
             )}
 
