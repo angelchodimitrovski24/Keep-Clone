@@ -16,6 +16,7 @@ import { SettingsModal } from '@/components/SettingsModal';
 import { UnlockCategoryModal } from '@/components/UnlockCategoryModal';
 import { NoteVersionModal } from '@/components/NoteVersionModal';
 import { ReadingStatsView } from '@/components/ReadingStatsView';
+import { ImportSummaryModal } from '@/components/ImportSummaryModal';
 import { Note, NoteDrawing } from '@/types/note';
 
 function KeepApp() {
@@ -34,6 +35,8 @@ function KeepApp() {
     updateNote,
     addNote,
     currentFilter,
+    importSummary,
+    setImportSummary,
   } = useKeep();
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -137,6 +140,12 @@ function KeepApp() {
 
       {/* Note Version History Modal */}
       <NoteVersionModal />
+
+      {/* Intelligent Import Summary Modal */}
+      <ImportSummaryModal
+        result={importSummary}
+        onClose={() => setImportSummary(null)}
+      />
     </div>
   );
 }

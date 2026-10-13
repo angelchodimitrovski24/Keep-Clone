@@ -32,6 +32,7 @@ import {
   unlockCategoryInSession,
   lockCategoryInSession as lockCategoryInSessionStore,
 } from '@/lib/encryptionSession';
+import { exportBackupZip, importBackupSmart, ImportResult } from '@/lib/backupZip';
 
 export function getFontSizeInPx(size: FontSizeOption | string): string {
   switch (size) {
@@ -148,9 +149,13 @@ interface KeepContextType {
   clearAllReadingStats: () => Promise<void>;
   getNoteReadingStats: (noteId: string) => { totalSeconds: number; sessionCount: number; lastReadAt?: number };
 
-  // Backup / Data
+  // Backup / Data (ZIP & Intelligent Reconciliation)
+  exportDataZip: () => Promise<void>;
   exportDataJSON: () => Promise<void>;
+  importDataSmart: (file: File) => Promise<ImportResult>;
   importDataJSON: (jsonString: string) => Promise<boolean>;
+  importSummary: ImportResult | null;
+  setImportSummary: (result: ImportResult | null) => void;
 }
 
 const KeepContext = createContext<KeepContextType | null>(null);
@@ -161,6 +166,7 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
   const [categories, setCategories] = useState<Category[]>([]);
   const [readingSessions, setReadingSessions] = useState<ReadingSession[]>([]);
   const [activeStopwatch, setActiveStopwatch] = useState<ActiveStopwatch | null>(null);
+  const [importSummary, setImportSummary] = useState<ImportResult | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   const [currentFilter, setCurrentFilterState] = useState<ViewFilter>('notes');
@@ -1185,33 +1191,34 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
     [readingSessions]
   );
 
-  // Backup & Import
-  const exportDataJSON = useCallback(async () => {
-    const data = await exportAllData();
-    const blob = new Blob([JSON.stringify(data, null, 2)], {
-      type: 'application/json',
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `google-keep-backup-${new Date().toISOString().slice(0, 10)}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+  // Backup & Import (ZIP and Intelligent Reconciliation)
+  const exportDataZip = useCallback(async () => {
+    await exportBackupZip();
   }, []);
 
-  const importDataJSON = useCallback(async (jsonString: string): Promise<boolean> => {
-    try {
-      const parsed = JSON.parse(jsonString);
-      await importAllData(parsed);
-      await loadInitialData();
-      return true;
-    } catch (e) {
-      console.error('Invalid JSON import:', e);
-      return false;
-    }
-  }, [loadInitialData]);
+  const exportDataJSON = exportDataZip; // Default export to ZIP with images and files bundled!
+
+  const importDataSmart = useCallback(
+    async (file: File): Promise<ImportResult> => {
+      const result = await importBackupSmart(file);
+      if (result.success) {
+        await loadInitialData();
+      }
+      setImportSummary(result);
+      return result;
+    },
+    [loadInitialData]
+  );
+
+  const importDataJSON = useCallback(
+    async (jsonString: string): Promise<boolean> => {
+      const blob = new Blob([jsonString], { type: 'application/json' });
+      const file = new File([blob], 'backup.json', { type: 'application/json' });
+      const res = await importDataSmart(file);
+      return res.success;
+    },
+    [importDataSmart]
+  );
 
   const value = useMemo(
     () => ({
@@ -1298,8 +1305,12 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
       unlockedCategoryNames,
       unlockCategoryModalTarget,
       setUnlockCategoryModalTarget,
+      exportDataZip,
       exportDataJSON,
+      importDataSmart,
       importDataJSON,
+      importSummary,
+      setImportSummary,
     }),
     [
       notes,
@@ -1384,8 +1395,11 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
       isCategoryLocked,
       unlockedCategoryNames,
       unlockCategoryModalTarget,
+      exportDataZip,
       exportDataJSON,
+      importDataSmart,
       importDataJSON,
+      importSummary,
     ]
   );
 

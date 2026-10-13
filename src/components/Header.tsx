@@ -47,8 +47,8 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
     batchDuplicate,
     batchSetCategory,
     categories,
-    exportDataJSON,
-    importDataJSON,
+    exportDataZip,
+    importDataSmart,
     currentFilter,
     localMediaFolder,
     setIsLocalFolderModalOpen,
@@ -61,23 +61,11 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      const content = event.target?.result as string;
-      if (content) {
-        const success = await importDataJSON(content);
-        if (success) {
-          alert('Data imported successfully!');
-        } else {
-          alert('Failed to import JSON data. Please verify the format.');
-        }
-      }
-    };
-    reader.readAsText(file);
+    await importDataSmart(file);
     // Reset file input
     e.target.value = '';
   };
@@ -349,29 +337,29 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
           <SettingsIcon className="w-5 h-5" />
         </button>
 
-        {/* Export Backup */}
+        {/* Export Backup Bundle (ZIP) */}
         <button
           type="button"
-          onClick={exportDataJSON}
+          onClick={exportDataZip}
           className="p-2.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors hidden md:flex"
-          title="Export notes backup (JSON)"
+          title="Export notes backup archive (ZIP with images and files)"
         >
           <FolderDown className="w-5 h-5" />
         </button>
 
-        {/* Import Backup */}
+        {/* Intelligent Import Backup */}
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
           className="p-2.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors hidden md:flex"
-          title="Import notes backup (JSON)"
+          title="Intelligent import backup (ZIP or JSON)"
         >
           <Upload className="w-5 h-5" />
         </button>
         <input
           ref={fileInputRef}
           type="file"
-          accept=".json,application/json"
+          accept=".zip,.json,application/zip,application/x-zip-compressed,application/json"
           onChange={handleImportFile}
           className="hidden"
         />

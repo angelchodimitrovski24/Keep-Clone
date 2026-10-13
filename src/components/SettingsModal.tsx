@@ -33,8 +33,8 @@ export const SettingsModal: React.FC = () => {
     setIsLocalFolderModalOpen,
     notes,
     labels,
-    exportDataJSON,
-    importDataJSON,
+    exportDataZip,
+    importDataSmart,
   } = useKeep();
 
   const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -58,22 +58,10 @@ export const SettingsModal: React.FC = () => {
     { id: 'dark', label: 'Dark', icon: <Moon className="w-4 h-4" /> },
   ];
 
-  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      const content = event.target?.result as string;
-      if (content) {
-        const ok = await importDataJSON(content);
-        if (ok) {
-          alert('Data imported successfully!');
-        } else {
-          alert('Failed to import JSON data.');
-        }
-      }
-    };
-    reader.readAsText(file);
+    await importDataSmart(file);
     e.target.value = '';
   };
 
@@ -322,24 +310,26 @@ export const SettingsModal: React.FC = () => {
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={exportDataJSON}
+                onClick={exportDataZip}
                 className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-stone-200 dark:border-stone-700 text-stone-700 dark:text-stone-300 text-xs font-medium hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
+                title="Export complete backup archive with images, drawings, and markdown files"
               >
                 <Download className="w-4 h-4 text-amber-500" />
-                <span>Export Backup (JSON)</span>
+                <span>Export Backup (ZIP Bundle)</span>
               </button>
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-stone-200 dark:border-stone-700 text-stone-700 dark:text-stone-300 text-xs font-medium hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
+                title="Intelligently import backup (ZIP or JSON) updating only changed items without duplicates"
               >
                 <Upload className="w-4 h-4 text-blue-500" />
-                <span>Import Backup (JSON)</span>
+                <span>Intelligent Import (ZIP / JSON)</span>
               </button>
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".json,application/json"
+                accept=".zip,.json,application/zip,application/x-zip-compressed,application/json"
                 onChange={handleImport}
                 className="hidden"
               />
