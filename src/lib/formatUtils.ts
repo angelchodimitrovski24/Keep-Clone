@@ -271,9 +271,9 @@ export function renderMarkdownImagesInString(str: string): string {
  */
 export function convertMarkdownToHtml(content: string): string {
   if (!content) return '';
-  // If already HTML, also ensure any embedded markdown images inside tags get rendered
+  // If already HTML, also ensure any embedded markdown images and tables get rendered
   if (/<[a-z][\s\S]*>/i.test(content)) {
-    return renderMarkdownImagesInString(content);
+    return renderMarkdownTablesInHtml(renderMarkdownImagesInString(content));
   }
 
   const lines = content.split('\n');
@@ -361,7 +361,7 @@ export function convertMarkdownToHtml(content: string): string {
       continue;
     }
 
-    // 3. Headings: # or ##
+    // 3. Headings: #, ##, ###, ####
     const h1Match = rawLine.match(/^#\s+(.*)$/);
     if (h1Match) {
       closeOpenLists();
@@ -372,6 +372,18 @@ export function convertMarkdownToHtml(content: string): string {
     if (h2Match) {
       closeOpenLists();
       result += `<h2>${formatInline(h2Match[1])}</h2>`;
+      continue;
+    }
+    const h3Match = rawLine.match(/^###\s+(.*)$/);
+    if (h3Match) {
+      closeOpenLists();
+      result += `<h3>${formatInline(h3Match[1])}</h3>`;
+      continue;
+    }
+    const h4Match = rawLine.match(/^####\s+(.*)$/);
+    if (h4Match) {
+      closeOpenLists();
+      result += `<h4>${formatInline(h4Match[1])}</h4>`;
       continue;
     }
 

@@ -18,6 +18,7 @@ import { NoteColor, NoteBackgroundTheme, TodoItem, NoteDrawing } from '@/types/n
 import { getNoteColorClasses } from '@/lib/constants';
 import { GoogleKeepFormatCommand } from '@/lib/formatUtils';
 import { extractClipboardPayload, copyFilesToLocalFolder } from '@/lib/localPaste';
+import { renderMarkdownTablesInHtml } from '@/lib/tableUtils';
 import { LinkNoteModal } from './LinkNoteModal';
 import { NoteThemeArtwork } from './NoteThemeArtwork';
 
@@ -130,7 +131,8 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
   };
 
   const handleSaveAndClose = async () => {
-    const latestContent = editorRef.current?.getHTML() || content;
+    const rawContent = editorRef.current?.getHTML() || content;
+    const latestContent = renderMarkdownTablesInHtml(rawContent);
     const hasTodos = todos.some((t) => t.text.trim().length > 0);
     const hasText =
       title.trim().length > 0 ||

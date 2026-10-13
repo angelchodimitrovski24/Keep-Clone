@@ -14,6 +14,7 @@ import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
 import Placeholder from '@tiptap/extension-placeholder';
 import Image from '@tiptap/extension-image';
+import { Table, TableRow, TableHeader, TableCell } from '@tiptap/extension-table';
 import { KeepFormattingBar } from './KeepFormattingBar';
 import { GoogleKeepFormatCommand, convertMarkdownToHtml } from '@/lib/formatUtils';
 import { KeepMediaExtension } from '@/lib/keepMediaExtension';
@@ -158,6 +159,28 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
           processAndInsertFiles(files, imageUrls);
           return true;
         }
+
+        // Intercept pasted markdown tables or markdown content
+        const plainText = clipboardData?.getData('text/plain');
+        if (
+          plainText &&
+          plainText.includes('|') &&
+          /\|?\s*:?-+:?\s*\|/.test(plainText)
+        ) {
+          const activeEditor = editorInstanceRef.current;
+          if (activeEditor) {
+            nativeEvt.__keepPasteHandled = true;
+            rawEvent.preventDefault();
+            if ('stopPropagation' in rawEvent) {
+              rawEvent.stopPropagation();
+            }
+            const html = convertMarkdownToHtml(plainText);
+            activeEditor.chain().focus().insertContent(html).run();
+            onChangeRef.current(activeEditor.getHTML());
+            return true;
+          }
+        }
+
         return false;
       },
       [processAndInsertFiles]
@@ -167,9 +190,18 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
       extensions: [
         StarterKit.configure({
           heading: {
-            levels: [1, 2],
+            levels: [1, 2, 3, 4],
           },
         }),
+        Table.configure({
+          resizable: false,
+          HTMLAttributes: {
+            class: 'keep-table',
+          },
+        }),
+        TableRow,
+        TableHeader,
+        TableCell,
         TaskList,
         TaskItem.configure({
           nested: true,

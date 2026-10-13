@@ -23,6 +23,7 @@ import { KeepFormattingBar } from './KeepFormattingBar';
 import { KeepWysiwygEditor, KeepWysiwygEditorHandle } from './KeepWysiwygEditor';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { useKeep } from '@/context/KeepContext';
+import { renderMarkdownTablesInHtml } from '@/lib/tableUtils';
 import { GoogleKeepFormatCommand } from '@/lib/formatUtils';
 import { extractClipboardPayload, copyFilesToLocalFolder } from '@/lib/localPaste';
 import { EncryptNoteModal } from './EncryptNoteModal';
@@ -129,7 +130,8 @@ export const NoteModal: React.FC<NoteModalProps> = ({
   if (!isOpen || !note) return null;
 
   const handleSaveAndClose = async () => {
-    const latestContent = editorRef.current?.getHTML() || content;
+    const rawContent = editorRef.current?.getHTML() || content;
+    const latestContent = renderMarkdownTablesInHtml(rawContent);
     const finalTodos = newTodoInput.trim()
       ? [...todos, { id: 'todo-' + Date.now(), text: newTodoInput.trim(), completed: false }]
       : todos;

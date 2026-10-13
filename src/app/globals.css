@@ -323,7 +323,8 @@ body {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
-.keep-table {
+.keep-table,
+.ProseMirror table {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.8125rem;
@@ -331,32 +332,47 @@ body {
   text-align: left;
 }
 
-.keep-table thead {
+.ProseMirror table {
+  margin: 0.75rem 0;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(140, 140, 140, 0.25);
+  overflow: hidden;
+}
+
+.keep-table thead,
+.ProseMirror thead {
   background-color: rgba(150, 150, 150, 0.12);
   border-bottom: 1px solid rgba(140, 140, 140, 0.25);
   font-weight: 600;
 }
 
-.keep-table th {
+.keep-table th,
+.ProseMirror th {
   padding: 0.5rem 0.75rem;
   font-weight: 600;
   white-space: nowrap;
+  border: 1px solid rgba(140, 140, 140, 0.2);
 }
 
-.keep-table td {
+.keep-table td,
+.ProseMirror td {
   padding: 0.45rem 0.75rem;
+  border: 1px solid rgba(140, 140, 140, 0.15);
 }
 
-.keep-table tbody tr {
+.keep-table tbody tr,
+.ProseMirror tbody tr {
   border-bottom: 1px solid rgba(140, 140, 140, 0.15);
   transition: background-color 0.15s ease;
 }
 
-.keep-table tbody tr:last-child {
+.keep-table tbody tr:last-child,
+.ProseMirror tbody tr:last-child {
   border-bottom: none;
 }
 
-.keep-table tbody tr:hover {
+.keep-table tbody tr:hover,
+.ProseMirror tbody tr:hover {
   background-color: rgba(125, 125, 125, 0.06);
 }
 

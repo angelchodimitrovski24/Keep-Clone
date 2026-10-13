@@ -30,9 +30,15 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
   const isHtml = /<[a-z][\s\S]*>/i.test(content);
 
   if (isHtml) {
-    const renderedHtml = formatWikiLinksInHtml(
-      renderMarkdownTablesInHtml(renderMarkdownImagesInString(content))
-    );
+    let html = renderMarkdownImagesInString(content);
+    html = renderMarkdownTablesInHtml(html);
+    // Format any raw markdown heading lines inside paragraphs into proper heading elements
+    html = html
+      .replace(/<p[^>]*>####\s+([\s\S]*?)<\/p>/gi, '<h4 class="text-sm font-semibold mt-2 mb-1">$1</h4>')
+      .replace(/<p[^>]*>###\s+([\s\S]*?)<\/p>/gi, '<h3 class="text-base font-semibold mt-2.5 mb-1">$1</h3>')
+      .replace(/<p[^>]*>##\s+([\s\S]*?)<\/p>/gi, '<h2 class="text-lg font-bold mt-3 mb-1.5">$1</h2>')
+      .replace(/<p[^>]*>#\s+([\s\S]*?)<\/p>/gi, '<h1 class="text-xl font-bold mt-3.5 mb-2">$1</h1>');
+    const renderedHtml = formatWikiLinksInHtml(html);
     return (
       <div
         className={`keep-rendered ${className}`}
