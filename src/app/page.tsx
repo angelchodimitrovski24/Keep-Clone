@@ -10,6 +10,7 @@ import { NoteModal } from '@/components/NoteModal';
 import { DrawingModal } from '@/components/DrawingModal';
 import { LabelManagerModal } from '@/components/LabelManagerModal';
 import { LocalFolderModal } from '@/components/LocalFolderModal';
+import { SettingsModal } from '@/components/SettingsModal';
 import { Note, NoteDrawing } from '@/types/note';
 
 function KeepApp() {
@@ -105,6 +106,9 @@ function KeepApp() {
         isOpen={isLocalFolderModalOpen}
         onClose={() => setIsLocalFolderModalOpen(false)}
       />
+
+      {/* Settings Modal */}
+      <SettingsModal />
     </div>
   );
 }

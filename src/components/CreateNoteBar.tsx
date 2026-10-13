@@ -19,6 +19,7 @@ import { getNoteColorClasses } from '@/lib/constants';
 import { GoogleKeepFormatCommand } from '@/lib/formatUtils';
 import { extractClipboardPayload, copyFilesToLocalFolder } from '@/lib/localPaste';
 import { LinkNoteModal } from './LinkNoteModal';
+import { NoteThemeArtwork } from './NoteThemeArtwork';
 
 interface CreateNoteBarProps {
   onOpenDrawingModal?: () => void;
@@ -293,8 +294,10 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
             editorRef.current?.insertLocalFiles(files, imageUrls);
           }
         }}
-        className={`rounded-2xl shadow-xl border relative transition-all ${colorClasses}`}
+        className={`rounded-2xl shadow-xl border relative overflow-hidden transition-all ${colorClasses}`}
       >
+        {/* Themed Background Illustration */}
+        <NoteThemeArtwork theme={theme} />
         {/* Attached Images */}
         {images.length > 0 && (
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-1 p-2 bg-black/5">

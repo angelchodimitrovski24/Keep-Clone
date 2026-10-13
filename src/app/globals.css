@@ -1,22 +1,32 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --background: #ffffff;
-  --foreground: #171717;
+  --foreground: #202124;
+  --note-font-size: 15px;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+.dark {
+  --background: #202124;
+  --foreground: #e8eaed;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html[data-font-size="small"] {
+  --note-font-size: 13.5px;
+}
+
+html[data-font-size="medium"] {
+  --note-font-size: 15px;
+}
+
+html[data-font-size="large"] {
+  --note-font-size: 17px;
+}
+
+html[data-font-size="xlarge"] {
+  --note-font-size: 19.5px;
 }
 
 body {
@@ -48,6 +58,7 @@ body {
 .ProseMirror {
   outline: none;
   word-break: break-word;
+  font-size: var(--note-font-size, 15px);
 }
 
 .ProseMirror p {
@@ -212,8 +223,10 @@ body {
 }
 
 /* Static rendered preview styles */
-.keep-rendered {
+.keep-rendered,
+.keep-markdown {
   word-break: break-word;
+  font-size: var(--note-font-size, 15px);
 }
 .keep-rendered p {
   margin-bottom: 0.35rem;

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
-import { Note, Label, ViewFilter, LayoutViewMode } from '@/types/note';
+import { Note, Label, ViewFilter, LayoutViewMode, FontSizeOption, AppThemeMode } from '@/types/note';
 import {
   getAllNotesFromDB,
   getAllLabelsFromDB,
@@ -28,6 +28,8 @@ interface KeepContextType {
   searchQuery: string;
   layoutMode: LayoutViewMode;
   darkMode: boolean;
+  themeMode: AppThemeMode;
+  fontSize: FontSizeOption;
   selectedNoteIds: string[];
   editingNote: Note | null;
   isDrawingModalOpen: boolean;
@@ -35,17 +37,21 @@ interface KeepContextType {
   isLabelModalOpen: boolean;
   localMediaFolder: string;
   isLocalFolderModalOpen: boolean;
+  isSettingsOpen: boolean;
 
   // Setters
   setCurrentFilter: (filter: ViewFilter, labelName?: string) => void;
   setSearchQuery: (query: string) => void;
   setLayoutMode: (mode: LayoutViewMode) => void;
   setDarkMode: (dark: boolean) => void;
+  setThemeMode: (mode: AppThemeMode) => void;
+  setFontSize: (size: FontSizeOption) => void;
   setEditingNote: (note: Note | null) => void;
   setIsDrawingModalOpen: (open: boolean, noteId?: string | null) => void;
   setIsLabelModalOpen: (open: boolean) => void;
   setLocalMediaFolder: (folder: string) => void;
   setIsLocalFolderModalOpen: (open: boolean) => void;
+  setIsSettingsOpen: (open: boolean) => void;
 
   // Selection
   toggleSelectNote: (id: string) => void;
@@ -61,10 +67,11 @@ interface KeepContextType {
   restoreNote: (id: string) => Promise<void>;
   deleteNotePermanently: (id: string) => Promise<void>;
   emptyTrash: () => Promise<void>;
-  duplicateNote: (id: string) => Promise<void>;
+  duplicateNote: (id: string) => Promise<Note | null>;
   reorderNotes: (notes: Note[]) => Promise<void>;
 
   // Batch actions
+  batchDuplicate: () => Promise<void>;
   batchColor: (color: Note['color']) => Promise<void>;
   batchArchive: () => Promise<void>;
   batchTrash: () => Promise<void>;
@@ -93,6 +100,8 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [layoutMode, setLayoutModeState] = useState<LayoutViewMode>('grid');
   const [darkMode, setDarkModeState] = useState(false);
+  const [themeMode, setThemeModeState] = useState<AppThemeMode>('system');
+  const [fontSize, setFontSizeState] = useState<FontSizeOption>('medium');
   const [selectedNoteIds, setSelectedNoteIds] = useState<string[]>([]);
 
   const [editingNote, setEditingNote] = useState<Note | null>(null);
@@ -101,18 +110,30 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
   const [isLabelModalOpen, setIsLabelModalOpen] = useState(false);
   const [localMediaFolder, setLocalMediaFolderState] = useState('');
   const [isLocalFolderModalOpen, setIsLocalFolderModalOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   // Initialize data from IndexedDB
   const loadInitialData = useCallback(async () => {
     try {
       setIsLoading(true);
-      const [storedNotes, storedLabels, storedLayout, storedDark, storedFolder] = await Promise.all([
+      const [storedNotes, storedLabels, storedLayout, storedDark, storedFolder, storedThemeMode, storedFontSize] = await Promise.all([
         getAllNotesFromDB(),
         getAllLabelsFromDB(),
         getSettingFromDB<LayoutViewMode>('layoutMode', 'grid'),
         getSettingFromDB<boolean>('darkMode', false),
         getSettingFromDB<string>('localMediaFolder', ''),
+        getSettingFromDB<AppThemeMode>('themeMode', 'system'),
+        getSettingFromDB<FontSizeOption>('fontSize', 'medium'),
       ]);
+
+      const initialThemeMode = storedThemeMode || 'system';
+      const initialFontSize = storedFontSize || 'medium';
+
+      setThemeModeState(initialThemeMode);
+      setFontSizeState(initialFontSize);
+      if (typeof document !== 'undefined') {
+        document.documentElement.setAttribute('data-font-size', initialFontSize);
+      }
 
       if (storedFolder) {
         setLocalMediaFolderState(storedFolder);
@@ -212,11 +233,21 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
       }
 
       setLayoutModeState(storedLayout);
-      setDarkModeState(storedDark);
-      if (storedDark) {
-        document.documentElement.classList.add('dark');
+
+      let isDark = storedDark;
+      if (initialThemeMode === 'system') {
+        isDark = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
       } else {
-        document.documentElement.classList.remove('dark');
+        isDark = initialThemeMode === 'dark';
+      }
+
+      setDarkModeState(isDark);
+      if (typeof document !== 'undefined') {
+        if (isDark) {
+          document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+        }
       }
     } catch (err) {
       console.error('Failed to load DB initial data:', err);
@@ -229,6 +260,22 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
     loadInitialData();
   }, [loadInitialData]);
 
+  // Listen to OS theme changes when themeMode is 'system'
+  useEffect(() => {
+    if (themeMode !== 'system' || typeof window === 'undefined') return;
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const listener = (e: MediaQueryListEvent) => {
+      setDarkModeState(e.matches);
+      if (e.matches) {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+    };
+    media.addEventListener('change', listener);
+    return () => media.removeEventListener('change', listener);
+  }, [themeMode]);
+
   // View Filter setter
   const setCurrentFilter = useCallback((filter: ViewFilter, labelName?: string) => {
     setCurrentFilterState(filter);
@@ -240,14 +287,49 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
     setSelectedNoteIds([]);
   }, []);
 
-  // Theme Mode setter
+  // Font Size setter
+  const setFontSize = useCallback((size: FontSizeOption) => {
+    setFontSizeState(size);
+    if (typeof document !== 'undefined') {
+      document.documentElement.setAttribute('data-font-size', size);
+    }
+    saveSettingToDB('fontSize', size);
+  }, []);
+
+  // Theme Mode setter (system | light | dark)
+  const setThemeMode = useCallback((mode: AppThemeMode) => {
+    setThemeModeState(mode);
+    saveSettingToDB('themeMode', mode);
+    let isDark = false;
+    if (mode === 'system') {
+      isDark = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    } else {
+      isDark = mode === 'dark';
+    }
+    setDarkModeState(isDark);
+    saveSettingToDB('darkMode', isDark);
+    if (typeof document !== 'undefined') {
+      if (isDark) {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+    }
+  }, []);
+
+  // Quick Dark Mode toggle (light <-> dark)
   const setDarkMode = useCallback((dark: boolean) => {
     setDarkModeState(dark);
+    const newMode: AppThemeMode = dark ? 'dark' : 'light';
+    setThemeModeState(newMode);
     saveSettingToDB('darkMode', dark);
-    if (dark) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
+    saveSettingToDB('themeMode', newMode);
+    if (typeof document !== 'undefined') {
+      if (dark) {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
     }
   }, []);
 
@@ -387,23 +469,63 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const duplicateNote = useCallback(
-    async (id: string) => {
+    async (id: string): Promise<Note | null> => {
       const original = notes.find((n) => n.id === id);
-      if (!original) return;
+      if (!original) return null;
       const now = Date.now();
       const copy: Note = {
         ...original,
         id: 'note-' + now + '-' + Math.random().toString(36).substring(2, 7),
-        title: original.title ? `${original.title} (Copy)` : '',
+        title: original.title ? `${original.title} (Copy)` : 'Copy of note',
+        todos: (original.todos || []).map((t, idx) => ({ ...t, id: 'todo-' + now + '-' + idx })),
+        images: [...(original.images || [])],
+        drawings: [...(original.drawings || [])],
+        labels: [...(original.labels || [])],
+        linkedNoteIds: [...(original.linkedNoteIds || [])],
+        isEncrypted: original.isEncrypted || false,
+        encryptedData: original.encryptedData ? { ...original.encryptedData } : null,
         createdAt: now,
         updatedAt: now,
         order: now,
       };
       await saveNoteToDB(copy);
       setNotes((prev) => [copy, ...prev]);
+      return copy;
     },
     [notes]
   );
+
+  const batchDuplicate = useCallback(async () => {
+    const clones: Note[] = [];
+    const now = Date.now();
+    for (let i = 0; i < selectedNoteIds.length; i++) {
+      const id = selectedNoteIds[i];
+      const original = notes.find((n) => n.id === id);
+      if (!original) continue;
+      const cloneTime = now + i;
+      const copy: Note = {
+        ...original,
+        id: 'note-' + cloneTime + '-' + Math.random().toString(36).substring(2, 7),
+        title: original.title ? `${original.title} (Copy)` : 'Copy of note',
+        todos: (original.todos || []).map((t, idx) => ({ ...t, id: 'todo-' + cloneTime + '-' + idx })),
+        images: [...(original.images || [])],
+        drawings: [...(original.drawings || [])],
+        labels: [...(original.labels || [])],
+        linkedNoteIds: [...(original.linkedNoteIds || [])],
+        isEncrypted: original.isEncrypted || false,
+        encryptedData: original.encryptedData ? { ...original.encryptedData } : null,
+        createdAt: cloneTime,
+        updatedAt: cloneTime,
+        order: cloneTime,
+      };
+      await saveNoteToDB(copy);
+      clones.push(copy);
+    }
+    if (clones.length > 0) {
+      setNotes((prev) => [...clones, ...prev]);
+    }
+    clearSelection();
+  }, [selectedNoteIds, notes, clearSelection]);
 
   const reorderNotes = useCallback(async (reordered: Note[]) => {
     setNotes(reordered);
@@ -553,6 +675,8 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
       searchQuery,
       layoutMode,
       darkMode,
+      themeMode,
+      fontSize,
       selectedNoteIds,
       editingNote,
       isDrawingModalOpen,
@@ -560,15 +684,19 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
       isLabelModalOpen,
       localMediaFolder,
       isLocalFolderModalOpen,
+      isSettingsOpen,
       setCurrentFilter,
       setSearchQuery,
       setLayoutMode,
       setDarkMode,
+      setThemeMode,
+      setFontSize,
       setEditingNote,
       setIsDrawingModalOpen,
       setIsLabelModalOpen,
       setLocalMediaFolder,
       setIsLocalFolderModalOpen,
+      setIsSettingsOpen,
       toggleSelectNote,
       clearSelection,
       selectAllNotes,
@@ -582,6 +710,7 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
       emptyTrash,
       duplicateNote,
       reorderNotes,
+      batchDuplicate,
       batchColor,
       batchArchive,
       batchTrash,
@@ -602,6 +731,8 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
       searchQuery,
       layoutMode,
       darkMode,
+      themeMode,
+      fontSize,
       selectedNoteIds,
       editingNote,
       isDrawingModalOpen,
@@ -609,13 +740,19 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
       isLabelModalOpen,
       localMediaFolder,
       isLocalFolderModalOpen,
+      isSettingsOpen,
       setCurrentFilter,
       setSearchQuery,
       setLayoutMode,
       setDarkMode,
+      setThemeMode,
+      setFontSize,
       setEditingNote,
       setIsDrawingModalOpen,
+      setIsLabelModalOpen,
       setLocalMediaFolder,
+      setIsLocalFolderModalOpen,
+      setIsSettingsOpen,
       toggleSelectNote,
       clearSelection,
       selectAllNotes,
@@ -629,6 +766,7 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
       emptyTrash,
       duplicateNote,
       reorderNotes,
+      batchDuplicate,
       batchColor,
       batchArchive,
       batchTrash,

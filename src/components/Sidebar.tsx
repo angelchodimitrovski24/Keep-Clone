@@ -9,6 +9,7 @@ import {
   Archive,
   Trash2,
   X,
+  Settings as SettingsIcon,
 } from 'lucide-react';
 import { useKeep } from '@/context/KeepContext';
 import { ViewFilter } from '@/types/note';
@@ -24,7 +25,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onCloseMobile,
   onOpenLabelModal,
 }) => {
-  const { currentFilter, selectedLabel, setCurrentFilter, labels } = useKeep();
+  const { currentFilter, selectedLabel, setCurrentFilter, labels, setIsSettingsOpen } = useKeep();
 
   const navItems: { id: ViewFilter; label: string; icon: React.ReactNode }[] = [
     { id: 'notes', label: 'Notes', icon: <Lightbulb className="w-5 h-5" /> },
@@ -129,6 +130,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <Pencil className="w-5 h-5 shrink-0 text-stone-400" />
             <span className={`truncate ${isOpen ? 'inline' : 'hidden lg:hidden'}`}>
               Edit labels
+            </span>
+          </button>
+
+          {/* Settings Button */}
+          <button
+            type="button"
+            onClick={() => {
+              setIsSettingsOpen(true);
+              if (window.innerWidth < 1024) {
+                onCloseMobile?.();
+              }
+            }}
+            className="flex items-center gap-5 px-4 py-2.5 rounded-r-full text-sm font-medium text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
+            title="Settings"
+          >
+            <SettingsIcon className="w-5 h-5 shrink-0 text-stone-400" />
+            <span className={`truncate ${isOpen ? 'inline' : 'hidden lg:hidden'}`}>
+              Settings
             </span>
           </button>
         </div>

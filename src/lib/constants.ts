@@ -131,23 +131,23 @@ export interface ThemeOption {
 
 export const NOTE_THEMES: ThemeOption[] = [
   { id: 'none', name: 'Default', icon: '🚫', bgGradient: '', darkGradient: '' },
-  { id: 'groceries', name: 'Groceries', icon: '🛒', bgGradient: 'bg-gradient-to-b from-amber-50 to-orange-100/70', darkGradient: 'dark:from-amber-950/40 dark:to-orange-950/40' },
-  { id: 'food', name: 'Food', icon: '🍔', bgGradient: 'bg-gradient-to-b from-rose-50 to-amber-100/70', darkGradient: 'dark:from-rose-950/40 dark:to-amber-950/40' },
-  { id: 'music', name: 'Music', icon: '🎧', bgGradient: 'bg-gradient-to-b from-indigo-50 to-purple-100/70', darkGradient: 'dark:from-indigo-950/40 dark:to-purple-950/40' },
-  { id: 'recipes', name: 'Recipes', icon: '🍳', bgGradient: 'bg-gradient-to-b from-yellow-50 to-lime-100/70', darkGradient: 'dark:from-yellow-950/40 dark:to-lime-950/40' },
-  { id: 'notes', name: 'Notes', icon: '📝', bgGradient: 'bg-gradient-to-b from-sky-50 to-blue-100/70', darkGradient: 'dark:from-sky-950/40 dark:to-blue-950/40' },
-  { id: 'places', name: 'Places', icon: '📍', bgGradient: 'bg-gradient-to-b from-teal-50 to-emerald-100/70', darkGradient: 'dark:from-teal-950/40 dark:to-emerald-950/40' },
-  { id: 'travel', name: 'Travel', icon: '✈️', bgGradient: 'bg-gradient-to-b from-cyan-50 to-blue-100/70', darkGradient: 'dark:from-cyan-950/40 dark:to-blue-950/40' },
-  { id: 'celebration', name: 'Celebration', icon: '🎉', bgGradient: 'bg-gradient-to-b from-fuchsia-50 to-pink-100/70', darkGradient: 'dark:from-fuchsia-950/40 dark:to-pink-950/40' },
+  { id: 'groceries', name: 'Groceries', icon: '🛒', bgGradient: 'bg-gradient-to-b from-amber-50 to-orange-100/85 border-amber-300/70 text-stone-900', darkGradient: 'dark:from-[#2e2316] dark:to-[#382312] dark:border-amber-900/60 dark:text-stone-100' },
+  { id: 'food', name: 'Food', icon: '🍔', bgGradient: 'bg-gradient-to-b from-rose-50 to-amber-100/85 border-rose-300/70 text-stone-900', darkGradient: 'dark:from-[#33171e] dark:to-[#3b2014] dark:border-rose-900/60 dark:text-stone-100' },
+  { id: 'music', name: 'Music', icon: '🎧', bgGradient: 'bg-gradient-to-b from-indigo-50 to-purple-100/85 border-indigo-300/70 text-stone-900', darkGradient: 'dark:from-[#1e1c38] dark:to-[#2e1d3d] dark:border-indigo-900/60 dark:text-stone-100' },
+  { id: 'recipes', name: 'Recipes', icon: '🍳', bgGradient: 'bg-gradient-to-b from-yellow-50 to-lime-100/85 border-yellow-300/70 text-stone-900', darkGradient: 'dark:from-[#2a2916] dark:to-[#223315] dark:border-yellow-900/60 dark:text-stone-100' },
+  { id: 'notes', name: 'Notes', icon: '📝', bgGradient: 'bg-gradient-to-b from-sky-50 to-blue-100/85 border-sky-300/70 text-stone-900', darkGradient: 'dark:from-[#162536] dark:to-[#172238] dark:border-sky-900/60 dark:text-stone-100' },
+  { id: 'places', name: 'Places', icon: '📍', bgGradient: 'bg-gradient-to-b from-teal-50 to-emerald-100/85 border-teal-300/70 text-stone-900', darkGradient: 'dark:from-[#142d2a] dark:to-[#132d20] dark:border-teal-900/60 dark:text-stone-100' },
+  { id: 'travel', name: 'Travel', icon: '✈️', bgGradient: 'bg-gradient-to-b from-cyan-50 to-blue-100/85 border-cyan-300/70 text-stone-900', darkGradient: 'dark:from-[#122a36] dark:to-[#16223b] dark:border-cyan-900/60 dark:text-stone-100' },
+  { id: 'celebration', name: 'Celebration', icon: '🎉', bgGradient: 'bg-gradient-to-b from-fuchsia-50 to-pink-100/85 border-pink-300/70 text-stone-900', darkGradient: 'dark:from-[#361533] dark:to-[#381628] dark:border-pink-900/60 dark:text-stone-100' },
 ];
 
 export function getNoteColorClasses(colorId: NoteColor = 'default', themeId: NoteBackgroundTheme = 'none'): string {
   const color = NOTE_COLORS.find((c) => c.id === colorId) || NOTE_COLORS[0];
   const theme = NOTE_THEMES.find((t) => t.id === themeId);
 
-  let classes = `${color.lightBg} ${color.darkBg} ${color.lightBorder} ${color.darkBorder}`;
   if (theme && theme.id !== 'none') {
-    classes += ` ${theme.bgGradient} ${theme.darkGradient}`;
+    return `${theme.bgGradient} ${theme.darkGradient}`;
   }
-  return classes;
+
+  return `${color.lightBg} ${color.darkBg} ${color.lightBorder} ${color.darkBorder}`;
 }

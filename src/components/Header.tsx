@@ -17,6 +17,8 @@ import {
   Upload,
   FolderDown,
   FolderOpen,
+  Copy,
+  Settings as SettingsIcon,
 } from 'lucide-react';
 import { useKeep } from '@/context/KeepContext';
 import { NOTE_COLORS } from '@/lib/constants';
@@ -39,11 +41,13 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
     batchTrash,
     batchDeletePermanently,
     batchColor,
+    batchDuplicate,
     exportDataJSON,
     importDataJSON,
     currentFilter,
     localMediaFolder,
     setIsLocalFolderModalOpen,
+    setIsSettingsOpen,
   } = useKeep();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -115,6 +119,14 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
 
           {currentFilter !== 'trash' ? (
             <>
+              <button
+                type="button"
+                onClick={batchDuplicate}
+                className="p-2 rounded-full hover:bg-stone-200 dark:hover:bg-stone-700"
+                title="Clone selected notes"
+              >
+                <Copy className="w-5 h-5" />
+              </button>
               <button
                 type="button"
                 onClick={batchArchive}
@@ -239,6 +251,16 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
           title={darkMode ? 'Light mode' : 'Dark mode'}
         >
           {darkMode ? <Sun className="w-5 h-5 text-amber-400" /> : <Moon className="w-5 h-5" />}
+        </button>
+
+        {/* Settings Dialog Toggle */}
+        <button
+          type="button"
+          onClick={() => setIsSettingsOpen(true)}
+          className="p-2.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
+          title="Settings (Font size, Theme, Backup)"
+        >
+          <SettingsIcon className="w-5 h-5" />
         </button>
 
         {/* Export Backup */}

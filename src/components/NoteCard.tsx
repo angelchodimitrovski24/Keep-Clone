@@ -22,6 +22,7 @@ import { UnlockNoteModal } from './UnlockNoteModal';
 import { EncryptNoteModal } from './EncryptNoteModal';
 import { LinkNoteModal } from './LinkNoteModal';
 import { getBidirectionalLinks } from '@/lib/noteLinks';
+import { NoteThemeArtwork } from './NoteThemeArtwork';
 
 interface NoteCardProps {
   note: Note;
@@ -327,6 +328,9 @@ export const NoteCard: React.FC<NoteCardProps> = ({
             </div>
           </>
         )}
+
+        {/* Themed Background Illustration */}
+        <NoteThemeArtwork theme={activeNote.theme} />
 
         {/* Note Action Toolbar */}
         <div className="px-2 py-1.5 opacity-90 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity flex items-center justify-between border-t border-black/5 dark:border-white/5 sm:border-transparent">

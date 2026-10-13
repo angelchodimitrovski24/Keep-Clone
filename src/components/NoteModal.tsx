@@ -26,6 +26,7 @@ import { EncryptNoteModal } from './EncryptNoteModal';
 import { LinkNoteModal } from './LinkNoteModal';
 import { getBidirectionalLinks } from '@/lib/noteLinks';
 import { getUnlockedNote } from '@/lib/encryptionSession';
+import { NoteThemeArtwork } from './NoteThemeArtwork';
 
 interface NoteModalProps {
   note: Note | null;
@@ -262,8 +263,10 @@ export const NoteModal: React.FC<NoteModalProps> = ({
             editorRef.current?.insertLocalFiles(files, imageUrls);
           }
         }}
-        className={`w-full max-w-3xl min-h-[460px] max-h-[92vh] rounded-2xl shadow-2xl border flex flex-col transition-all duration-150 ${colorClasses}`}
+        className={`w-full max-w-3xl min-h-[460px] max-h-[92vh] rounded-2xl shadow-2xl border flex flex-col transition-all duration-150 relative overflow-hidden ${colorClasses}`}
       >
+        {/* Themed Background Illustration */}
+        <NoteThemeArtwork theme={theme} isModal={true} />
         {/* Images Gallery */}
         {images.length > 0 && (
           <div className="grid grid-cols-2 gap-1 p-2 bg-black/5 max-h-60 overflow-y-auto shrink-0">
@@ -587,7 +590,10 @@ export const NoteModal: React.FC<NoteModalProps> = ({
               trashNote(note.id);
               onClose();
             }}
-            onDuplicate={() => duplicateNote(note.id)}
+            onDuplicate={async () => {
+              await handleSaveAndClose();
+              await duplicateNote(note.id);
+            }}
             onToggleChecklist={handleToggleChecklist}
             onAddReminder={setReminder}
             onToggleLabel={(lbl) =>

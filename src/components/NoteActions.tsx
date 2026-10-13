@@ -385,6 +385,21 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
         </button>
       )}
 
+      {/* Clone Note action */}
+      {onDuplicate && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDuplicate();
+          }}
+          className="p-2 sm:p-1.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
+          title="Clone note (Make a copy)"
+        >
+          <Copy className="w-4 h-4" />
+        </button>
+      )}
+
       {/* More Options dropdown (...) */}
       <div className="relative">
         <button
@@ -473,7 +488,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                 className="w-full text-left px-3.5 py-2.5 sm:py-2 flex items-center gap-2.5 hover:bg-stone-100 dark:hover:bg-stone-700"
               >
                 <Copy className="w-4 h-4" />
-                Make a copy
+                Clone note (Make a copy)
               </button>
             )}
 

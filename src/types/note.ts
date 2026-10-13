@@ -84,3 +84,6 @@ export type ViewFilter =
   | 'search';
 
 export type LayoutViewMode = 'grid' | 'list';
+
+export type FontSizeOption = 'small' | 'medium' | 'large' | 'xlarge';
+export type AppThemeMode = 'system' | 'light' | 'dark';
