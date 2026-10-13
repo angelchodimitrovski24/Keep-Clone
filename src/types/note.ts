@@ -64,6 +64,7 @@ export interface Note {
   isEncrypted?: boolean;
   encryptedData?: EncryptedNoteBundle | null;
   linkedNoteIds?: string[]; // IDs of linked notes
+  category?: string | null; // Note category name
   createdAt: number;
   updatedAt: number;
   order: number;
@@ -75,10 +76,19 @@ export interface Label {
   createdAt: number;
 }
 
+export interface Category {
+  id: string;
+  name: string;
+  color?: string; // Accent color hex
+  icon?: string;  // Category emoji / icon
+  createdAt: number;
+}
+
 export type ViewFilter =
   | 'notes'
   | 'reminders'
   | 'label'
+  | 'category'
   | 'archive'
   | 'trash'
   | 'search';

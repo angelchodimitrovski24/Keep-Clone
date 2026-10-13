@@ -15,6 +15,7 @@ import {
   RotateCcw,
   Lock,
   Link2,
+  Folder,
 } from 'lucide-react';
 import { Note, NoteColor, NoteBackgroundTheme } from '@/types/note';
 import { NOTE_COLORS, NOTE_THEMES } from '@/lib/constants';
@@ -33,6 +34,7 @@ interface NoteActionsProps {
   onToggleChecklist?: () => void;
   onAddReminder?: (dateStr: string) => void;
   onToggleLabel?: (labelName: string) => void;
+  onSelectCategory?: (categoryName: string | null) => void;
   onEncrypt?: () => void;
   onLinkNote?: () => void;
   showFormattingToggle?: boolean;
@@ -55,6 +57,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
   onToggleChecklist,
   onAddReminder,
   onToggleLabel,
+  onSelectCategory,
   onEncrypt,
   onLinkNote,
   showFormattingToggle = false,
@@ -63,11 +66,12 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
   isTrash = false,
   className = '',
 }) => {
-  const { labels, createLabel } = useKeep();
+  const { labels, categories, createLabel, setIsCategoryModalOpen } = useKeep();
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [showReminderPicker, setShowReminderPicker] = useState(false);
   const [showLabelPicker, setShowLabelPicker] = useState(false);
+  const [showCategoryPicker, setShowCategoryPicker] = useState(false);
   const [newLabelText, setNewLabelText] = useState('');
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -81,6 +85,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
         setShowColorPicker(false);
         setShowReminderPicker(false);
         setShowLabelPicker(false);
+        setShowCategoryPicker(false);
       }
     };
     document.addEventListener('mousedown', handleOutsideClick);
@@ -464,6 +469,20 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
               </button>
             )}
 
+            {onSelectCategory && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMenu(false);
+                  setShowCategoryPicker(true);
+                }}
+                className="w-full text-left px-3.5 py-2.5 sm:py-2 flex items-center gap-2.5 hover:bg-stone-100 dark:hover:bg-stone-700"
+              >
+                <Folder className="w-4 h-4" />
+                Change category
+              </button>
+            )}
+
             {onToggleLabel && (
               <button
                 type="button"
@@ -505,6 +524,86 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                 {note.isList ? 'Show plain text' : 'Show checkboxes'}
               </button>
             )}
+          </div>
+        )}
+
+        {/* Category Picker submenu */}
+        {showCategoryPicker && (
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="absolute left-0 bottom-full mb-2 w-64 max-w-[calc(100vw-2rem)] p-2.5 bg-white dark:bg-[#2d2e30] rounded-xl shadow-2xl border border-stone-200 dark:border-stone-700 z-50 text-sm animate-in fade-in zoom-in-95 duration-100"
+          >
+            <div className="flex items-center justify-between pb-2 mb-2 border-b border-stone-200 dark:border-stone-700">
+              <span className="text-xs font-semibold text-stone-500 uppercase tracking-wider">Select Category</span>
+              <button
+                type="button"
+                onClick={() => setShowCategoryPicker(false)}
+                className="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline"
+              >
+                Done
+              </button>
+            </div>
+
+            <div className="max-h-56 overflow-y-auto space-y-1 mb-2">
+              {/* None Option */}
+              <button
+                type="button"
+                onClick={() => {
+                  onSelectCategory?.(null);
+                  setShowCategoryPicker(false);
+                }}
+                className={`w-full text-left flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-colors ${
+                  !note.category
+                    ? 'bg-amber-100/70 text-stone-900 dark:bg-amber-950/70 dark:text-amber-200 font-semibold'
+                    : 'hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-600 dark:text-stone-400'
+                }`}
+              >
+                <span>None (No category)</span>
+                {!note.category && <span>✓</span>}
+              </button>
+
+              {categories.map((cat) => {
+                const isSelected = note.category === cat.name;
+                return (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => {
+                      onSelectCategory?.(cat.name);
+                      setShowCategoryPicker(false);
+                    }}
+                    className={`w-full text-left flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-colors ${
+                      isSelected
+                        ? 'bg-amber-100/70 text-stone-900 dark:bg-amber-950/70 dark:text-amber-200 font-semibold'
+                        : 'hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span>{cat.icon || '📁'}</span>
+                      <div
+                        className="w-2 h-2 rounded-full"
+                        style={{ backgroundColor: cat.color || '#3b82f6' }}
+                      />
+                      <span>{cat.name}</span>
+                    </div>
+                    {isSelected && <span>✓</span>}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="pt-2 border-t border-stone-200 dark:border-stone-700">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCategoryPicker(false);
+                  setIsCategoryModalOpen(true);
+                }}
+                className="w-full text-center text-xs font-semibold py-1.5 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/50 rounded-lg transition-colors"
+              >
+                + Manage Categories
+              </button>
+            </div>
           </div>
         )}
 

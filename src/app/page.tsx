@@ -9,6 +9,8 @@ import { NotesGrid } from '@/components/NotesGrid';
 import { NoteModal } from '@/components/NoteModal';
 import { DrawingModal } from '@/components/DrawingModal';
 import { LabelManagerModal } from '@/components/LabelManagerModal';
+import { CategoryManagerModal } from '@/components/CategoryManagerModal';
+import { CategoryPillsBar } from '@/components/CategoryPillsBar';
 import { LocalFolderModal } from '@/components/LocalFolderModal';
 import { SettingsModal } from '@/components/SettingsModal';
 import { Note, NoteDrawing } from '@/types/note';
@@ -22,6 +24,8 @@ function KeepApp() {
     drawingNoteId,
     isLabelModalOpen,
     setIsLabelModalOpen,
+    isCategoryModalOpen,
+    setIsCategoryModalOpen,
     isLocalFolderModalOpen,
     setIsLocalFolderModalOpen,
     updateNote,
@@ -65,8 +69,11 @@ function KeepApp() {
 
         {/* Notes Feed Container */}
         <main className="flex-1 p-4 md:p-8 overflow-y-auto max-w-[1600px] mx-auto w-full">
-          {/* Note Composer (hidden in Archive and Trash views) */}
-          {currentFilter === 'notes' && (
+          {/* Category Filter Pills */}
+          <CategoryPillsBar />
+
+          {/* Note Composer (visible in Notes and Category views) */}
+          {(currentFilter === 'notes' || currentFilter === 'category') && (
             <CreateNoteBar
               onOpenDrawingModal={() => setIsDrawingModalOpen(true, null)}
             />
@@ -99,6 +106,12 @@ function KeepApp() {
       <LabelManagerModal
         isOpen={isLabelModalOpen}
         onClose={() => setIsLabelModalOpen(false)}
+      />
+
+      {/* Category Management Modal */}
+      <CategoryManagerModal
+        isOpen={isCategoryModalOpen}
+        onClose={() => setIsCategoryModalOpen(false)}
       />
 
       {/* Local Paste Media Folder Modal */}

@@ -313,3 +313,50 @@ body {
   background: rgba(128, 128, 128, 0.06);
 }
 
+/* Markdown Table Styling */
+.keep-table-wrapper {
+  margin: 0.75rem 0;
+  max-width: 100%;
+  overflow-x: auto;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(140, 140, 140, 0.25);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.keep-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  text-align: left;
+}
+
+.keep-table thead {
+  background-color: rgba(150, 150, 150, 0.12);
+  border-bottom: 1px solid rgba(140, 140, 140, 0.25);
+  font-weight: 600;
+}
+
+.keep-table th {
+  padding: 0.5rem 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.keep-table td {
+  padding: 0.45rem 0.75rem;
+}
+
+.keep-table tbody tr {
+  border-bottom: 1px solid rgba(140, 140, 140, 0.15);
+  transition: background-color 0.15s ease;
+}
+
+.keep-table tbody tr:last-child {
+  border-bottom: none;
+}
+
+.keep-table tbody tr:hover {
+  background-color: rgba(125, 125, 125, 0.06);
+}
+

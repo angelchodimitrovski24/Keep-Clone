@@ -26,7 +26,7 @@ interface CreateNoteBarProps {
 }
 
 export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal }) => {
-  const { notes, addNote, selectedLabel, editingNote } = useKeep();
+  const { notes, addNote, selectedLabel, selectedCategory, categories, editingNote } = useKeep();
   const [isExpanded, setIsExpanded] = useState(false);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
@@ -36,6 +36,7 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
   const [isPinned, setIsPinned] = useState(false);
   const [color, setColor] = useState<NoteColor>('default');
   const [theme, setTheme] = useState<NoteBackgroundTheme>('none');
+  const [category, setCategory] = useState<string | null>(selectedCategory || null);
   const [labels, setLabels] = useState<string[]>([]);
   const [reminder, setReminder] = useState<string | null>(null);
   const [images, setImages] = useState<string[]>([]);
@@ -43,6 +44,13 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
   const [linkedNoteIds, setLinkedNoteIds] = useState<string[]>([]);
   const [showLinkModal, setShowLinkModal] = useState(false);
   const [isFormattingOpen, setIsFormattingOpen] = useState(false);
+
+  // Sync category with active category filter when collapsed
+  React.useEffect(() => {
+    if (!isExpanded) {
+      setCategory(selectedCategory || null);
+    }
+  }, [selectedCategory, isExpanded]);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<KeepWysiwygEditorHandle>(null);
@@ -110,6 +118,7 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
     setIsPinned(false);
     setColor('default');
     setTheme('none');
+    setCategory(selectedCategory || null);
     setLabels([]);
     setReminder(null);
     setImages([]);
@@ -140,6 +149,7 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
         todos: finalTodos,
         color,
         theme,
+        category: category || null,
         labels: labels.length > 0 ? labels : selectedLabel ? [selectedLabel] : [],
         isPinned,
         reminder,
@@ -404,40 +414,62 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
             />
           )}
 
-          {/* Labels chips */}
-          {labels.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mt-3">
-              {labels.map((lbl) => (
+          {/* Category, Labels & Reminder chips */}
+          <div className="flex flex-wrap gap-1.5 mt-3">
+            {category && (() => {
+              const catObj = categories.find((c) => c.name === category);
+              return (
                 <span
-                  key={lbl}
-                  className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-black/10 dark:bg-white/10"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold shadow-2xs"
+                  style={{
+                    backgroundColor: catObj?.color ? `${catObj.color}20` : 'rgba(59, 130, 246, 0.15)',
+                    color: catObj?.color || '#3b82f6',
+                    border: `1px solid ${catObj?.color ? `${catObj.color}40` : 'rgba(59, 130, 246, 0.3)'}`,
+                  }}
                 >
-                  {lbl}
+                  <span>{catObj?.icon || '📁'}</span>
+                  <span>{category}</span>
                   <button
                     type="button"
-                    onClick={() => handleToggleLabel(lbl)}
-                    className="hover:text-red-500"
+                    onClick={() => setCategory(null)}
+                    className="hover:opacity-75"
+                    title="Remove category"
                   >
                     <X className="w-3 h-3" />
                   </button>
                 </span>
-              ))}
-            </div>
-          )}
+              );
+            })()}
 
-          {/* Reminder chip */}
-          {reminder && (
-            <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-300">
-              <span>⏰ {new Date(reminder).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
-              <button
-                type="button"
-                onClick={() => setReminder(null)}
-                className="hover:text-red-500"
+            {labels.map((lbl) => (
+              <span
+                key={lbl}
+                className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-black/10 dark:bg-white/10"
               >
-                <X className="w-3 h-3" />
-              </button>
-            </div>
-          )}
+                {lbl}
+                <button
+                  type="button"
+                  onClick={() => handleToggleLabel(lbl)}
+                  className="hover:text-red-500"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            ))}
+
+            {reminder && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-300">
+                <span>⏰ {new Date(reminder).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                <button
+                  type="button"
+                  onClick={() => setReminder(null)}
+                  className="hover:text-red-500"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Google Keep Authentic Formatting Bar (H1, H2, Aa, B, I, U, Clear) */}
@@ -450,9 +482,10 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
         {/* Footer toolbar */}
         <div className="flex items-center justify-between px-3 py-2 border-t border-black/5 dark:border-white/5">
           <NoteActions
-            note={{ color, theme, isList, labels, reminder }}
+            note={{ color, theme, isList, labels, reminder, category }}
             onColorChange={setColor}
             onThemeChange={setTheme}
+            onSelectCategory={setCategory}
             onAddImage={handleAddImage}
             onToggleChecklist={() => setIsList(!isList)}
             onAddReminder={(r) => setReminder(r)}

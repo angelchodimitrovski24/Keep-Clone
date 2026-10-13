@@ -19,6 +19,7 @@ export const NotesGrid: React.FC<NotesGridProps> = ({
     notes,
     currentFilter,
     selectedLabel,
+    selectedCategory,
     searchQuery,
     layoutMode,
     emptyTrash,
@@ -43,6 +44,9 @@ export const NotesGrid: React.FC<NotesGridProps> = ({
         if (!note.isArchived) return false;
       } else if (currentFilter === 'label') {
         if (!selectedLabel || !note.labels?.includes(selectedLabel)) return false;
+      } else if (currentFilter === 'category') {
+        if (!selectedCategory || note.category !== selectedCategory) return false;
+        if (note.isArchived) return false;
       }
 
       // 3. Search query check
@@ -52,22 +56,24 @@ export const NotesGrid: React.FC<NotesGridProps> = ({
         const matchesContent = note.content?.toLowerCase().includes(query);
         const matchesTodos = note.todos?.some((t) => t.text.toLowerCase().includes(query));
         const matchesLabels = note.labels?.some((l) => l.toLowerCase().includes(query));
-        return matchesTitle || matchesContent || matchesTodos || matchesLabels;
+        const matchesCategory = note.category?.toLowerCase().includes(query);
+        return matchesTitle || matchesContent || matchesTodos || matchesLabels || matchesCategory;
       }
 
       return true;
     });
-  }, [notes, currentFilter, selectedLabel, searchQuery]);
+  }, [notes, currentFilter, selectedLabel, selectedCategory, searchQuery]);
 
-  // Separate pinned vs unpinned notes (only relevant for notes and search view)
+  // Separate pinned vs unpinned notes (relevant for notes and category view)
+  const isNotesOrCategory = currentFilter === 'notes' || currentFilter === 'category';
   const pinnedNotes = useMemo(
-    () => (currentFilter === 'notes' ? filteredNotes.filter((n) => n.isPinned) : []),
-    [filteredNotes, currentFilter]
+    () => (isNotesOrCategory ? filteredNotes.filter((n) => n.isPinned) : []),
+    [filteredNotes, isNotesOrCategory]
   );
 
   const unpinnedNotes = useMemo(
-    () => (currentFilter === 'notes' ? filteredNotes.filter((n) => !n.isPinned) : filteredNotes),
-    [filteredNotes, currentFilter]
+    () => (isNotesOrCategory ? filteredNotes.filter((n) => !n.isPinned) : filteredNotes),
+    [filteredNotes, isNotesOrCategory]
   );
 
   const gridLayoutClasses =

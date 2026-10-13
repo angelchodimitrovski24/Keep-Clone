@@ -36,6 +36,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
 }) => {
   const {
     notes,
+    categories,
     togglePinNote,
     toggleArchiveNote,
     trashNote,
@@ -70,6 +71,11 @@ export const NoteCard: React.FC<NoteCardProps> = ({
   const { outgoing, backlinks } = useMemo(
     () => getBidirectionalLinks(activeNote, notes),
     [activeNote, notes]
+  );
+
+  const categoryObj = useMemo(
+    () => (note.category ? categories.find((c) => c.name === note.category) : null),
+    [note.category, categories]
   );
 
   const isSelected = selectedNoteIds.includes(note.id);
@@ -302,8 +308,22 @@ export const NoteCard: React.FC<NoteCardProps> = ({
                 </div>
               )}
 
-              {/* Labels & Reminders badges */}
+              {/* Category, Labels & Reminders badges */}
               <div className="flex flex-wrap items-center gap-1.5 mt-3 pt-1">
+                {note.category && (
+                  <span
+                    className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold shadow-2xs"
+                    style={{
+                      backgroundColor: categoryObj?.color ? `${categoryObj.color}20` : 'rgba(59, 130, 246, 0.15)',
+                      color: categoryObj?.color || '#3b82f6',
+                      border: `1px solid ${categoryObj?.color ? `${categoryObj.color}40` : 'rgba(59, 130, 246, 0.3)'}`,
+                    }}
+                  >
+                    <span>{categoryObj?.icon || '📁'}</span>
+                    <span>{note.category}</span>
+                  </span>
+                )}
+
                 {note.reminder && (
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-black/5 dark:bg-white/10 text-stone-700 dark:text-stone-300">
                     <Bell className="w-3 h-3 text-amber-500" />
@@ -347,6 +367,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
             onAddImage={handleAddImage}
             onEncrypt={() => setShowEncryptModal(true)}
             onLinkNote={() => setShowLinkModal(true)}
+            onSelectCategory={(category) => updateNote(note.id, { category })}
             onToggleChecklist={() =>
               updateNote(note.id, {
                 isList: !note.isList,

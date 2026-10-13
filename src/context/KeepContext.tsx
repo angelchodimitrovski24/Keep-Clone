@@ -1,10 +1,14 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
-import { Note, Label, ViewFilter, LayoutViewMode, FontSizeOption, AppThemeMode } from '@/types/note';
+import { Note, Label, Category, ViewFilter, LayoutViewMode, FontSizeOption, AppThemeMode } from '@/types/note';
 import {
   getAllNotesFromDB,
   getAllLabelsFromDB,
+  getAllCategoriesFromDB,
+  saveCategoryToDB,
+  deleteCategoryFromDB,
+  renameCategoryInDB,
   saveNoteToDB,
   saveMultipleNotesToDB,
   deleteNotePermanentlyFromDB,
@@ -22,9 +26,11 @@ import { setSyncLocalMediaFolder } from '@/lib/localPaste';
 interface KeepContextType {
   notes: Note[];
   labels: Label[];
+  categories: Category[];
   isLoading: boolean;
   currentFilter: ViewFilter;
   selectedLabel: string | null;
+  selectedCategory: string | null;
   searchQuery: string;
   layoutMode: LayoutViewMode;
   darkMode: boolean;
@@ -35,12 +41,13 @@ interface KeepContextType {
   isDrawingModalOpen: boolean;
   drawingNoteId: string | null;
   isLabelModalOpen: boolean;
+  isCategoryModalOpen: boolean;
   localMediaFolder: string;
   isLocalFolderModalOpen: boolean;
   isSettingsOpen: boolean;
 
   // Setters
-  setCurrentFilter: (filter: ViewFilter, labelName?: string) => void;
+  setCurrentFilter: (filter: ViewFilter, paramName?: string) => void;
   setSearchQuery: (query: string) => void;
   setLayoutMode: (mode: LayoutViewMode) => void;
   setDarkMode: (dark: boolean) => void;
@@ -49,6 +56,7 @@ interface KeepContextType {
   setEditingNote: (note: Note | null) => void;
   setIsDrawingModalOpen: (open: boolean, noteId?: string | null) => void;
   setIsLabelModalOpen: (open: boolean) => void;
+  setIsCategoryModalOpen: (open: boolean) => void;
   setLocalMediaFolder: (folder: string) => void;
   setIsLocalFolderModalOpen: (open: boolean) => void;
   setIsSettingsOpen: (open: boolean) => void;
@@ -77,11 +85,17 @@ interface KeepContextType {
   batchTrash: () => Promise<void>;
   batchDeletePermanently: () => Promise<void>;
   batchAddLabel: (labelName: string) => Promise<void>;
+  batchSetCategory: (categoryName: string | null) => Promise<void>;
 
   // Label CRUD
   createLabel: (name: string) => Promise<Label | null>;
   deleteLabel: (id: string, name: string) => Promise<void>;
   renameLabel: (id: string, oldName: string, newName: string) => Promise<void>;
+
+  // Category CRUD
+  createCategory: (name: string, color?: string, icon?: string) => Promise<Category | null>;
+  updateCategory: (id: string, updates: { name: string; color?: string; icon?: string }) => Promise<void>;
+  deleteCategory: (id: string, name: string) => Promise<void>;
 
   // Backup / Data
   exportDataJSON: () => Promise<void>;
@@ -93,10 +107,12 @@ const KeepContext = createContext<KeepContextType | null>(null);
 export function KeepProvider({ children }: { children: React.ReactNode }) {
   const [notes, setNotes] = useState<Note[]>([]);
   const [labels, setLabels] = useState<Label[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const [currentFilter, setCurrentFilterState] = useState<ViewFilter>('notes');
   const [selectedLabel, setSelectedLabel] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [layoutMode, setLayoutModeState] = useState<LayoutViewMode>('grid');
   const [darkMode, setDarkModeState] = useState(false);
@@ -108,6 +124,7 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
   const [isDrawingModalOpen, setIsDrawingModalOpenState] = useState(false);
   const [drawingNoteId, setDrawingNoteId] = useState<string | null>(null);
   const [isLabelModalOpen, setIsLabelModalOpen] = useState(false);
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [localMediaFolder, setLocalMediaFolderState] = useState('');
   const [isLocalFolderModalOpen, setIsLocalFolderModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -116,9 +133,19 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
   const loadInitialData = useCallback(async () => {
     try {
       setIsLoading(true);
-      const [storedNotes, storedLabels, storedLayout, storedDark, storedFolder, storedThemeMode, storedFontSize] = await Promise.all([
+      const [
+        storedNotes,
+        storedLabels,
+        storedCategories,
+        storedLayout,
+        storedDark,
+        storedFolder,
+        storedThemeMode,
+        storedFontSize,
+      ] = await Promise.all([
         getAllNotesFromDB(),
         getAllLabelsFromDB(),
+        getAllCategoriesFromDB(),
         getSettingFromDB<LayoutViewMode>('layoutMode', 'grid'),
         getSettingFromDB<boolean>('darkMode', false),
         getSettingFromDB<string>('localMediaFolder', ''),
@@ -232,6 +259,22 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
         setLabels(storedLabels);
       }
 
+      // Initialize default categories if none exist
+      if (storedCategories.length === 0) {
+        const defaultCategories: Category[] = [
+          { id: 'cat-personal', name: 'Personal', color: '#3b82f6', icon: '👤', createdAt: Date.now() },
+          { id: 'cat-work', name: 'Work', color: '#10b981', icon: '💼', createdAt: Date.now() + 1 },
+          { id: 'cat-ideas', name: 'Ideas', color: '#f59e0b', icon: '💡', createdAt: Date.now() + 2 },
+          { id: 'cat-finance', name: 'Finance', color: '#8b5cf6', icon: '💰', createdAt: Date.now() + 3 },
+        ];
+        for (const cat of defaultCategories) {
+          await saveCategoryToDB(cat);
+        }
+        setCategories(defaultCategories);
+      } else {
+        setCategories(storedCategories);
+      }
+
       setLayoutModeState(storedLayout);
 
       let isDark = storedDark;
@@ -277,12 +320,17 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
   }, [themeMode]);
 
   // View Filter setter
-  const setCurrentFilter = useCallback((filter: ViewFilter, labelName?: string) => {
+  const setCurrentFilter = useCallback((filter: ViewFilter, paramName?: string) => {
     setCurrentFilterState(filter);
     if (filter === 'label') {
-      setSelectedLabel(labelName || null);
+      setSelectedLabel(paramName || null);
+      setSelectedCategory(null);
+    } else if (filter === 'category') {
+      setSelectedCategory(paramName || null);
+      setSelectedLabel(null);
     } else {
       setSelectedLabel(null);
+      setSelectedCategory(null);
     }
     setSelectedNoteIds([]);
   }, []);
@@ -381,6 +429,7 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
         color: noteData.color || 'default',
         theme: noteData.theme || 'none',
         labels: noteData.labels || (selectedLabel ? [selectedLabel] : []),
+        category: noteData.category !== undefined ? noteData.category : (selectedCategory || null),
         isPinned: noteData.isPinned || false,
         isArchived: noteData.isArchived || false,
         isTrash: false,
@@ -399,7 +448,7 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
       setNotes((prev) => [newNote, ...prev]);
       return newNote;
     },
-    [selectedLabel]
+    [selectedLabel, selectedCategory]
   );
 
   const updateNote = useCallback(async (id: string, updates: Partial<Note>) => {
@@ -481,6 +530,7 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
         images: [...(original.images || [])],
         drawings: [...(original.drawings || [])],
         labels: [...(original.labels || [])],
+        category: original.category || null,
         linkedNoteIds: [...(original.linkedNoteIds || [])],
         isEncrypted: original.isEncrypted || false,
         encryptedData: original.encryptedData ? { ...original.encryptedData } : null,
@@ -511,6 +561,7 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
         images: [...(original.images || [])],
         drawings: [...(original.drawings || [])],
         labels: [...(original.labels || [])],
+        category: original.category || null,
         linkedNoteIds: [...(original.linkedNoteIds || [])],
         isEncrypted: original.isEncrypted || false,
         encryptedData: original.encryptedData ? { ...original.encryptedData } : null,
@@ -582,6 +633,16 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
     [selectedNoteIds, notes, updateNote, clearSelection]
   );
 
+  const batchSetCategory = useCallback(
+    async (categoryName: string | null) => {
+      for (const id of selectedNoteIds) {
+        await updateNote(id, { category: categoryName });
+      }
+      clearSelection();
+    },
+    [selectedNoteIds, updateNote, clearSelection]
+  );
+
   // Labels
   const createLabel = useCallback(async (name: string): Promise<Label | null> => {
     const trimmed = name.trim();
@@ -637,6 +698,71 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
     [selectedLabel]
   );
 
+  // Categories CRUD
+  const createCategory = useCallback(
+    async (name: string, color?: string, icon?: string): Promise<Category | null> => {
+      const trimmed = name.trim();
+      if (!trimmed) return null;
+      const existing = categories.find((c) => c.name.toLowerCase() === trimmed.toLowerCase());
+      if (existing) return existing;
+
+      const newCategory: Category = {
+        id: 'cat-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+        name: trimmed,
+        color: color || '#3b82f6',
+        icon: icon || '📁',
+        createdAt: Date.now(),
+      };
+      await saveCategoryToDB(newCategory);
+      setCategories((prev) => [...prev, newCategory].sort((a, b) => a.name.localeCompare(b.name)));
+      return newCategory;
+    },
+    [categories]
+  );
+
+  const updateCategory = useCallback(
+    async (id: string, updates: { name: string; color?: string; icon?: string }) => {
+      const trimmed = updates.name.trim();
+      if (!trimmed) return;
+      const current = categories.find((c) => c.id === id);
+      if (!current) return;
+
+      const updated: Category = {
+        ...current,
+        name: trimmed,
+        color: updates.color || current.color,
+        icon: updates.icon || current.icon,
+      };
+      await saveCategoryToDB(updated);
+      setCategories((prev) => prev.map((c) => (c.id === id ? updated : c)));
+
+      if (current.name !== trimmed) {
+        // Cascade rename to notes
+        setNotes((prev) =>
+          prev.map((n) => (n.category === current.name ? { ...n, category: trimmed } : n))
+        );
+        if (selectedCategory === current.name) {
+          setSelectedCategory(trimmed);
+        }
+      }
+    },
+    [categories, selectedCategory]
+  );
+
+  const deleteCategory = useCallback(
+    async (id: string, name: string) => {
+      await deleteCategoryFromDB(id, name);
+      setCategories((prev) => prev.filter((c) => c.id !== id));
+      setNotes((prev) =>
+        prev.map((n) => (n.category === name ? { ...n, category: null } : n))
+      );
+      if (selectedCategory === name) {
+        setCurrentFilter('notes');
+      }
+    },
+    [selectedCategory, setCurrentFilter]
+  );
+
   // Backup & Import
   const exportDataJSON = useCallback(async () => {
     const data = await exportAllData();
@@ -669,9 +795,11 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
     () => ({
       notes,
       labels,
+      categories,
       isLoading,
       currentFilter,
       selectedLabel,
+      selectedCategory,
       searchQuery,
       layoutMode,
       darkMode,
@@ -682,6 +810,7 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
       isDrawingModalOpen,
       drawingNoteId,
       isLabelModalOpen,
+      isCategoryModalOpen,
       localMediaFolder,
       isLocalFolderModalOpen,
       isSettingsOpen,
@@ -694,6 +823,7 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
       setEditingNote,
       setIsDrawingModalOpen,
       setIsLabelModalOpen,
+      setIsCategoryModalOpen,
       setLocalMediaFolder,
       setIsLocalFolderModalOpen,
       setIsSettingsOpen,
@@ -716,18 +846,24 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
       batchTrash,
       batchDeletePermanently,
       batchAddLabel,
+      batchSetCategory,
       createLabel,
       deleteLabel,
       renameLabel,
+      createCategory,
+      updateCategory,
+      deleteCategory,
       exportDataJSON,
       importDataJSON,
     }),
     [
       notes,
       labels,
+      categories,
       isLoading,
       currentFilter,
       selectedLabel,
+      selectedCategory,
       searchQuery,
       layoutMode,
       darkMode,
@@ -738,6 +874,7 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
       isDrawingModalOpen,
       drawingNoteId,
       isLabelModalOpen,
+      isCategoryModalOpen,
       localMediaFolder,
       isLocalFolderModalOpen,
       isSettingsOpen,
@@ -750,6 +887,7 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
       setEditingNote,
       setIsDrawingModalOpen,
       setIsLabelModalOpen,
+      setIsCategoryModalOpen,
       setLocalMediaFolder,
       setIsLocalFolderModalOpen,
       setIsSettingsOpen,
@@ -772,9 +910,13 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
       batchTrash,
       batchDeletePermanently,
       batchAddLabel,
+      batchSetCategory,
       createLabel,
       deleteLabel,
       renameLabel,
+      createCategory,
+      updateCategory,
+      deleteCategory,
       exportDataJSON,
       importDataJSON,
     ]

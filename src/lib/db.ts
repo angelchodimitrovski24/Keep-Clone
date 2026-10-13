@@ -1,5 +1,5 @@
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
-import { Note, Label } from '@/types/note';
+import { Note, Label, Category } from '@/types/note';
 
 interface KeepDB extends DBSchema {
   notes: {
@@ -19,6 +19,13 @@ interface KeepDB extends DBSchema {
       'by-name': string;
     };
   };
+  categories: {
+    key: string;
+    value: Category;
+    indexes: {
+      'by-name': string;
+    };
+  };
   settings: {
     key: string;
     value: unknown;
@@ -26,7 +33,7 @@ interface KeepDB extends DBSchema {
 }
 
 const DB_NAME = 'google-keep-local-db';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 let dbPromise: Promise<IDBPDatabase<KeepDB>> | null = null;
 
@@ -50,6 +57,12 @@ export function getKeepDB() {
         if (!db.objectStoreNames.contains('labels')) {
           const labelStore = db.createObjectStore('labels', { keyPath: 'id' });
           labelStore.createIndex('by-name', 'name');
+        }
+
+        // Categories Store
+        if (!db.objectStoreNames.contains('categories')) {
+          const categoryStore = db.createObjectStore('categories', { keyPath: 'id' });
+          categoryStore.createIndex('by-name', 'name');
         }
 
         // Settings Store
@@ -167,6 +180,70 @@ export async function renameLabelInDB(id: string, oldName: string, newName: stri
   await tx.done;
 }
 
+// ----------------- CATEGORIES REPOSITORY -----------------
+
+export async function getAllCategoriesFromDB(): Promise<Category[]> {
+  const db = await getKeepDB();
+  if (!db) return [];
+  const categories = await db.getAll('categories');
+  return categories.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export async function saveCategoryToDB(category: Category): Promise<void> {
+  const db = await getKeepDB();
+  if (!db) return;
+  await db.put('categories', category);
+}
+
+export async function deleteCategoryFromDB(id: string, categoryName: string): Promise<void> {
+  const db = await getKeepDB();
+  if (!db) return;
+  const tx = db.transaction(['categories', 'notes'], 'readwrite');
+  await tx.objectStore('categories').delete(id);
+
+  // Also remove category reference from any notes
+  const notesStore = tx.objectStore('notes');
+  const allNotes = await notesStore.getAll();
+  for (const note of allNotes) {
+    if (note.category === categoryName) {
+      note.category = null;
+      await notesStore.put(note);
+    }
+  }
+  await tx.done;
+}
+
+export async function renameCategoryInDB(
+  id: string,
+  oldName: string,
+  newName: string,
+  newIcon?: string,
+  newColor?: string
+): Promise<void> {
+  const db = await getKeepDB();
+  if (!db) return;
+  const tx = db.transaction(['categories', 'notes'], 'readwrite');
+
+  const cat = await tx.objectStore('categories').get(id);
+  if (cat) {
+    cat.name = newName;
+    if (newIcon !== undefined) cat.icon = newIcon;
+    if (newColor !== undefined) cat.color = newColor;
+    await tx.objectStore('categories').put(cat);
+  }
+
+  // Update note category references
+  const notesStore = tx.objectStore('notes');
+  const allNotes = await notesStore.getAll();
+  for (const note of allNotes) {
+    if (note.category === oldName) {
+      note.category = newName;
+      await notesStore.put(note);
+    }
+  }
+  await tx.done;
+}
+
 // ----------------- SETTINGS / BACKUP REPOSITORY -----------------
 
 export async function getSettingFromDB<T>(key: string, defaultValue: T): Promise<T> {
@@ -182,22 +259,33 @@ export async function saveSettingToDB(key: string, value: unknown): Promise<void
   await db.put('settings', value, key);
 }
 
-export async function exportAllData(): Promise<{ notes: Note[]; labels: Label[]; exportDate: string }> {
+export async function exportAllData(): Promise<{
+  notes: Note[];
+  labels: Label[];
+  categories: Category[];
+  exportDate: string;
+}> {
   const db = await getKeepDB();
-  if (!db) return { notes: [], labels: [], exportDate: new Date().toISOString() };
+  if (!db) return { notes: [], labels: [], categories: [], exportDate: new Date().toISOString() };
   const notes = await db.getAll('notes');
   const labels = await db.getAll('labels');
+  const categories = await db.getAll('categories');
   return {
     notes,
     labels,
+    categories,
     exportDate: new Date().toISOString(),
   };
 }
 
-export async function importAllData(data: { notes?: Note[]; labels?: Label[] }): Promise<void> {
+export async function importAllData(data: {
+  notes?: Note[];
+  labels?: Label[];
+  categories?: Category[];
+}): Promise<void> {
   const db = await getKeepDB();
   if (!db) return;
-  const tx = db.transaction(['notes', 'labels'], 'readwrite');
+  const tx = db.transaction(['notes', 'labels', 'categories'], 'readwrite');
   
   if (data.notes && Array.isArray(data.notes)) {
     for (const note of data.notes) {
@@ -207,6 +295,11 @@ export async function importAllData(data: { notes?: Note[]; labels?: Label[] }):
   if (data.labels && Array.isArray(data.labels)) {
     for (const label of data.labels) {
       await tx.objectStore('labels').put(label);
+    }
+  }
+  if (data.categories && Array.isArray(data.categories)) {
+    for (const category of data.categories) {
+      await tx.objectStore('categories').put(category);
     }
   }
   await tx.done;

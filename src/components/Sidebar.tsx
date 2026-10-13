@@ -10,6 +10,7 @@ import {
   Trash2,
   X,
   Settings as SettingsIcon,
+  Folder,
 } from 'lucide-react';
 import { useKeep } from '@/context/KeepContext';
 import { ViewFilter } from '@/types/note';
@@ -25,7 +26,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onCloseMobile,
   onOpenLabelModal,
 }) => {
-  const { currentFilter, selectedLabel, setCurrentFilter, labels, setIsSettingsOpen } = useKeep();
+  const {
+    currentFilter,
+    selectedLabel,
+    selectedCategory,
+    setCurrentFilter,
+    labels,
+    categories,
+    setIsCategoryModalOpen,
+    setIsSettingsOpen,
+  } = useKeep();
 
   const navItems: { id: ViewFilter; label: string; icon: React.ReactNode }[] = [
     { id: 'notes', label: 'Notes', icon: <Lightbulb className="w-5 h-5" /> },
@@ -83,6 +93,57 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </button>
             );
           })}
+
+          <div className="my-2 border-t border-stone-200 dark:border-stone-800" />
+
+          {/* Categories section */}
+          {isOpen && (
+            <div className="px-4 py-1 text-xs font-semibold text-stone-500 uppercase tracking-wider flex items-center justify-between">
+              <span>Categories</span>
+            </div>
+          )}
+
+          {categories.map((cat) => {
+            const isActive = currentFilter === 'category' && selectedCategory === cat.name;
+            return (
+              <button
+                key={cat.id}
+                type="button"
+                onClick={() => handleSelectNav('category', cat.name)}
+                className={`flex items-center gap-5 px-4 py-2.5 rounded-r-full text-sm font-medium transition-colors ${
+                  isActive
+                    ? 'bg-amber-100 text-stone-900 dark:bg-amber-950/60 dark:text-amber-200'
+                    : 'text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800'
+                }`}
+                title={cat.name}
+              >
+                <span className="w-5 h-5 shrink-0 flex items-center justify-center text-base">
+                  {cat.icon || '📁'}
+                </span>
+                <span className={`truncate ${isOpen ? 'inline' : 'hidden lg:hidden'}`}>
+                  {cat.name}
+                </span>
+              </button>
+            );
+          })}
+
+          {/* Edit Categories Button */}
+          <button
+            type="button"
+            onClick={() => {
+              setIsCategoryModalOpen(true);
+              if (window.innerWidth < 1024) {
+                onCloseMobile?.();
+              }
+            }}
+            className="flex items-center gap-5 px-4 py-2.5 rounded-r-full text-sm font-medium text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
+            title="Edit categories"
+          >
+            <Folder className="w-5 h-5 shrink-0 text-stone-400" />
+            <span className={`truncate ${isOpen ? 'inline' : 'hidden lg:hidden'}`}>
+              Edit categories
+            </span>
+          </button>
 
           <div className="my-2 border-t border-stone-200 dark:border-stone-800" />
 

@@ -42,6 +42,8 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
     batchDeletePermanently,
     batchColor,
     batchDuplicate,
+    batchSetCategory,
+    categories,
     exportDataJSON,
     importDataJSON,
     currentFilter,
@@ -113,6 +115,37 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
                   style={{ backgroundColor: c.swatch }}
                   title={c.name}
                 />
+              ))}
+            </div>
+          </div>
+
+          {/* Quick Category Assignment for Selection */}
+          <div className="relative group p-2">
+            <button
+              type="button"
+              className="p-1 rounded-full hover:bg-stone-200 dark:hover:bg-stone-700"
+              title="Set category"
+            >
+              <FolderOpen className="w-5 h-5" />
+            </button>
+            <div className="absolute right-0 top-full hidden group-hover:flex flex-col p-2 bg-white dark:bg-[#2d2e30] rounded-xl shadow-xl border border-stone-200 dark:border-stone-700 gap-1 z-50 min-w-44">
+              <button
+                type="button"
+                onClick={() => batchSetCategory(null)}
+                className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-stone-100 dark:hover:bg-stone-700 text-xs text-stone-600 dark:text-stone-400"
+              >
+                None (Clear category)
+              </button>
+              {categories.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => batchSetCategory(c.name)}
+                  className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-stone-100 dark:hover:bg-stone-700 text-xs flex items-center gap-2 text-stone-800 dark:text-stone-200"
+                >
+                  <span>{c.icon || '📁'}</span>
+                  <span>{c.name}</span>
+                </button>
               ))}
             </div>
           </div>

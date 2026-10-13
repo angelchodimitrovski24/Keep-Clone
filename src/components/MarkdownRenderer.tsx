@@ -7,6 +7,7 @@ import rehypeRaw from 'rehype-raw';
 
 import { toggleHtmlCheckbox, resolveLocalMediaUrl, renderMarkdownImagesInString } from '@/lib/formatUtils';
 import { formatWikiLinksInHtml } from '@/lib/noteLinks';
+import { renderMarkdownTablesInHtml } from '@/lib/tableUtils';
 
 interface MarkdownRendererProps {
   content: string;
@@ -29,7 +30,9 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
   const isHtml = /<[a-z][\s\S]*>/i.test(content);
 
   if (isHtml) {
-    const renderedHtml = formatWikiLinksInHtml(renderMarkdownImagesInString(content));
+    const renderedHtml = formatWikiLinksInHtml(
+      renderMarkdownTablesInHtml(renderMarkdownImagesInString(content))
+    );
     return (
       <div
         className={`keep-rendered ${className}`}
@@ -163,19 +166,34 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
             <hr {...props} className="my-3 border-stone-200 dark:border-stone-700" />
           ),
           table: ({ node, children, ...props }) => (
-            <div className="overflow-x-auto my-2">
-              <table {...props} className="min-w-full text-xs border-collapse border border-stone-200 dark:border-stone-700">
+            <div className="keep-table-wrapper my-3 overflow-x-auto rounded-xl border border-stone-200 dark:border-stone-700/80 shadow-xs bg-white/80 dark:bg-stone-900/60 backdrop-blur-xs">
+              <table {...props} className="keep-table w-full text-left border-collapse text-xs sm:text-sm">
                 {children}
               </table>
             </div>
           ),
+          thead: ({ node, children, ...props }) => (
+            <thead {...props} className="bg-stone-100/90 dark:bg-stone-800/90 text-stone-750 dark:text-stone-200 font-semibold border-b border-stone-200 dark:border-stone-700">
+              {children}
+            </thead>
+          ),
+          tbody: ({ node, children, ...props }) => (
+            <tbody {...props} className="divide-y divide-stone-200/60 dark:divide-stone-800/80">
+              {children}
+            </tbody>
+          ),
+          tr: ({ node, children, ...props }) => (
+            <tr {...props} className="hover:bg-black/[0.03] dark:hover:bg-white/[0.03] transition-colors even:bg-black/[0.015] dark:even:bg-white/[0.015]">
+              {children}
+            </tr>
+          ),
           th: ({ node, children, ...props }) => (
-            <th {...props} className="border border-stone-200 dark:border-stone-700 bg-black/5 dark:bg-white/5 px-2.5 py-1.5 font-semibold text-left">
+            <th {...props} className="px-3.5 py-2.5 font-semibold border-r border-stone-200/50 dark:border-stone-800 last:border-r-0">
               {children}
             </th>
           ),
           td: ({ node, children, ...props }) => (
-            <td {...props} className="border border-stone-200 dark:border-stone-700 px-2.5 py-1.5">
+            <td {...props} className="px-3.5 py-2 border-r border-stone-200/40 dark:border-stone-800/60 last:border-r-0">
               {children}
             </td>
           ),

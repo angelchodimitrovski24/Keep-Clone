@@ -41,7 +41,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
   onClose,
   onOpenDrawingModal,
 }) => {
-  const { notes, updateNote, toggleArchiveNote, trashNote, duplicateNote, setEditingNote } = useKeep();
+  const { notes, updateNote, toggleArchiveNote, trashNote, duplicateNote, setEditingNote, categories } = useKeep();
 
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
@@ -51,6 +51,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
   const [isPinned, setIsPinned] = useState(false);
   const [color, setColor] = useState<NoteColor>('default');
   const [theme, setTheme] = useState<NoteBackgroundTheme>('none');
+  const [category, setCategory] = useState<string | null>(null);
   const [labels, setLabels] = useState<string[]>([]);
   const [reminder, setReminder] = useState<string | null>(null);
   const [images, setImages] = useState<string[]>([]);
@@ -74,6 +75,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
       setIsPinned(note.isPinned || false);
       setColor(note.color || 'default');
       setTheme(note.theme || 'none');
+      setCategory(note.category || null);
       setLabels(note.labels || []);
       setReminder(note.reminder || null);
       setImages(unlocked?.images || note.images || []);
@@ -114,6 +116,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
       todos: finalTodos,
       color,
       theme,
+      category: category || null,
       labels,
       isPinned,
       reminder,
@@ -544,6 +547,32 @@ export const NoteModal: React.FC<NoteModalProps> = ({
                 </span>
               )}
 
+              {/* Category chip */}
+              {category && (() => {
+                const catObj = categories.find((c) => c.name === category);
+                return (
+                  <span
+                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold shadow-2xs"
+                    style={{
+                      backgroundColor: catObj?.color ? `${catObj.color}20` : 'rgba(59, 130, 246, 0.15)',
+                      color: catObj?.color || '#3b82f6',
+                      border: `1px solid ${catObj?.color ? `${catObj.color}40` : 'rgba(59, 130, 246, 0.3)'}`,
+                    }}
+                  >
+                    <span>{catObj?.icon || '📁'}</span>
+                    <span>{category}</span>
+                    <button
+                      type="button"
+                      onClick={() => setCategory(null)}
+                      className="hover:opacity-75 ml-0.5"
+                      title="Remove category"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                );
+              })()}
+
               {labels.map((lbl) => (
                 <span
                   key={lbl}
@@ -578,9 +607,10 @@ export const NoteModal: React.FC<NoteModalProps> = ({
         {/* Footer toolbar */}
         <div className="flex items-center justify-between px-5 py-3.5 border-t border-black/5 dark:border-white/5 bg-black/2 dark:bg-white/2 shrink-0">
           <NoteActions
-            note={{ color, theme, isList, labels, reminder }}
+            note={{ color, theme, isList, labels, reminder, category }}
             onColorChange={setColor}
             onThemeChange={setTheme}
+            onSelectCategory={setCategory}
             onAddImage={handleAddImage}
             onArchiveToggle={() => {
               toggleArchiveNote(note.id);
