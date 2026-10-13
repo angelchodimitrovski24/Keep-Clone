@@ -18,3 +18,19 @@ export function lockNoteInSession(noteId: string): void {
 export function isNoteUnlockedInSession(noteId: string): boolean {
   return unlockedCache.has(noteId);
 }
+
+// In-memory unlocked category set for the current session
+const unlockedCategories = new Set<string>();
+
+export function isCategoryUnlockedInSession(categoryNameOrId: string): boolean {
+  return unlockedCategories.has(categoryNameOrId.toLowerCase());
+}
+
+export function unlockCategoryInSession(categoryNameOrId: string): void {
+  unlockedCategories.add(categoryNameOrId.toLowerCase());
+}
+
+export function lockCategoryInSession(categoryNameOrId: string): void {
+  unlockedCategories.delete(categoryNameOrId.toLowerCase());
+}
+

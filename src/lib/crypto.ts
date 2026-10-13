@@ -134,3 +134,55 @@ export async function decryptNote(
     throw new Error('Incorrect password or corrupted note data');
   }
 }
+
+/**
+ * Derives a PBKDF2 hash for locking an entire category with a password
+ */
+export async function hashCategoryPassword(
+  password: string,
+  saltStr?: string
+): Promise<{ hash: string; salt: string }> {
+  if (typeof window === 'undefined' || !window.crypto?.subtle) {
+    throw new Error('Web Cryptography API is not available');
+  }
+
+  const enc = new TextEncoder();
+  const salt = saltStr ? base64ToBuffer(saltStr) : window.crypto.getRandomValues(new Uint8Array(16));
+
+  const passwordKey = await window.crypto.subtle.importKey(
+    'raw',
+    enc.encode(password),
+    'PBKDF2',
+    false,
+    ['deriveBits']
+  );
+
+  const derivedBits = await window.crypto.subtle.deriveBits(
+    {
+      name: 'PBKDF2',
+      salt: new Uint8Array(salt),
+      iterations: 100000,
+      hash: 'SHA-256',
+    },
+    passwordKey,
+    256
+  );
+
+  return {
+    hash: bufferToBase64(derivedBits),
+    salt: bufferToBase64(salt),
+  };
+}
+
+/**
+ * Verifies category password against stored hash and salt
+ */
+export async function verifyCategoryPassword(
+  password: string,
+  expectedHash: string,
+  salt: string
+): Promise<boolean> {
+  const { hash } = await hashCategoryPassword(password, salt);
+  return hash === expectedHash;
+}
+

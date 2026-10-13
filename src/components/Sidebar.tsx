@@ -11,6 +11,8 @@ import {
   X,
   Settings as SettingsIcon,
   Folder,
+  Lock,
+  Unlock,
 } from 'lucide-react';
 import { useKeep } from '@/context/KeepContext';
 import { ViewFilter } from '@/types/note';
@@ -33,6 +35,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     setCurrentFilter,
     labels,
     categories,
+    unlockedCategoryNames,
     setIsCategoryModalOpen,
     setIsSettingsOpen,
   } = useKeep();
@@ -105,6 +108,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
           {categories.map((cat) => {
             const isActive = currentFilter === 'category' && selectedCategory === cat.name;
+            const isLocked = !!cat.isLocked;
+            const isUnlocked = unlockedCategoryNames.includes(cat.name.toLowerCase());
+
             return (
               <button
                 key={cat.id}
@@ -120,8 +126,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <span className="w-5 h-5 shrink-0 flex items-center justify-center text-base">
                   {cat.icon || '📁'}
                 </span>
-                <span className={`truncate ${isOpen ? 'inline' : 'hidden lg:hidden'}`}>
-                  {cat.name}
+                <span className={`truncate flex-1 flex items-center justify-between ${isOpen ? 'inline-flex' : 'hidden lg:hidden'}`}>
+                  <span className="truncate">{cat.name}</span>
+                  {isLocked && (
+                    <span className="shrink-0 ml-1.5" title={isUnlocked ? 'Unlocked in session' : 'Password protected'}>
+                      {isUnlocked ? (
+                        <Unlock className="w-3.5 h-3.5 text-amber-500" />
+                      ) : (
+                        <Lock className="w-3.5 h-3.5 text-stone-400" />
+                      )}
+                    </span>
+                  )}
                 </span>
               </button>
             );

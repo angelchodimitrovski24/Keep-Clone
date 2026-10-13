@@ -81,6 +81,10 @@ export interface Category {
   name: string;
   color?: string; // Accent color hex
   icon?: string;  // Category emoji / icon
+  isLocked?: boolean;
+  lockPasswordHash?: string;
+  lockSalt?: string;
+  lockHint?: string;
   createdAt: number;
 }
 

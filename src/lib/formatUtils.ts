@@ -1,3 +1,5 @@
+import { renderMarkdownTablesInHtml } from './tableUtils';
+
 export type GoogleKeepFormatCommand =
   | 'h1'
   | 'h2'
@@ -441,7 +443,7 @@ export function convertMarkdownToHtml(content: string): string {
   }
 
   closeOpenLists();
-  return result;
+  return renderMarkdownTablesInHtml(result);
 }
 
 /**

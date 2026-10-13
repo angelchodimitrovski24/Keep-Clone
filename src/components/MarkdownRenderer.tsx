@@ -68,7 +68,9 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
 
   // Otherwise render Markdown fallback
   let checkboxCount = 0;
-  const processedContent = formatWikiLinksInHtml(content);
+  const processedContent = formatWikiLinksInHtml(
+    renderMarkdownTablesInHtml(renderMarkdownImagesInString(content))
+  );
 
   return (
     <div

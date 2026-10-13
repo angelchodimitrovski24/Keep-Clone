@@ -13,6 +13,7 @@ import { CategoryManagerModal } from '@/components/CategoryManagerModal';
 import { CategoryPillsBar } from '@/components/CategoryPillsBar';
 import { LocalFolderModal } from '@/components/LocalFolderModal';
 import { SettingsModal } from '@/components/SettingsModal';
+import { UnlockCategoryModal } from '@/components/UnlockCategoryModal';
 import { Note, NoteDrawing } from '@/types/note';
 
 function KeepApp() {
@@ -119,6 +120,9 @@ function KeepApp() {
         isOpen={isLocalFolderModalOpen}
         onClose={() => setIsLocalFolderModalOpen(false)}
       />
+
+      {/* Category Unlock Modal */}
+      <UnlockCategoryModal />
 
       {/* Settings Modal */}
       <SettingsModal />

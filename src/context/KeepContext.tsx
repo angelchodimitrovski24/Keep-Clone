@@ -22,6 +22,12 @@ import {
   importAllData,
 } from '@/lib/db';
 import { setSyncLocalMediaFolder } from '@/lib/localPaste';
+import { hashCategoryPassword, verifyCategoryPassword } from '@/lib/crypto';
+import {
+  isCategoryUnlockedInSession,
+  unlockCategoryInSession,
+  lockCategoryInSession as lockCategoryInSessionStore,
+} from '@/lib/encryptionSession';
 
 interface KeepContextType {
   notes: Note[];
@@ -92,10 +98,18 @@ interface KeepContextType {
   deleteLabel: (id: string, name: string) => Promise<void>;
   renameLabel: (id: string, oldName: string, newName: string) => Promise<void>;
 
-  // Category CRUD
+  // Category CRUD & Locking
   createCategory: (name: string, color?: string, icon?: string) => Promise<Category | null>;
   updateCategory: (id: string, updates: { name: string; color?: string; icon?: string }) => Promise<void>;
   deleteCategory: (id: string, name: string) => Promise<void>;
+  lockCategory: (categoryId: string, password: string, hint?: string) => Promise<void>;
+  removeCategoryLock: (categoryId: string, password: string) => Promise<boolean>;
+  unlockCategoryForSession: (categoryNameOrId: string, password: string) => Promise<boolean>;
+  relockCategoryInSession: (categoryNameOrId: string) => void;
+  isCategoryLocked: (categoryNameOrId: string) => boolean;
+  unlockedCategoryNames: string[];
+  unlockCategoryModalTarget: Category | null;
+  setUnlockCategoryModalTarget: (category: Category | null) => void;
 
   // Backup / Data
   exportDataJSON: () => Promise<void>;
@@ -125,6 +139,8 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
   const [drawingNoteId, setDrawingNoteId] = useState<string | null>(null);
   const [isLabelModalOpen, setIsLabelModalOpen] = useState(false);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [unlockedCategoryNames, setUnlockedCategoryNames] = useState<string[]>([]);
+  const [unlockCategoryModalTarget, setUnlockCategoryModalTarget] = useState<Category | null>(null);
   const [localMediaFolder, setLocalMediaFolderState] = useState('');
   const [isLocalFolderModalOpen, setIsLocalFolderModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -320,20 +336,29 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
   }, [themeMode]);
 
   // View Filter setter
-  const setCurrentFilter = useCallback((filter: ViewFilter, paramName?: string) => {
-    setCurrentFilterState(filter);
-    if (filter === 'label') {
-      setSelectedLabel(paramName || null);
-      setSelectedCategory(null);
-    } else if (filter === 'category') {
-      setSelectedCategory(paramName || null);
-      setSelectedLabel(null);
-    } else {
-      setSelectedLabel(null);
-      setSelectedCategory(null);
-    }
-    setSelectedNoteIds([]);
-  }, []);
+  const setCurrentFilter = useCallback(
+    (filter: ViewFilter, paramName?: string) => {
+      setCurrentFilterState(filter);
+      if (filter === 'label') {
+        setSelectedLabel(paramName || null);
+        setSelectedCategory(null);
+      } else if (filter === 'category') {
+        setSelectedCategory(paramName || null);
+        setSelectedLabel(null);
+        if (paramName) {
+          const cat = categories.find((c) => c.name.toLowerCase() === paramName.toLowerCase());
+          if (cat?.isLocked && !isCategoryUnlockedInSession(cat.name)) {
+            setUnlockCategoryModalTarget(cat);
+          }
+        }
+      } else {
+        setSelectedLabel(null);
+        setSelectedCategory(null);
+      }
+      setSelectedNoteIds([]);
+    },
+    [categories]
+  );
 
   // Font Size setter
   const setFontSize = useCallback((size: FontSizeOption) => {
@@ -763,6 +788,90 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
     [selectedCategory, setCurrentFilter]
   );
 
+  const isCategoryLocked = useCallback(
+    (categoryNameOrId: string): boolean => {
+      const q = categoryNameOrId.toLowerCase().trim();
+      const cat = categories.find((c) => c.name.toLowerCase() === q || c.id === q);
+      if (!cat || !cat.isLocked) return false;
+      return (
+        !isCategoryUnlockedInSession(cat.name) &&
+        !unlockedCategoryNames.includes(cat.name.toLowerCase())
+      );
+    },
+    [categories, unlockedCategoryNames]
+  );
+
+  const lockCategory = useCallback(
+    async (categoryId: string, password: string, hint?: string) => {
+      const cat = categories.find((c) => c.id === categoryId);
+      if (!cat) return;
+      const { hash, salt } = await hashCategoryPassword(password);
+      const updated: Category = {
+        ...cat,
+        isLocked: true,
+        lockPasswordHash: hash,
+        lockSalt: salt,
+        lockHint: hint?.trim() || undefined,
+      };
+      await saveCategoryToDB(updated);
+      setCategories((prev) => prev.map((c) => (c.id === categoryId ? updated : c)));
+      lockCategoryInSessionStore(cat.name);
+      setUnlockedCategoryNames((prev) => prev.filter((n) => n !== cat.name.toLowerCase()));
+    },
+    [categories]
+  );
+
+  const removeCategoryLock = useCallback(
+    async (categoryId: string, password: string): Promise<boolean> => {
+      const cat = categories.find((c) => c.id === categoryId);
+      if (!cat || !cat.isLocked || !cat.lockPasswordHash || !cat.lockSalt) return false;
+      const isValid = await verifyCategoryPassword(password, cat.lockPasswordHash, cat.lockSalt);
+      if (!isValid) return false;
+
+      const updated: Category = {
+        ...cat,
+        isLocked: false,
+        lockPasswordHash: undefined,
+        lockSalt: undefined,
+        lockHint: undefined,
+      };
+      await saveCategoryToDB(updated);
+      setCategories((prev) => prev.map((c) => (c.id === categoryId ? updated : c)));
+      lockCategoryInSessionStore(cat.name);
+      setUnlockedCategoryNames((prev) => prev.filter((n) => n !== cat.name.toLowerCase()));
+      return true;
+    },
+    [categories]
+  );
+
+  const unlockCategoryForSession = useCallback(
+    async (categoryNameOrId: string, password: string): Promise<boolean> => {
+      const q = categoryNameOrId.toLowerCase().trim();
+      const cat = categories.find((c) => c.name.toLowerCase() === q || c.id === q);
+      if (!cat || !cat.isLocked || !cat.lockPasswordHash || !cat.lockSalt) return false;
+      const isValid = await verifyCategoryPassword(password, cat.lockPasswordHash, cat.lockSalt);
+      if (!isValid) return false;
+
+      unlockCategoryInSession(cat.name);
+      setUnlockedCategoryNames((prev) =>
+        Array.from(new Set([...prev, cat.name.toLowerCase()]))
+      );
+      return true;
+    },
+    [categories]
+  );
+
+  const relockCategoryInSession = useCallback(
+    (categoryNameOrId: string) => {
+      const q = categoryNameOrId.toLowerCase().trim();
+      const cat = categories.find((c) => c.name.toLowerCase() === q || c.id === q);
+      if (!cat) return;
+      lockCategoryInSessionStore(cat.name);
+      setUnlockedCategoryNames((prev) => prev.filter((n) => n !== cat.name.toLowerCase()));
+    },
+    [categories]
+  );
+
   // Backup & Import
   const exportDataJSON = useCallback(async () => {
     const data = await exportAllData();
@@ -853,6 +962,14 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
       createCategory,
       updateCategory,
       deleteCategory,
+      lockCategory,
+      removeCategoryLock,
+      unlockCategoryForSession,
+      relockCategoryInSession,
+      isCategoryLocked,
+      unlockedCategoryNames,
+      unlockCategoryModalTarget,
+      setUnlockCategoryModalTarget,
       exportDataJSON,
       importDataJSON,
     }),
@@ -917,6 +1034,13 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
       createCategory,
       updateCategory,
       deleteCategory,
+      lockCategory,
+      removeCategoryLock,
+      unlockCategoryForSession,
+      relockCategoryInSession,
+      isCategoryLocked,
+      unlockedCategoryNames,
+      unlockCategoryModalTarget,
       exportDataJSON,
       importDataJSON,
     ]

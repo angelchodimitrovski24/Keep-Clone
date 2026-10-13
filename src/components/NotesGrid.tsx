@@ -4,7 +4,7 @@ import React, { useMemo } from 'react';
 import { useKeep } from '@/context/KeepContext';
 import { NoteCard } from './NoteCard';
 import { Note } from '@/types/note';
-import { Trash2 } from 'lucide-react';
+import { Trash2, Lock } from 'lucide-react';
 
 interface NotesGridProps {
   onSelectNote: (note: Note) => void;
@@ -17,12 +17,15 @@ export const NotesGrid: React.FC<NotesGridProps> = ({
 }) => {
   const {
     notes,
+    categories,
     currentFilter,
     selectedLabel,
     selectedCategory,
     searchQuery,
     layoutMode,
     emptyTrash,
+    unlockedCategoryNames,
+    setUnlockCategoryModalTarget,
   } = useKeep();
 
   // Filter notes based on current view & search query
@@ -64,6 +67,16 @@ export const NotesGrid: React.FC<NotesGridProps> = ({
     });
   }, [notes, currentFilter, selectedLabel, selectedCategory, searchQuery]);
 
+  const activeCategory = useMemo(
+    () => (selectedCategory ? categories.find((c) => c.name === selectedCategory) : null),
+    [selectedCategory, categories]
+  );
+
+  const isCurrentCategoryLocked = useMemo(() => {
+    if (currentFilter !== 'category' || !activeCategory?.isLocked) return false;
+    return !unlockedCategoryNames.includes(activeCategory.name.toLowerCase());
+  }, [currentFilter, activeCategory, unlockedCategoryNames]);
+
   // Separate pinned vs unpinned notes (relevant for notes and category view)
   const isNotesOrCategory = currentFilter === 'notes' || currentFilter === 'category';
   const pinnedNotes = useMemo(
@@ -80,6 +93,43 @@ export const NotesGrid: React.FC<NotesGridProps> = ({
     layoutMode === 'grid'
       ? 'columns-1 sm:columns-2 md:columns-3 lg:columns-4 xl:columns-5 gap-4'
       : 'max-w-2xl mx-auto flex flex-col gap-3';
+
+  // If viewing a category that is currently locked, show unlock prompt screen
+  if (isCurrentCategoryLocked && activeCategory) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-center select-none animate-in fade-in duration-200">
+        <div
+          className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4 text-3xl shadow-xs"
+          style={{
+            backgroundColor: activeCategory.color ? `${activeCategory.color}20` : 'rgba(245, 158, 11, 0.15)',
+            color: activeCategory.color || '#f59e0b',
+          }}
+        >
+          <Lock className="w-8 h-8" />
+        </div>
+        <h3 className="text-xl font-bold text-stone-900 dark:text-stone-100 mb-2 flex items-center gap-2">
+          <span>{activeCategory.icon || '📁'}</span>
+          <span>&quot;{activeCategory.name}&quot; is Locked</span>
+        </h3>
+        <p className="text-sm text-stone-500 dark:text-stone-400 max-w-sm mb-6">
+          This category is protected with a password. Enter your password to view notes in this category.
+        </p>
+        {activeCategory.lockHint && (
+          <p className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/40 px-3 py-1 rounded-full mb-6">
+            Hint: {activeCategory.lockHint}
+          </p>
+        )}
+        <button
+          type="button"
+          onClick={() => setUnlockCategoryModalTarget(activeCategory)}
+          className="px-5 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-sm font-semibold shadow-xs flex items-center gap-2 transition-all hover:shadow"
+        >
+          <Lock className="w-4 h-4" />
+          Unlock Category
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full">

@@ -13,12 +13,15 @@ import {
   ChevronRight,
   Link2,
   Lock,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { Note, NoteColor, NoteBackgroundTheme, TodoItem, NoteDrawing } from '@/types/note';
 import { getNoteColorClasses } from '@/lib/constants';
 import { NoteActions } from './NoteActions';
 import { KeepFormattingBar } from './KeepFormattingBar';
 import { KeepWysiwygEditor, KeepWysiwygEditorHandle } from './KeepWysiwygEditor';
+import { MarkdownRenderer } from './MarkdownRenderer';
 import { useKeep } from '@/context/KeepContext';
 import { GoogleKeepFormatCommand } from '@/lib/formatUtils';
 import { extractClipboardPayload, copyFilesToLocalFolder } from '@/lib/localPaste';
@@ -41,7 +44,17 @@ export const NoteModal: React.FC<NoteModalProps> = ({
   onClose,
   onOpenDrawingModal,
 }) => {
-  const { notes, updateNote, toggleArchiveNote, trashNote, duplicateNote, setEditingNote, categories } = useKeep();
+  const {
+    notes,
+    updateNote,
+    toggleArchiveNote,
+    trashNote,
+    duplicateNote,
+    setEditingNote,
+    categories,
+    unlockedCategoryNames,
+    setUnlockCategoryModalTarget,
+  } = useKeep();
 
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
@@ -59,10 +72,21 @@ export const NoteModal: React.FC<NoteModalProps> = ({
   const [linkedNoteIds, setLinkedNoteIds] = useState<string[]>([]);
   const [showCompletedTodos, setShowCompletedTodos] = useState(true);
   const [isFormattingOpen, setIsFormattingOpen] = useState(false);
+  const [isPreviewMode, setIsPreviewMode] = useState(false);
   const [showEncryptModal, setShowEncryptModal] = useState(false);
   const [showLinkModal, setShowLinkModal] = useState(false);
 
   const editorRef = useRef<KeepWysiwygEditorHandle | null>(null);
+
+  const categoryObj = useMemo(
+    () => (note?.category ? categories.find((c) => c.name === note.category) : null),
+    [note?.category, categories]
+  );
+
+  const isCategoryLocked = useMemo(() => {
+    if (!categoryObj?.isLocked) return false;
+    return !unlockedCategoryNames.includes(categoryObj.name.toLowerCase());
+  }, [categoryObj, unlockedCategoryNames]);
 
   // Sync state when note opens
   useEffect(() => {
@@ -82,6 +106,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
       setDrawings(note.drawings || []);
       setLinkedNoteIds(note.linkedNoteIds || []);
       setIsFormattingOpen(false);
+      setIsPreviewMode(false);
     }
   }, [note]);
 
@@ -324,22 +349,83 @@ export const NoteModal: React.FC<NoteModalProps> = ({
               </span>
             )}
           </div>
-          <button
-            type="button"
-            onClick={() => setIsPinned(!isPinned)}
-            className={`p-2 rounded-full transition-colors ${
-              isPinned
-                ? 'text-amber-500 hover:bg-black/10'
-                : 'text-stone-400 hover:bg-black/10'
-            }`}
-            title={isPinned ? 'Unpin note' : 'Pin note'}
-          >
-            <Pin className={`w-5 h-5 ${isPinned ? 'fill-current' : ''}`} />
-          </button>
+          <div className="flex items-center gap-1">
+            {!isList && (
+              <button
+                type="button"
+                onClick={() => setIsPreviewMode(!isPreviewMode)}
+                className={`p-2 rounded-full transition-colors ${
+                  isPreviewMode
+                    ? 'text-amber-600 bg-amber-100 dark:bg-amber-950/60 dark:text-amber-400'
+                    : 'text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-black/10'
+                }`}
+                title={isPreviewMode ? 'Switch to Edit mode' : 'Preview markdown rendering (tables, links, etc.)'}
+              >
+                {isPreviewMode ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setIsPinned(!isPinned)}
+              className={`p-2 rounded-full transition-colors ${
+                isPinned
+                  ? 'text-amber-500 hover:bg-black/10'
+                  : 'text-stone-400 hover:bg-black/10'
+              }`}
+              title={isPinned ? 'Unpin note' : 'Pin note'}
+            >
+              <Pin className={`w-5 h-5 ${isPinned ? 'fill-current' : ''}`} />
+            </button>
+          </div>
         </div>
 
-        {/* Note Body: Direct writing like Google Keep */}
-        <div className="px-6 py-3 overflow-y-auto flex-1 flex flex-col justify-between space-y-4">
+        {/* Note Body or Locked Category Prompt */}
+        {isCategoryLocked && categoryObj ? (
+          <div className="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-4">
+            <div
+              className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl shadow-xs"
+              style={{
+                backgroundColor: categoryObj.color ? `${categoryObj.color}25` : 'rgba(245, 158, 11, 0.15)',
+                color: categoryObj.color || '#f59e0b',
+              }}
+            >
+              <Lock className="w-8 h-8" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-stone-900 dark:text-stone-100 flex items-center justify-center gap-1.5">
+                <span>{categoryObj.icon || '📁'}</span>
+                <span>Category &quot;{categoryObj.name}&quot; is Locked</span>
+              </h3>
+              <p className="text-xs text-stone-500 dark:text-stone-400 mt-1 max-w-sm">
+                This note belongs to a password protected category. Enter the category password to view and edit its content.
+              </p>
+            </div>
+            {categoryObj.lockHint && (
+              <span className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/40 px-3 py-1 rounded-full">
+                Hint: {categoryObj.lockHint}
+              </span>
+            )}
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 text-xs font-semibold text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 rounded-xl"
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={() => setUnlockCategoryModalTarget(categoryObj)}
+                className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-colors"
+              >
+                <Lock className="w-3.5 h-3.5" />
+                Unlock Category
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="px-6 py-3 overflow-y-auto flex-1 flex flex-col justify-between space-y-4">
           <div>
             {isList ? (
               <div className="space-y-2">
@@ -454,6 +540,22 @@ export const NoteModal: React.FC<NoteModalProps> = ({
                     )}
                   </div>
                 )}
+              </div>
+            ) : isPreviewMode ? (
+              <div className="min-h-[240px] py-1 text-sm text-stone-800 dark:text-stone-200 leading-relaxed overflow-x-auto">
+                <MarkdownRenderer
+                  content={content}
+                  onOpenLinkedNote={(titleOrId) => {
+                    const q = titleOrId.toLowerCase().trim();
+                    const found = notes.find(
+                      (n) => n.id.toLowerCase() === q || (n.title && n.title.toLowerCase() === q)
+                    );
+                    if (found) {
+                      handleSaveAndClose();
+                      setEditingNote(found);
+                    }
+                  }}
+                />
               </div>
             ) : (
               <KeepWysiwygEditor
@@ -646,7 +748,9 @@ export const NoteModal: React.FC<NoteModalProps> = ({
             Close
           </button>
         </div>
-      </div>
+      </>
+    )}
+  </div>
 
       {/* Encrypt Settings Dialog */}
       <EncryptNoteModal

@@ -47,13 +47,25 @@ export const NoteCard: React.FC<NoteCardProps> = ({
     selectedNoteIds,
     toggleSelectNote,
     setEditingNote,
+    unlockedCategoryNames,
+    setUnlockCategoryModalTarget,
   } = useKeep();
 
   const [showUnlockModal, setShowUnlockModal] = useState(false);
   const [showEncryptModal, setShowEncryptModal] = useState(false);
   const [showLinkModal, setShowLinkModal] = useState(false);
 
-  const isLocked = note.isEncrypted && !isNoteUnlockedInSession(note.id);
+  const categoryObj = useMemo(
+    () => (note.category ? categories.find((c) => c.name === note.category) : null),
+    [note.category, categories]
+  );
+
+  const isCategoryLocked = useMemo(() => {
+    if (!categoryObj?.isLocked) return false;
+    return !unlockedCategoryNames.includes(categoryObj.name.toLowerCase());
+  }, [categoryObj, unlockedCategoryNames]);
+
+  const isLocked = !isCategoryLocked && note.isEncrypted && !isNoteUnlockedInSession(note.id);
   const unlockedPayload = note.isEncrypted ? getUnlockedNote(note.id) : undefined;
 
   // Use decrypted payload if unlocked
@@ -73,15 +85,14 @@ export const NoteCard: React.FC<NoteCardProps> = ({
     [activeNote, notes]
   );
 
-  const categoryObj = useMemo(
-    () => (note.category ? categories.find((c) => c.name === note.category) : null),
-    [note.category, categories]
-  );
-
   const isSelected = selectedNoteIds.includes(note.id);
   const colorClasses = getNoteColorClasses(note.color, note.theme);
 
   const handleCardClick = () => {
+    if (isCategoryLocked && categoryObj) {
+      setUnlockCategoryModalTarget(categoryObj);
+      return;
+    }
     if (isLocked) {
       setShowUnlockModal(true);
       return;
@@ -188,8 +199,32 @@ export const NoteCard: React.FC<NoteCardProps> = ({
           </div>
         )}
 
-        {/* Locked Note Preview */}
-        {isLocked ? (
+        {/* Category Locked Note Preview */}
+        {isCategoryLocked ? (
+          <div className="p-5 py-7 flex flex-col items-center justify-center text-center gap-2 cursor-pointer">
+            <div
+              className="w-12 h-12 rounded-2xl flex items-center justify-center mb-1 text-2xl shadow-2xs"
+              style={{
+                backgroundColor: categoryObj?.color ? `${categoryObj.color}25` : 'rgba(245, 158, 11, 0.15)',
+                color: categoryObj?.color || '#f59e0b',
+              }}
+            >
+              <Lock className="w-6 h-6" />
+            </div>
+            <h4 className="font-semibold text-stone-900 dark:text-stone-100 text-sm flex items-center gap-1.5">
+              <span>{categoryObj?.icon || '📁'}</span>
+              <span>{categoryObj?.name || 'Category'} Note</span>
+            </h4>
+            <p className="text-xs text-stone-500 max-w-[200px]">
+              Category is password protected. Click to unlock.
+            </p>
+            {categoryObj?.lockHint && (
+              <span className="mt-1 text-[11px] text-amber-800 dark:text-amber-200 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/20">
+                Hint: {categoryObj.lockHint}
+              </span>
+            )}
+          </div>
+        ) : isLocked ? (
           <div className="p-5 py-7 flex flex-col items-center justify-center text-center gap-2 cursor-pointer">
             <div className="w-12 h-12 rounded-2xl bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center mb-1">
               <Lock className="w-6 h-6" />
@@ -352,37 +387,47 @@ export const NoteCard: React.FC<NoteCardProps> = ({
         {/* Themed Background Illustration */}
         <NoteThemeArtwork theme={activeNote.theme} />
 
-        {/* Note Action Toolbar */}
-        <div className="px-2 py-1.5 opacity-90 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity flex items-center justify-between border-t border-black/5 dark:border-white/5 sm:border-transparent">
-          <NoteActions
-            note={activeNote}
-            isTrash={note.isTrash}
-            onColorChange={(color) => updateNote(note.id, { color })}
-            onThemeChange={(theme) => updateNote(note.id, { theme })}
-            onArchiveToggle={() => toggleArchiveNote(note.id)}
-            onDelete={() => trashNote(note.id)}
-            onRestore={() => restoreNote(note.id)}
-            onDeletePermanently={() => deleteNotePermanently(note.id)}
-            onDuplicate={() => duplicateNote(note.id)}
-            onAddImage={handleAddImage}
-            onEncrypt={() => setShowEncryptModal(true)}
-            onLinkNote={() => setShowLinkModal(true)}
-            onSelectCategory={(category) => updateNote(note.id, { category })}
-            onToggleChecklist={() =>
-              updateNote(note.id, {
-                isList: !note.isList,
-                todos: note.isList
-                  ? []
-                  : activeNote.content
-                      .split('\n')
-                      .filter((l) => l.trim())
-                      .map((l, i) => ({ id: 'todo-' + i, text: l, completed: false })),
-              })
-            }
-            onAddReminder={(reminder) => updateNote(note.id, { reminder })}
-            onToggleLabel={handleToggleLabel}
-          />
-        </div>
+        {/* Note Action Toolbar or Locked Category Notice */}
+        {isCategoryLocked ? (
+          <div className="px-3 py-2 flex items-center justify-between border-t border-black/5 dark:border-white/5 text-[11px] text-amber-700 dark:text-amber-400 font-medium">
+            <span className="flex items-center gap-1.5">
+              <Lock className="w-3 h-3 text-amber-500" />
+              <span>Category Locked</span>
+            </span>
+            <span className="text-stone-400 hover:text-amber-600 transition-colors">Click to unlock</span>
+          </div>
+        ) : (
+          <div className="px-2 py-1.5 opacity-90 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity flex items-center justify-between border-t border-black/5 dark:border-white/5 sm:border-transparent">
+            <NoteActions
+              note={activeNote}
+              isTrash={note.isTrash}
+              onColorChange={(color) => updateNote(note.id, { color })}
+              onThemeChange={(theme) => updateNote(note.id, { theme })}
+              onArchiveToggle={() => toggleArchiveNote(note.id)}
+              onDelete={() => trashNote(note.id)}
+              onRestore={() => restoreNote(note.id)}
+              onDeletePermanently={() => deleteNotePermanently(note.id)}
+              onDuplicate={() => duplicateNote(note.id)}
+              onAddImage={handleAddImage}
+              onEncrypt={() => setShowEncryptModal(true)}
+              onLinkNote={() => setShowLinkModal(true)}
+              onSelectCategory={(category) => updateNote(note.id, { category })}
+              onToggleChecklist={() =>
+                updateNote(note.id, {
+                  isList: !note.isList,
+                  todos: note.isList
+                    ? []
+                    : activeNote.content
+                        .split('\n')
+                        .filter((l) => l.trim())
+                        .map((l, i) => ({ id: 'todo-' + i, text: l, completed: false })),
+                })
+              }
+              onAddReminder={(reminder) => updateNote(note.id, { reminder })}
+              onToggleLabel={handleToggleLabel}
+            />
+          </div>
+        )}
       </div>
 
       {/* Unlock Dialog for Encrypted Note */}
