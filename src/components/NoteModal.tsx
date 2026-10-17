@@ -20,6 +20,7 @@ import {
   Play,
   Pause,
   Square,
+  Share2,
 } from 'lucide-react';
 import { Note, NoteColor, NoteBackgroundTheme, TodoItem, NoteDrawing } from '@/types/note';
 import { getNoteColorClasses } from '@/lib/constants';
@@ -90,6 +91,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
     resumeReadingStopwatch,
     stopAndSaveReadingStopwatch,
     getNoteReadingStats,
+    setSharingNote,
   } = useKeep();
 
   const [title, setTitle] = useState('');
@@ -512,6 +514,28 @@ export const NoteModal: React.FC<NoteModalProps> = ({
             )}
             <button
               type="button"
+              onClick={() => {
+                setSharingNote({
+                  ...note,
+                  title,
+                  content,
+                  isList,
+                  todos,
+                  color,
+                  theme,
+                  labels,
+                  category,
+                  images,
+                  drawings,
+                });
+              }}
+              className="p-2 rounded-full text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-black/10 transition-colors"
+              title="Share note (Short link & images)"
+            >
+              <Share2 className="w-5 h-5" />
+            </button>
+            <button
+              type="button"
               onClick={() => setIsPinned(!isPinned)}
               className={`p-2 rounded-full transition-colors ${
                 isPinned
@@ -874,6 +898,21 @@ export const NoteModal: React.FC<NoteModalProps> = ({
             onDuplicate={async () => {
               await handleSaveAndClose();
               await duplicateNote(note.id);
+            }}
+            onShare={() => {
+              setSharingNote({
+                ...note,
+                title,
+                content,
+                isList,
+                todos,
+                color,
+                theme,
+                labels,
+                category,
+                images,
+                drawings,
+              });
             }}
             onToggleChecklist={handleToggleChecklist}
             onAddReminder={setReminder}

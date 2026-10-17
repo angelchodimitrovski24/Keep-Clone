@@ -137,3 +137,24 @@ export type LayoutViewMode = 'grid' | 'list';
 
 export type FontSizeOption = 'small' | 'medium' | 'large' | 'xlarge' | 'huge' | 'max' | string;
 export type AppThemeMode = 'system' | 'light' | 'dark';
+
+export interface SharedNoteData {
+  id: string; // Short link ID, e.g. "aB3x9z"
+  originalNoteId?: string;
+  title: string;
+  content: string;
+  isList: boolean;
+  todos: TodoItem[];
+  color: NoteColor;
+  theme: NoteBackgroundTheme;
+  labels: string[];
+  category?: string | null;
+  images: string[];
+  drawings?: NoteDrawing[];
+  audioRecordings?: { id: string; url: string; duration: number; createdAt: number }[];
+  createdAt: number;
+  updatedAt: number;
+  sharedAt: number;
+  views?: number;
+}
+

@@ -18,6 +18,7 @@ import {
   Folder,
   History,
   Timer,
+  Share2,
 } from 'lucide-react';
 import { Note, NoteColor, NoteBackgroundTheme } from '@/types/note';
 import { NOTE_COLORS, NOTE_THEMES } from '@/lib/constants';
@@ -32,6 +33,7 @@ interface NoteActionsProps {
   onRestore?: () => void;
   onDeletePermanently?: () => void;
   onDuplicate?: () => void;
+  onShare?: () => void;
   onAddImage?: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onToggleChecklist?: () => void;
   onAddReminder?: (dateStr: string) => void;
@@ -57,6 +59,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
   onRestore,
   onDeletePermanently,
   onDuplicate,
+  onShare,
   onAddImage,
   onToggleChecklist,
   onAddReminder,
@@ -411,6 +414,21 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
         </button>
       )}
 
+      {/* Share Note action */}
+      {onShare && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onShare();
+          }}
+          className="p-2 sm:p-1.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
+          title="Share note (Short link & images)"
+        >
+          <Share2 className="w-4 h-4" />
+        </button>
+      )}
+
       {/* More Options dropdown (...) */}
       <div className="relative">
         <button
@@ -433,6 +451,20 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
             onClick={(e) => e.stopPropagation()}
             className="absolute left-0 bottom-full mb-2 w-52 py-1.5 bg-white dark:bg-[#2d2e30] rounded-xl shadow-2xl border border-stone-200 dark:border-stone-700 z-50 text-sm font-medium animate-in fade-in zoom-in-95 duration-100"
           >
+            {onShare && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMenu(false);
+                  onShare();
+                }}
+                className="w-full text-left px-3.5 py-2.5 sm:py-2 flex items-center gap-2.5 hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200"
+              >
+                <Share2 className="w-4 h-4 text-amber-500" />
+                Share note (Short link)
+              </button>
+            )}
+
             {onDelete && (
               <button
                 type="button"

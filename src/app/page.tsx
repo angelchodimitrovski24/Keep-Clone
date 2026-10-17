@@ -17,6 +17,8 @@ import { UnlockCategoryModal } from '@/components/UnlockCategoryModal';
 import { NoteVersionModal } from '@/components/NoteVersionModal';
 import { ReadingStatsView } from '@/components/ReadingStatsView';
 import { ImportSummaryModal } from '@/components/ImportSummaryModal';
+import { ShareNoteModal } from '@/components/ShareNoteModal';
+import { GoogleDriveModal } from '@/components/GoogleDriveModal';
 import { Note, NoteDrawing } from '@/types/note';
 
 function KeepApp() {
@@ -37,6 +39,8 @@ function KeepApp() {
     currentFilter,
     importSummary,
     setImportSummary,
+    sharingNote,
+    setSharingNote,
   } = useKeep();
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -145,6 +149,16 @@ function KeepApp() {
       <ImportSummaryModal
         result={importSummary}
         onClose={() => setImportSummary(null)}
+      />
+
+      {/* Google Drive Cloud Backup & Restore Modal */}
+      <GoogleDriveModal />
+
+      {/* Share Note Modal with Short Link */}
+      <ShareNoteModal
+        note={sharingNote}
+        isOpen={!!sharingNote}
+        onClose={() => setSharingNote(null)}
       />
     </div>
   );

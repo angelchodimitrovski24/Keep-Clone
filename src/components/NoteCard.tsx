@@ -53,6 +53,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
     setVersionHistoryNote,
     activeStopwatch,
     startReadingStopwatch,
+    setSharingNote,
   } = useKeep();
 
   const [showUnlockModal, setShowUnlockModal] = useState(false);
@@ -435,6 +436,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
               onRestore={() => restoreNote(note.id)}
               onDeletePermanently={() => deleteNotePermanently(note.id)}
               onDuplicate={() => duplicateNote(note.id)}
+              onShare={() => setSharingNote(activeNote)}
               onAddImage={handleAddImage}
               onEncrypt={() => setShowEncryptModal(true)}
               onLinkNote={() => setShowLinkModal(true)}

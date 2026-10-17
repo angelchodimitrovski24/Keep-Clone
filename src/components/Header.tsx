@@ -22,6 +22,7 @@ import {
   Timer,
   Play,
   Pause,
+  Cloud,
 } from 'lucide-react';
 import { useKeep } from '@/context/KeepContext';
 import { NOTE_COLORS } from '@/lib/constants';
@@ -53,6 +54,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
     localMediaFolder,
     setIsLocalFolderModalOpen,
     setIsSettingsOpen,
+    setIsGoogleDriveModalOpen,
     activeStopwatch,
     pauseReadingStopwatch,
     resumeReadingStopwatch,
@@ -335,6 +337,16 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
           title="Settings (Font size, Theme, Backup)"
         >
           <SettingsIcon className="w-5 h-5" />
+        </button>
+
+        {/* Google Drive Cloud Backup & Restore */}
+        <button
+          type="button"
+          onClick={() => setIsGoogleDriveModalOpen(true)}
+          className="p-2.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors text-blue-600 dark:text-blue-400 hidden sm:flex"
+          title="Google Drive Cloud Backup & Restore (Export & Import)"
+        >
+          <Cloud className="w-5 h-5" />
         </button>
 
         {/* Export Backup Bundle (ZIP) */}

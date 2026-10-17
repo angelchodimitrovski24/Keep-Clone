@@ -41,14 +41,15 @@ function sanitizeFilename(name: string): string {
 }
 
 /**
- * Exports all Google Keep data as a complete ZIP archive.
- * Inside the ZIP:
- * - data.json: Complete structured metadata and note records
- * - media/images/: Extracted photo attachments as standalone image files
- * - media/drawings/: Extracted canvas drawings as standalone PNG files
- * - notes/: Human-readable Markdown (.md) exports of each note
+ * Generates the full Google Keep backup ZIP blob and metadata.
+ * Can be downloaded locally or uploaded directly to Google Drive.
  */
-export async function exportBackupZip(): Promise<void> {
+export async function generateBackupZipBlob(): Promise<{
+  blob: Blob;
+  filename: string;
+  notesCount: number;
+  mediaCount: number;
+}> {
   const rawData = await exportAllData();
   const zip = new JSZip();
 
@@ -145,12 +146,28 @@ Archive Structure:
     compressionOptions: { level: 6 },
   });
 
-  // Trigger browser download
   const dateStr = new Date().toISOString().slice(0, 10);
-  const downloadUrl = URL.createObjectURL(zipBlob);
+  const filename = `google-keep-backup-${dateStr}.zip`;
+
+  return {
+    blob: zipBlob,
+    filename,
+    notesCount: rawData.notes.length,
+    mediaCount,
+  };
+}
+
+/**
+ * Exports all Google Keep data as a complete ZIP archive and initiates a local browser download.
+ */
+export async function exportBackupZip(): Promise<void> {
+  const { blob, filename } = await generateBackupZipBlob();
+
+  // Trigger browser download
+  const downloadUrl = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = downloadUrl;
-  anchor.download = `google-keep-backup-${dateStr}.zip`;
+  anchor.download = filename;
   document.body.appendChild(anchor);
   anchor.click();
   document.body.removeChild(anchor);

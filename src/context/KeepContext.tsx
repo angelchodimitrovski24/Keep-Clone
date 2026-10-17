@@ -73,6 +73,8 @@ interface KeepContextType {
   localMediaFolder: string;
   isLocalFolderModalOpen: boolean;
   isSettingsOpen: boolean;
+  isGoogleDriveModalOpen: boolean;
+  sharingNote: Note | null;
 
   // Setters
   setCurrentFilter: (filter: ViewFilter, paramName?: string) => void;
@@ -83,6 +85,7 @@ interface KeepContextType {
   setFontSize: (size: FontSizeOption) => void;
   setEditingNote: (note: Note | null) => void;
   setVersionHistoryNote: (note: Note | null) => void;
+  setSharingNote: (note: Note | null) => void;
   restoreNoteVersion: (noteId: string, versionId: string) => Promise<void>;
   createNoteSnapshot: (noteId: string, summary?: string) => Promise<void>;
   deleteNoteVersion: (noteId: string, versionId: string) => Promise<void>;
@@ -92,6 +95,7 @@ interface KeepContextType {
   setLocalMediaFolder: (folder: string) => void;
   setIsLocalFolderModalOpen: (open: boolean) => void;
   setIsSettingsOpen: (open: boolean) => void;
+  setIsGoogleDriveModalOpen: (open: boolean) => void;
 
   // Selection
   toggleSelectNote: (id: string) => void;
@@ -190,6 +194,8 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
   const [localMediaFolder, setLocalMediaFolderState] = useState('');
   const [isLocalFolderModalOpen, setIsLocalFolderModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isGoogleDriveModalOpen, setIsGoogleDriveModalOpen] = useState(false);
+  const [sharingNote, setSharingNote] = useState<Note | null>(null);
 
   // Initialize data from IndexedDB
   const loadInitialData = useCallback(async () => {
@@ -1246,6 +1252,11 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
       localMediaFolder,
       isLocalFolderModalOpen,
       isSettingsOpen,
+      setIsSettingsOpen,
+      isGoogleDriveModalOpen,
+      setIsGoogleDriveModalOpen,
+      sharingNote,
+      setSharingNote,
       setCurrentFilter,
       setSearchQuery,
       setLayoutMode,
@@ -1270,7 +1281,6 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
       setIsCategoryModalOpen,
       setLocalMediaFolder,
       setIsLocalFolderModalOpen,
-      setIsSettingsOpen,
       toggleSelectNote,
       clearSelection,
       selectAllNotes,
@@ -1337,6 +1347,9 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
       localMediaFolder,
       isLocalFolderModalOpen,
       isSettingsOpen,
+      isGoogleDriveModalOpen,
+      sharingNote,
+      setSharingNote,
       setCurrentFilter,
       setSearchQuery,
       setLayoutMode,

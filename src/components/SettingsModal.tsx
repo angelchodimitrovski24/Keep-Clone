@@ -15,6 +15,7 @@ import {
   Check,
   Settings as SettingsIcon,
   Sparkles,
+  Cloud,
 } from 'lucide-react';
 import { useKeep, getFontSizeInPx } from '@/context/KeepContext';
 import { FontSizeOption, AppThemeMode } from '@/types/note';
@@ -23,6 +24,7 @@ export const SettingsModal: React.FC = () => {
   const {
     isSettingsOpen,
     setIsSettingsOpen,
+    setIsGoogleDriveModalOpen,
     fontSize,
     setFontSize,
     themeMode,
@@ -310,6 +312,18 @@ export const SettingsModal: React.FC = () => {
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
+                onClick={() => {
+                  setIsSettingsOpen(false);
+                  setIsGoogleDriveModalOpen(true);
+                }}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-blue-500/40 bg-blue-500/10 text-blue-700 dark:text-blue-300 text-xs font-semibold hover:bg-blue-500/20 transition-colors shadow-xs"
+                title="Google Drive Cloud Backup & Restore (Export / Import)"
+              >
+                <Cloud className="w-4 h-4 text-blue-500" />
+                <span>Google Drive Sync &amp; Backup</span>
+              </button>
+              <button
+                type="button"
                 onClick={exportDataZip}
                 className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-stone-200 dark:border-stone-700 text-stone-700 dark:text-stone-300 text-xs font-medium hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
                 title="Export complete backup archive with images, drawings, and markdown files"
@@ -323,7 +337,7 @@ export const SettingsModal: React.FC = () => {
                 className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-stone-200 dark:border-stone-700 text-stone-700 dark:text-stone-300 text-xs font-medium hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
                 title="Intelligently import backup (ZIP or JSON) updating only changed items without duplicates"
               >
-                <Upload className="w-4 h-4 text-blue-500" />
+                <Upload className="w-4 h-4 text-emerald-500" />
                 <span>Intelligent Import (ZIP / JSON)</span>
               </button>
               <input
