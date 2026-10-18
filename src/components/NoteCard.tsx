@@ -11,6 +11,7 @@ import {
   Lock,
   Link2,
   Timer,
+  Paperclip,
 } from 'lucide-react';
 import { Note } from '@/types/note';
 import { getNoteColorClasses } from '@/lib/constants';
@@ -18,6 +19,7 @@ import { NoteActions } from './NoteActions';
 import { useKeep } from '@/context/KeepContext';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { toggleMarkdownCheckbox } from '@/lib/formatUtils';
+import { copyFilesToLocalFolder } from '@/lib/localPaste';
 import { isNoteUnlockedInSession, getUnlockedNote, lockNoteInSession } from '@/lib/encryptionSession';
 import { UnlockNoteModal } from './UnlockNoteModal';
 import { EncryptNoteModal } from './EncryptNoteModal';
@@ -123,22 +125,66 @@ export const NoteCard: React.FC<NoteCardProps> = ({
     updateNote(note.id, { todos: updated });
   };
 
-  const handleAddImage = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    Array.from(files).forEach((file) => {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        if (event.target?.result) {
-          updateNote(note.id, {
-            images: [...(note.images || []), event.target!.result as string],
-          });
-        }
-      };
-      reader.readAsDataURL(file);
-    });
+    const filesArray = Array.from(files);
+    e.target.value = '';
+
+    // 1. Convert image files to data URLs for top images gallery
+    const imageFiles = filesArray.filter((f) => f.type.startsWith('image/'));
+    const newImageDataUrls: string[] = [];
+    if (imageFiles.length > 0) {
+      const dataUrls = await Promise.all(
+        imageFiles.map(
+          (file) =>
+            new Promise<string>((resolve) => {
+              const reader = new FileReader();
+              reader.onload = (ev) => resolve((ev.target?.result as string) || '');
+              reader.onerror = () => resolve('');
+              reader.readAsDataURL(file);
+            })
+        )
+      );
+      newImageDataUrls.push(...dataUrls.filter(Boolean));
+    }
+
+    // 2. Convert all files into media blocks for note content
+    let contentAppend = '';
+    try {
+      const saved = await copyFilesToLocalFolder(filesArray);
+      if (saved.length > 0) {
+        contentAppend = saved
+          .map((f) =>
+            f.isImage
+              ? `<p class="font-mono text-xs text-stone-400 my-1">${f.markdownLink}</p><img src="${f.serveUrl}" alt="${f.fileName}" class="rounded-xl max-h-96 w-auto my-2 border border-black/10 dark:border-white/10" /><p></p>`
+              : `<div data-keep-media="true" data-is-image="false" data-file-name="${f.fileName}" data-saved-path="${f.savedPath}" data-serve-url="${f.serveUrl}" data-markdown-link="${f.markdownLink}" data-file-size="${f.size}"><div class="keep-media-md">${f.markdownLink}</div><a href="${f.serveUrl}" download="${f.fileName}" target="_blank" rel="noopener noreferrer" class="keep-media-file-link">📎 ${f.fileName}</a></div><p></p>`
+          )
+          .join('');
+      }
+    } catch (err) {
+      console.error('Failed to attach files in NoteCard:', err);
+    }
+
+    const updates: Partial<Note> = {};
+    if (newImageDataUrls.length > 0) {
+      updates.images = [...(note.images || []), ...newImageDataUrls];
+    }
+    if (contentAppend) {
+      updates.content = (activeNote.content || '') + contentAppend;
+    }
+
+    if (Object.keys(updates).length > 0) {
+      updateNote(note.id, updates);
+    }
   };
+
+  const attachedFileCount = useMemo(() => {
+    if (!activeNote.content) return 0;
+    const matches = activeNote.content.match(/data-keep-media="true"|keep-media-file-link|📎\s/g);
+    return matches ? matches.length : 0;
+  }, [activeNote.content]);
 
   const handleToggleLabel = (labelName: string) => {
     const exists = note.labels?.includes(labelName);
@@ -423,6 +469,16 @@ export const NoteCard: React.FC<NoteCardProps> = ({
                     {label}
                   </span>
                 ))}
+
+                {attachedFileCount > 0 && (
+                  <span
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-500/10 text-amber-800 dark:text-amber-300 border border-amber-500/20"
+                    title={`${attachedFileCount} attached file${attachedFileCount === 1 ? '' : 's'}`}
+                  >
+                    <Paperclip className="w-3 h-3 text-amber-600 dark:text-amber-400" />
+                    <span>{attachedFileCount} {attachedFileCount === 1 ? 'file' : 'files'}</span>
+                  </span>
+                )}
 
                 {note.totalReadingTime && note.totalReadingTime > 0 && (
                   <span

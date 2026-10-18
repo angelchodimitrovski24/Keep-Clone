@@ -293,14 +293,14 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
               fileInputRef.current?.click();
             }}
             className="p-2 sm:p-1.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
-            title="Add image"
+            title="Add image or file attachment"
           >
             <ImageIcon className="w-4 h-4" />
           </button>
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*"
+            accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt,.md,.json,.zip,.mp3,.mp4,.wav,*"
             multiple
             className="hidden"
             onChange={onAddImage}

@@ -84,11 +84,15 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
       try {
         const saved = await copyFilesToLocalFolder(files, undefined, imageUrls);
         if (saved.length > 0) {
+          const imgUrls = saved.filter((f) => f.isImage).map((f) => f.serveUrl);
+          if (imgUrls.length > 0) {
+            setImages((prev) => [...prev, ...imgUrls]);
+          }
           const htmlBlocks = saved
             .map((f) =>
               f.isImage
                 ? `<p class="font-mono text-xs text-stone-400 my-1">${f.markdownLink}</p><img src="${f.serveUrl}" alt="${f.fileName}" class="rounded-xl max-h-96 w-auto my-2 border border-black/10 dark:border-white/10" /><p></p>`
-                : `<div data-keep-media="true" data-is-image="false" data-file-name="${f.fileName}" data-saved-path="${f.savedPath}" data-serve-url="${f.serveUrl}" data-markdown-link="${f.markdownLink}" data-file-size="${f.size}"><div class="keep-media-md">${f.markdownLink}</div><a href="${f.serveUrl}" target="_blank" rel="noopener noreferrer" class="keep-media-file-link">📎 ${f.fileName}</a></div><p></p>`
+                : `<div data-keep-media="true" data-is-image="false" data-file-name="${f.fileName}" data-saved-path="${f.savedPath}" data-serve-url="${f.serveUrl}" data-markdown-link="${f.markdownLink}" data-file-size="${f.size}"><div class="keep-media-md">${f.markdownLink}</div><a href="${f.serveUrl}" download="${f.fileName}" target="_blank" rel="noopener noreferrer" class="keep-media-file-link">📎 ${f.fileName}</a></div><p></p>`
             )
             .join('');
           setContent((prev) => prev + htmlBlocks);
@@ -221,13 +225,36 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
     resetForm();
   };
 
-  // Copy selected files to local folder & insert markdown link + rendered preview
+  // Copy selected files & images to note (images gallery + content)
   const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const fileList = e.target.files;
     if (!fileList || fileList.length === 0) return;
     const filesArray = Array.from(fileList);
     e.target.value = '';
 
+    // 1. Separate image files and add to images gallery
+    const imageFiles = filesArray.filter(
+      (f) => f.type.startsWith('image/') || /\.(png|jpe?g|gif|webp|svg|bmp|avif)$/i.test(f.name)
+    );
+    if (imageFiles.length > 0) {
+      const dataUrls = await Promise.all(
+        imageFiles.map(
+          (f) =>
+            new Promise<string>((resolve) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(reader.result as string);
+              reader.onerror = () => resolve('');
+              reader.readAsDataURL(f);
+            })
+        )
+      );
+      const validUrls = dataUrls.filter(Boolean);
+      if (validUrls.length > 0) {
+        setImages((prev) => [...prev, ...validUrls]);
+      }
+    }
+
+    // 2. Insert into WYSIWYG editor or append HTML to note content
     if (editorRef.current) {
       await editorRef.current.insertLocalFiles(filesArray);
     } else {
@@ -238,13 +265,13 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
             .map((f) =>
               f.isImage
                 ? `<p class="font-mono text-xs text-stone-400 my-1">${f.markdownLink}</p><img src="${f.serveUrl}" alt="${f.fileName}" class="rounded-xl max-h-96 w-auto my-2 border border-black/10 dark:border-white/10" /><p></p>`
-                : `<div data-keep-media="true" data-is-image="false" data-file-name="${f.fileName}" data-saved-path="${f.savedPath}" data-serve-url="${f.serveUrl}" data-markdown-link="${f.markdownLink}" data-file-size="${f.size}"><div class="keep-media-md">${f.markdownLink}</div><a href="${f.serveUrl}" target="_blank" rel="noopener noreferrer" class="keep-media-file-link">📎 ${f.fileName}</a></div><p></p>`
+                : `<div data-keep-media="true" data-is-image="false" data-file-name="${f.fileName}" data-saved-path="${f.savedPath}" data-serve-url="${f.serveUrl}" data-markdown-link="${f.markdownLink}" data-file-size="${f.size}"><div class="keep-media-md">${f.markdownLink}</div><a href="${f.serveUrl}" download="${f.fileName}" target="_blank" rel="noopener noreferrer" class="keep-media-file-link">📎 ${f.fileName}</a></div><p></p>`
             )
             .join('');
           setContent((prev) => prev + htmlBlocks);
         }
       } catch (err) {
-        console.error('Failed to add image to local folder:', err);
+        console.error('Failed to add media to note content:', err);
       }
     }
   };
@@ -339,29 +366,107 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
       <div
         onPaste={(e) => {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          if (e.defaultPrevented || isList || (e.nativeEvent as any)?.__keepPasteHandled) return;
+          if (e.defaultPrevented || (e.nativeEvent as any)?.__keepPasteHandled) return;
           const { files, imageUrls } = extractClipboardPayload(e.clipboardData);
           if (files.length > 0 || imageUrls.length > 0) {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             (e.nativeEvent as any).__keepPasteHandled = true;
             e.preventDefault();
-            editorRef.current?.insertLocalFiles(files, imageUrls);
+
+            // Populate images gallery
+            const imageFiles = files.filter(
+              (f) => f.type.startsWith('image/') || /\.(png|jpe?g|gif|webp|svg|bmp|avif)$/i.test(f.name)
+            );
+            if (imageFiles.length > 0) {
+              Promise.all(
+                imageFiles.map(
+                  (f) =>
+                    new Promise<string>((res) => {
+                      const reader = new FileReader();
+                      reader.onload = () => res(reader.result as string);
+                      reader.onerror = () => res('');
+                      reader.readAsDataURL(f);
+                    })
+                )
+              ).then((urls) => {
+                const valid = urls.filter(Boolean);
+                if (valid.length > 0) setImages((prev) => [...prev, ...valid]);
+              });
+            } else if (imageUrls.length > 0) {
+              setImages((prev) => [...prev, ...imageUrls]);
+            }
+
+            if (editorRef.current) {
+              editorRef.current.insertLocalFiles(files, imageUrls);
+            } else {
+              copyFilesToLocalFolder(files, undefined, imageUrls).then((saved) => {
+                if (saved.length > 0) {
+                  const htmlBlocks = saved
+                    .map((f) =>
+                      f.isImage
+                        ? `<p class="font-mono text-xs text-stone-400 my-1">${f.markdownLink}</p><img src="${f.serveUrl}" alt="${f.fileName}" class="rounded-xl max-h-96 w-auto my-2 border border-black/10 dark:border-white/10" /><p></p>`
+                        : `<div data-keep-media="true" data-is-image="false" data-file-name="${f.fileName}" data-saved-path="${f.savedPath}" data-serve-url="${f.serveUrl}" data-markdown-link="${f.markdownLink}" data-file-size="${f.size}"><div class="keep-media-md">${f.markdownLink}</div><a href="${f.serveUrl}" download="${f.fileName}" target="_blank" rel="noopener noreferrer" class="keep-media-file-link">📎 ${f.fileName}</a></div><p></p>`
+                    )
+                    .join('');
+                  setContent((prev) => prev + htmlBlocks);
+                }
+              });
+            }
           }
         }}
         onDragOver={(e) => {
-          if (!isList && e.dataTransfer?.types?.includes('Files')) {
+          if (e.dataTransfer?.types?.includes('Files')) {
             e.preventDefault();
           }
         }}
         onDrop={(e) => {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          if (e.defaultPrevented || isList || (e.nativeEvent as any)?.__keepPasteHandled) return;
+          if (e.defaultPrevented || (e.nativeEvent as any)?.__keepPasteHandled) return;
           const { files, imageUrls } = extractClipboardPayload(e.dataTransfer);
           if (files.length > 0 || imageUrls.length > 0) {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             (e.nativeEvent as any).__keepPasteHandled = true;
             e.preventDefault();
-            editorRef.current?.insertLocalFiles(files, imageUrls);
+
+            // Populate images gallery
+            const imageFiles = files.filter(
+              (f) => f.type.startsWith('image/') || /\.(png|jpe?g|gif|webp|svg|bmp|avif)$/i.test(f.name)
+            );
+            if (imageFiles.length > 0) {
+              Promise.all(
+                imageFiles.map(
+                  (f) =>
+                    new Promise<string>((res) => {
+                      const reader = new FileReader();
+                      reader.onload = () => res(reader.result as string);
+                      reader.onerror = () => res('');
+                      reader.readAsDataURL(f);
+                    })
+                )
+              ).then((urls) => {
+                const valid = urls.filter(Boolean);
+                if (valid.length > 0) setImages((prev) => [...prev, ...valid]);
+              });
+            } else if (imageUrls.length > 0) {
+              setImages((prev) => [...prev, ...imageUrls]);
+            }
+
+            if (editorRef.current) {
+              editorRef.current.insertLocalFiles(files, imageUrls);
+            } else {
+              copyFilesToLocalFolder(files, undefined, imageUrls).then((saved) => {
+                if (saved.length > 0) {
+                  const htmlBlocks = saved
+                    .map((f) =>
+                      f.isImage
+                        ? `<p class="font-mono text-xs text-stone-400 my-1">${f.markdownLink}</p><img src="${f.serveUrl}" alt="${f.fileName}" class="rounded-xl max-h-96 w-auto my-2 border border-black/10 dark:border-white/10" /><p></p>`
+                        : `<div data-keep-media="true" data-is-image="false" data-file-name="${f.fileName}" data-saved-path="${f.savedPath}" data-serve-url="${f.serveUrl}" data-markdown-link="${f.markdownLink}" data-file-size="${f.size}"><div class="keep-media-md">${f.markdownLink}</div><a href="${f.serveUrl}" download="${f.fileName}" target="_blank" rel="noopener noreferrer" class="keep-media-file-link">📎 ${f.fileName}</a></div><p></p>`
+                    )
+                    .join('');
+                  setContent((prev) => prev + htmlBlocks);
+                }
+              });
+            }
           }
         }}
         className={`rounded-2xl shadow-xl border relative overflow-hidden transition-all ${colorClasses}`}

@@ -132,9 +132,60 @@ async function writeToBrowserDirectoryHandleIfPresent(
   }
 }
 
+function convertFileToClientDataUrlMedia(file: File): Promise<SavedLocalMediaFile> {
+  return new Promise((resolve) => {
+    const isImage = file.type.startsWith('image/') || /\.(png|jpe?g|gif|webp|svg|bmp|avif)$/i.test(file.name);
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      const safeName = file.name || (isImage ? `image-${Date.now()}.png` : `file-${Date.now()}`);
+      resolve({
+        fileName: safeName,
+        folderPath: 'local-browser',
+        savedPath: safeName,
+        serveUrl: dataUrl,
+        isImage,
+        size: file.size,
+        mimeType: file.type || (isImage ? 'image/png' : 'application/octet-stream'),
+        markdownLink: isImage ? `![${safeName}](${dataUrl})` : `[${safeName}](${dataUrl})`,
+      });
+    };
+    reader.onerror = () => {
+      const safeName = file.name || 'file';
+      resolve({
+        fileName: safeName,
+        folderPath: 'local-browser',
+        savedPath: safeName,
+        serveUrl: '',
+        isImage,
+        size: file.size,
+        mimeType: file.type || 'application/octet-stream',
+        markdownLink: `[${safeName}](#)`,
+      });
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function convertImageUrlToClientMedia(url: string): SavedLocalMediaFile {
+  const isDataUrl = url.startsWith('data:image/');
+  const fileName = `image-${Date.now()}.png`;
+  return {
+    fileName,
+    folderPath: 'local-browser',
+    savedPath: url,
+    serveUrl: url,
+    isImage: true,
+    size: 0,
+    mimeType: isDataUrl ? url.split(';')[0].replace('data:', '') : 'image/png',
+    markdownLink: `![${fileName}](${url})`,
+  };
+}
+
 /**
  * Synchronously initiates the FormData upload during the paste/drop event tick
  * so clipboard File blobs are never invalidated by the browser before fetch() reads them!
+ * Falls back seamlessly to client-side Data URLs if running on Vercel or when local-media server is unavailable.
  */
 export async function copyFilesToLocalFolder(
   files: File[],
@@ -163,6 +214,9 @@ export async function copyFilesToLocalFolder(
   const fetchPromise = fetch('/api/local-media', {
     method: 'POST',
     body: formData,
+  }).catch((err) => {
+    console.warn('Local media upload fetch error (falling back to Data URLs):', err);
+    return null;
   });
 
   // Also snapshot buffers for optional Browser DirectoryHandle mirror
@@ -177,18 +231,24 @@ export async function copyFilesToLocalFolder(
       .catch(() => {});
   }
 
-  const response = await fetchPromise;
-
-  if (!response.ok) {
-    const errData = await response.json().catch(() => ({}));
-    throw new Error(errData.error || 'Failed to copy files to local folder');
+  try {
+    const response = await fetchPromise;
+    if (response && response.ok) {
+      const data = await response.json();
+      if (data.folderPath && !syncFolder) {
+        setSyncLocalMediaFolder(data.folderPath);
+        await saveSettingToDB('localMediaFolder', data.folderPath);
+      }
+      if (data.files && data.files.length > 0) {
+        return data.files as SavedLocalMediaFile[];
+      }
+    }
+  } catch (err) {
+    console.warn('Local media processing error, falling back to Data URLs:', err);
   }
 
-  const data = await response.json();
-  if (data.folderPath && !syncFolder) {
-    setSyncLocalMediaFolder(data.folderPath);
-    await saveSettingToDB('localMediaFolder', data.folderPath);
-  }
-
-  return (data.files || []) as SavedLocalMediaFile[];
+  // Guaranteed fallback: convert files & imageUrls to Data URLs client-side
+  const clientFiles = await Promise.all(files.map(convertFileToClientDataUrlMedia));
+  const clientUrls = imageUrls.map(convertImageUrlToClientMedia);
+  return [...clientFiles, ...clientUrls];
 }

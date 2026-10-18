@@ -97,6 +97,7 @@ const KeepMediaNodeView: React.FC<NodeViewProps> = ({ node, deleteNode }) => {
       ) : (
         <a
           href={serveUrl}
+          download={fileName || 'attachment'}
           target="_blank"
           rel="noopener noreferrer"
           onClick={(e) => e.stopPropagation()}
@@ -215,6 +216,7 @@ export const KeepMediaExtension = Node.create({
         'a',
         {
           href: serveUrl,
+          download: fileName || 'attachment',
           target: '_blank',
           rel: 'noopener noreferrer',
           class: 'keep-media-file-link',
