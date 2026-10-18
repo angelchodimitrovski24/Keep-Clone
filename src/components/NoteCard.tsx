@@ -197,7 +197,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
         </div>
 
         {!note.isTrash && (
-          <div className={`absolute top-2 right-2 z-10 transition-opacity ${note.isPinned ? 'opacity-100' : 'opacity-0 sm:group-hover:opacity-100'}`}>
+          <div className={`absolute top-2 right-2 z-10 transition-opacity ${note.isPinned ? 'opacity-100' : 'opacity-70 sm:opacity-0 sm:group-hover:opacity-100'}`}>
             <button
               type="button"
               onClick={(e) => {

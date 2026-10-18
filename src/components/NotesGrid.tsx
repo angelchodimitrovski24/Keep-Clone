@@ -91,8 +91,8 @@ export const NotesGrid: React.FC<NotesGridProps> = ({
 
   const gridLayoutClasses =
     layoutMode === 'grid'
-      ? 'columns-1 sm:columns-2 md:columns-3 lg:columns-4 xl:columns-5 gap-4'
-      : 'max-w-2xl mx-auto flex flex-col gap-3';
+      ? 'columns-1 sm:columns-2 md:columns-3 lg:columns-4 xl:columns-5 gap-3 sm:gap-4'
+      : 'max-w-2xl mx-auto flex flex-col gap-2.5 sm:gap-3';
 
   // If viewing a category that is currently locked, show unlock prompt screen
   if (isCurrentCategoryLocked && activeCategory) {

@@ -23,6 +23,7 @@ import {
   Share2,
   FilePlus,
   Sparkles,
+  ArrowLeft,
 } from 'lucide-react';
 import { Note, NoteColor, NoteBackgroundTheme, TodoItem, NoteDrawing, NoteVersion } from '@/types/note';
 import { getNoteColorClasses } from '@/lib/constants';
@@ -652,7 +653,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
   return (
     <div
       onClick={handleSaveAndClose}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-3 sm:p-6 md:p-10 animate-in fade-in duration-150 overflow-y-auto"
+      className="fixed inset-0 z-50 flex flex-col bg-black/60 backdrop-blur-xs p-0 sm:p-4 md:p-8 sm:items-center sm:justify-center overflow-y-auto animate-in fade-in duration-150"
     >
       <div
         ref={modalContentRef}
@@ -704,7 +705,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
             }
           }
         }}
-        className={`w-full max-w-3xl min-h-[460px] max-h-[92vh] rounded-2xl shadow-2xl border flex flex-col transition-all duration-150 relative overflow-hidden ${colorClasses}`}
+        className={`w-full h-full sm:h-auto sm:max-w-3xl sm:min-h-[460px] sm:max-h-[92vh] rounded-none sm:rounded-2xl border-0 sm:border shadow-none sm:shadow-2xl flex flex-col transition-all duration-150 relative overflow-hidden ${colorClasses}`}
       >
         {/* Themed Background Illustration */}
         <NoteThemeArtwork theme={theme} isModal={true} />
@@ -804,26 +805,48 @@ export const NoteModal: React.FC<NoteModalProps> = ({
           </div>
         )}
 
-        {/* Header: Note Title (Shows FIRST, Full width, Word-wrapped) */}
-        <div className="px-6 pt-5 pb-1.5 shrink-0">
-          <textarea
-            placeholder="Title"
-            value={title}
-            rows={1}
-            onChange={(e) => {
-              setTitle(e.target.value);
-              e.target.style.height = 'auto';
-              e.target.style.height = `${e.target.scrollHeight}px`;
-            }}
-            ref={(el) => {
-              if (el) {
-                el.style.height = 'auto';
-                el.style.height = `${el.scrollHeight}px`;
-              }
-            }}
-            className="w-full bg-transparent font-semibold text-stone-900 dark:text-stone-100 placeholder:text-stone-400 outline-none resize-none leading-snug overflow-hidden block"
-            style={{ fontSize: 'calc(var(--note-font-size, 15px) * 1.25)' }}
-          />
+        {/* Header: Note Title (Shows FIRST, Full width, Word-wrapped, with Mobile Back & Done controls) */}
+        <div className="px-3.5 sm:px-6 pt-3 sm:pt-5 pb-1.5 shrink-0">
+          <div className="flex items-center gap-1 sm:gap-0">
+            {/* Native Mobile App Back Arrow (←) */}
+            <button
+              type="button"
+              onClick={handleSaveAndClose}
+              className="sm:hidden p-2 -ml-1.5 rounded-full text-stone-600 dark:text-stone-300 hover:bg-black/10 dark:hover:bg-white/10 transition-colors shrink-0"
+              title="Save and back"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+
+            <textarea
+              placeholder="Title"
+              value={title}
+              rows={1}
+              onChange={(e) => {
+                setTitle(e.target.value);
+                e.target.style.height = 'auto';
+                e.target.style.height = `${e.target.scrollHeight}px`;
+              }}
+              ref={(el) => {
+                if (el) {
+                  el.style.height = 'auto';
+                  el.style.height = `${el.scrollHeight}px`;
+                }
+              }}
+              className="w-full bg-transparent font-semibold text-stone-900 dark:text-stone-100 placeholder:text-stone-400 outline-none resize-none leading-snug overflow-hidden block"
+              style={{ fontSize: 'calc(var(--note-font-size, 15px) * 1.25)' }}
+            />
+
+            {/* Mobile Done checkmark button */}
+            <button
+              type="button"
+              onClick={handleSaveAndClose}
+              className="sm:hidden p-2 -mr-1.5 rounded-full text-stone-600 dark:text-stone-300 hover:bg-black/10 dark:hover:bg-white/10 transition-colors shrink-0"
+              title="Save and done"
+            >
+              <Check className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+            </button>
+          </div>
 
           {/* Beautiful Category & Labels directly under the Title */}
           {((category) || (labels && labels.length > 0)) && (
@@ -832,7 +855,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
                 const catObj = categories.find((c) => c.name === category);
                 return (
                   <span
-                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold shadow-2xs group transition-all"
+                    className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-full text-xs font-semibold shadow-2xs group transition-all"
                     style={{
                       backgroundColor: catObj?.color ? `${catObj.color}20` : 'rgba(59, 130, 246, 0.15)',
                       color: catObj?.color || '#3b82f6',
@@ -856,7 +879,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
               {labels.map((lbl) => (
                 <span
                   key={lbl}
-                  className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium bg-black/5 dark:bg-white/10 text-stone-800 dark:text-stone-200 border border-black/5 dark:border-white/5 hover:border-black/15 dark:hover:border-white/15 transition-colors"
+                  className="inline-flex items-center gap-1 px-2.5 sm:px-3 py-1 rounded-full text-xs font-medium bg-black/5 dark:bg-white/10 text-stone-800 dark:text-stone-200 border border-black/5 dark:border-white/5 hover:border-black/15 dark:hover:border-white/15 transition-colors"
                 >
                   <span className="text-stone-400 dark:text-stone-500 font-semibold">#</span>
                   <span>{lbl}</span>
@@ -874,8 +897,8 @@ export const NoteModal: React.FC<NoteModalProps> = ({
           )}
         </div>
 
-        {/* Action Menus Toolbar (Positioned neatly BELOW the title) */}
-        <div className="flex items-center justify-between px-6 pb-2.5 pt-0.5 shrink-0 gap-2 flex-wrap border-b border-black/5 dark:border-white/5">
+        {/* Action Menus Toolbar (Positioned neatly BELOW the title, horizontally scrollable on mobile) */}
+        <div className="flex items-center justify-between px-3.5 sm:px-6 pb-2 pt-0.5 shrink-0 gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar border-b border-black/5 dark:border-white/5">
           {/* Left: AES Encryption status / Lock button */}
           <div className="flex items-center gap-2">
             {note.isEncrypted && (
@@ -1138,7 +1161,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
           </div>
         ) : (
           <>
-            <div className="px-6 py-3 overflow-y-auto flex-1 flex flex-col justify-between space-y-4">
+            <div className="px-3.5 sm:px-6 py-2.5 sm:py-3 overflow-y-auto flex-1 flex flex-col justify-between space-y-4">
           <div>
             {isList ? (
               <div className="space-y-2">
@@ -1391,7 +1414,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
 
         {/* Google Keep Authentic Formatting Bar (H1, H2, Aa, B, I, U, Lists, Clear) */}
         {!isList && isFormattingOpen && (
-          <div className="px-6 py-2 border-t border-black/5 dark:border-white/5 bg-black/2 dark:bg-white/2">
+          <div className="px-3 sm:px-6 py-1.5 sm:py-2 border-t border-black/5 dark:border-white/5 bg-black/2 dark:bg-white/2">
             <KeepFormattingBar
               onFormat={handleFormatText}
               onExtractSelection={() => handleExtractToNewNote()}
@@ -1400,7 +1423,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
         )}
 
         {/* Footer toolbar */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-t border-black/5 dark:border-white/5 bg-black/2 dark:bg-white/2 shrink-0">
+        <div className="flex items-center justify-between px-3 sm:px-5 py-2 sm:py-3.5 border-t border-black/5 dark:border-white/5 bg-black/2 dark:bg-white/2 shrink-0">
           <NoteActions
             note={{ color, theme, isList, labels, reminder, category }}
             onColorChange={setColor}

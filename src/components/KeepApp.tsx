@@ -171,7 +171,7 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
         />
 
         {/* Notes Feed Container */}
-        <main className="flex-1 p-4 md:p-8 overflow-y-auto max-w-[1600px] mx-auto w-full">
+        <main className="flex-1 p-2.5 sm:p-4 md:p-8 overflow-y-auto max-w-[1600px] mx-auto w-full">
           {currentFilter === 'stats' ? (
             <ReadingStatsView />
           ) : (

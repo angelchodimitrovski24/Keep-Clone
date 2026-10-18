@@ -391,3 +391,16 @@ body {
   background-color: rgba(125, 125, 125, 0.06);
 }
 
+/* Hide scrollbar for Chrome, Safari, Android and Opera */
+.no-scrollbar::-webkit-scrollbar,
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+/* Hide scrollbar for IE, Edge and Firefox */
+.no-scrollbar,
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+

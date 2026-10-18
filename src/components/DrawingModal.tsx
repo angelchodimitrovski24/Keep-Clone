@@ -190,11 +190,11 @@ export const DrawingModal: React.FC<DrawingModalProps> = ({
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-      <div className="bg-white dark:bg-[#202124] w-full max-w-4xl h-[85vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-stone-200 dark:border-stone-700">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-0 sm:p-4 animate-in fade-in duration-150">
+      <div className="bg-white dark:bg-[#202124] w-full h-full sm:h-[85vh] sm:max-w-4xl rounded-none sm:rounded-2xl shadow-none sm:shadow-2xl flex flex-col overflow-hidden border-0 sm:border border-stone-200 dark:border-stone-700">
         {/* Drawing Toolbar */}
-        <div className="p-3 border-b border-stone-200 dark:border-stone-700 flex flex-wrap items-center justify-between gap-3 bg-stone-50 dark:bg-[#2a2b2d]">
-          <div className="flex items-center gap-2">
+        <div className="p-2 sm:p-3 border-b border-stone-200 dark:border-stone-700 flex items-center justify-between gap-2 overflow-x-auto no-scrollbar bg-stone-50 dark:bg-[#2a2b2d] shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             <button
               type="button"
               onClick={() => setTool('pen')}

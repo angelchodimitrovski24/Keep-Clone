@@ -25,7 +25,7 @@ export const CategoryPillsBar: React.FC = () => {
   const isAllActive = currentFilter === 'notes';
 
   return (
-    <div className="flex items-center gap-1.5 overflow-x-auto pb-3 mb-4 scrollbar-none select-none">
+    <div className="flex items-center gap-1.5 overflow-x-auto pb-2.5 mb-3 sm:mb-4 no-scrollbar select-none -mx-2.5 px-2.5 sm:mx-0 sm:px-0">
       {/* "All" Pill */}
       <button
         type="button"

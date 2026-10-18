@@ -272,10 +272,10 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
 
   if (!isExpanded) {
     return (
-      <div className="w-full max-w-2xl mx-auto mb-8 px-4">
+      <div className="w-full max-w-2xl mx-auto mb-5 sm:mb-8 px-2.5 sm:px-4">
         <div
           onClick={() => setIsExpanded(true)}
-          className="flex items-center justify-between px-4 py-3 bg-white dark:bg-[#202124] rounded-xl shadow-md border border-stone-200 dark:border-stone-700/80 cursor-text hover:shadow-lg transition-all text-stone-500 dark:text-stone-400"
+          className="flex items-center justify-between px-3.5 sm:px-4 py-2.5 sm:py-3 bg-white dark:bg-[#202124] rounded-xl sm:rounded-2xl shadow-md border border-stone-200 dark:border-stone-700/80 cursor-text hover:shadow-lg transition-all text-stone-500 dark:text-stone-400"
         >
           <span className="font-medium text-sm">Take a note…</span>
           <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
@@ -324,7 +324,7 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
   }
 
   return (
-    <div className="w-full max-w-2xl mx-auto mb-8 px-4" ref={containerRef}>
+    <div className="w-full max-w-2xl mx-auto mb-5 sm:mb-8 px-2.5 sm:px-4" ref={containerRef}>
       <div
         onPaste={(e) => {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -575,13 +575,13 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
 
         {/* Google Keep Authentic Formatting Bar (H1, H2, Aa, B, I, U, Clear) */}
         {!isList && isFormattingOpen && (
-          <div className="px-4 py-1.5 border-t border-black/5 dark:border-white/5 bg-black/2 dark:bg-white/2">
+          <div className="px-2.5 sm:px-4 py-1.5 border-t border-black/5 dark:border-white/5 bg-black/2 dark:bg-white/2">
             <KeepFormattingBar onFormat={handleFormatText} />
           </div>
         )}
 
         {/* Footer toolbar */}
-        <div className="flex items-center justify-between px-3 py-2 border-t border-black/5 dark:border-white/5">
+        <div className="flex items-center justify-between px-2 sm:px-3 py-2 border-t border-black/5 dark:border-white/5 overflow-x-auto no-scrollbar gap-1">
           <NoteActions
             note={{ color, theme, isList, labels, reminder, category, isEncrypted }}
             onColorChange={setColor}

@@ -85,22 +85,22 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
   // Selected State Header
   if (isSelectionActive) {
     return (
-      <header className="sticky top-0 z-40 bg-stone-100 dark:bg-[#202124] border-b border-stone-300 dark:border-stone-700 px-4 h-16 flex items-center justify-between shadow-sm animate-in fade-in duration-150">
-        <div className="flex items-center gap-4">
+      <header className="sticky top-0 z-40 bg-stone-100 dark:bg-[#202124] border-b border-stone-300 dark:border-stone-700 px-2.5 sm:px-4 h-14 sm:h-16 flex items-center justify-between shadow-sm animate-in fade-in duration-150 overflow-x-auto no-scrollbar gap-2">
+        <div className="flex items-center gap-2 sm:gap-4 shrink-0">
           <button
             type="button"
             onClick={clearSelection}
-            className="p-2 rounded-full hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-600 dark:text-stone-300"
+            className="p-1.5 sm:p-2 rounded-full hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-600 dark:text-stone-300"
             title="Clear selection"
           >
             <X className="w-5 h-5" />
           </button>
-          <span className="font-medium text-stone-800 dark:text-stone-200 text-base">
+          <span className="font-semibold text-stone-800 dark:text-stone-200 text-sm sm:text-base whitespace-nowrap">
             {selectedNoteIds.length} selected
           </span>
         </div>
 
-        <div className="flex items-center gap-1 text-stone-600 dark:text-stone-300">
+        <div className="flex items-center gap-0.5 sm:gap-1 text-stone-600 dark:text-stone-300 shrink-0">
           {/* Quick Color Change for Selection */}
           <div className="relative group p-2">
             <button
@@ -199,46 +199,46 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
 
   // Normal Header
   return (
-    <header className="sticky top-0 z-40 bg-white/90 dark:bg-[#202124]/90 backdrop-blur-md border-b border-stone-200 dark:border-stone-800 px-4 h-16 flex items-center justify-between gap-4">
+    <header className="sticky top-0 z-40 bg-white/90 dark:bg-[#202124]/90 backdrop-blur-md border-b border-stone-200 dark:border-stone-800 px-2 sm:px-4 h-14 sm:h-16 flex items-center justify-between gap-1.5 sm:gap-4">
       {/* Brand logo & sidebar toggle */}
-      <div className="flex items-center gap-3 shrink-0">
+      <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
         <button
           type="button"
           onClick={onToggleSidebar}
-          className="p-2.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-600 dark:text-stone-300 transition-colors"
+          className="p-2 sm:p-2.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-600 dark:text-stone-300 transition-colors"
           title="Main menu"
         >
           <Menu className="w-5 h-5" />
         </button>
 
-        <div className="flex items-center gap-2 cursor-pointer select-none">
-          <div className="w-9 h-9 rounded-xl bg-amber-400 flex items-center justify-center text-white shadow-md shadow-amber-400/20">
-            <span className="font-black text-xl leading-none">💡</span>
+        <div className="flex items-center gap-1.5 sm:gap-2 cursor-pointer select-none">
+          <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-amber-400 flex items-center justify-center text-white shadow-md shadow-amber-400/20">
+            <span className="font-black text-lg sm:text-xl leading-none">💡</span>
           </div>
-          <span className="font-semibold text-lg text-stone-800 dark:text-stone-100 hidden sm:inline tracking-tight">
+          <span className="font-semibold text-base sm:text-lg text-stone-800 dark:text-stone-100 hidden sm:inline tracking-tight">
             Keep <span className="text-xs font-normal px-2 py-0.5 ml-1 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">Local DB</span>
           </span>
         </div>
       </div>
 
       {/* Search Bar */}
-      <div className="flex-1 max-w-2xl mx-2">
+      <div className="flex-1 min-w-0 max-w-2xl mx-1 sm:mx-2">
         <div className="relative flex items-center w-full bg-stone-100 dark:bg-[#2c2d30] hover:bg-stone-200/70 dark:hover:bg-[#343538] focus-within:bg-white dark:focus-within:bg-[#202124] focus-within:shadow-md focus-within:border-stone-300 dark:focus-within:border-stone-600 border border-transparent rounded-xl transition-all">
-          <div className="pl-3.5 pr-2 text-stone-500 pointer-events-none">
+          <div className="pl-2.5 sm:pl-3.5 pr-1.5 sm:pr-2 text-stone-500 pointer-events-none">
             <Search className="w-4 h-4" />
           </div>
           <input
             type="text"
-            placeholder="Search notes, labels, checklists..."
+            placeholder="Search notes..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full py-2.5 bg-transparent text-sm text-stone-800 dark:text-stone-100 placeholder:text-stone-400 outline-none"
+            className="w-full py-1.5 sm:py-2.5 text-xs sm:text-sm text-stone-800 dark:text-stone-100 placeholder:text-stone-400 outline-none truncate"
           />
           {searchQuery && (
             <button
               type="button"
               onClick={() => setSearchQuery('')}
-              className="p-1.5 mr-2 rounded-full hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-400"
+              className="p-1 sm:p-1.5 mr-1.5 sm:mr-2 rounded-full hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-400"
             >
               <X className="w-4 h-4" />
             </button>
@@ -247,7 +247,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
       </div>
 
       {/* Action controls */}
-      <div className="flex items-center gap-1 text-stone-600 dark:text-stone-300 shrink-0">
+      <div className="flex items-center gap-0.5 sm:gap-1 text-stone-600 dark:text-stone-300 shrink-0">
         {/* Active Reading Stopwatch Live Bar */}
         {activeStopwatch && (
           <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-800 dark:text-emerald-300 mr-1 sm:mr-2 text-xs font-medium animate-in fade-in">
@@ -294,11 +294,11 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
             </button>
           </div>
         )}
-        {/* Choose Local Paste Folder */}
+        {/* Choose Local Paste Folder (Desktop / Tablet) */}
         <button
           type="button"
           onClick={() => setIsLocalFolderModalOpen(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-400/15 hover:bg-amber-400/25 text-amber-800 dark:text-amber-300 border border-amber-400/30 transition-colors text-xs font-medium mr-1"
+          className="hidden sm:flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-full bg-amber-400/15 hover:bg-amber-400/25 text-amber-800 dark:text-amber-300 border border-amber-400/30 transition-colors text-xs font-medium mr-0.5 sm:mr-1 shrink-0"
           title={
             localMediaFolder
               ? `Local Paste Folder: ${localMediaFolder} (Click to change)`
@@ -306,7 +306,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
           }
         >
           <FolderOpen className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400" />
-          <span className="hidden sm:inline max-w-[140px] truncate">
+          <span className="hidden md:inline max-w-[120px] truncate">
             {localMediaFolder
               ? localMediaFolder.split(/[\\/]/).filter(Boolean).pop() || 'Local Folder'
               : 'Choose Folder'}
@@ -317,7 +317,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
         <button
           type="button"
           onClick={() => setLayoutMode(layoutMode === 'grid' ? 'list' : 'grid')}
-          className="p-2.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
+          className="p-1.5 sm:p-2.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors shrink-0"
           title={layoutMode === 'grid' ? 'List view' : 'Grid view'}
         >
           {layoutMode === 'grid' ? (
@@ -331,7 +331,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
         <button
           type="button"
           onClick={() => setDarkMode(!darkMode)}
-          className="p-2.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
+          className="p-1.5 sm:p-2.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors shrink-0"
           title={darkMode ? 'Light mode' : 'Dark mode'}
         >
           {darkMode ? <Sun className="w-5 h-5 text-amber-400" /> : <Moon className="w-5 h-5" />}
@@ -347,7 +347,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
               setIsInstallModalOpen(true);
             }
           }}
-          className={`p-2.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors ${
+          className={`p-1.5 sm:p-2.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors shrink-0 ${
             isPwaInstalled
               ? 'text-emerald-600 dark:text-emerald-400'
               : 'text-amber-600 dark:text-amber-400'
@@ -361,7 +361,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
         <button
           type="button"
           onClick={() => setIsSettingsOpen(true)}
-          className="p-2.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
+          className="p-1.5 sm:p-2.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors shrink-0"
           title="Settings (Font size, Theme, Backup)"
         >
           <SettingsIcon className="w-5 h-5" />

@@ -29,7 +29,7 @@ export const KeepFormattingBar: React.FC<KeepFormattingBarProps> = ({
   return (
     <div
       onClick={(e) => e.stopPropagation()}
-      className={`flex flex-wrap items-center gap-0.5 sm:gap-1 px-2 py-1.5 bg-stone-100/90 dark:bg-[#2d2e30] rounded-xl border border-stone-200 dark:border-stone-700 text-stone-700 dark:text-stone-300 shadow-xs animate-in fade-in duration-150 ${className}`}
+      className={`flex items-center gap-0.5 sm:gap-1 px-2 py-1.5 bg-stone-100/90 dark:bg-[#2d2e30] rounded-xl border border-stone-200 dark:border-stone-700 text-stone-700 dark:text-stone-300 shadow-xs animate-in fade-in duration-150 overflow-x-auto no-scrollbar whitespace-nowrap shrink-0 ${className}`}
     >
       {/* Headings */}
       <button
