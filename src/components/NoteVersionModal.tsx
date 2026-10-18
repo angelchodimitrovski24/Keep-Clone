@@ -236,8 +236,11 @@ export const NoteVersionModal: React.FC = () => {
                       </p>
 
                       <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-black/5 dark:border-white/5 text-[11px] text-stone-500 dark:text-stone-400">
-                        <span className="inline-block truncate max-w-[170px] bg-black/5 dark:bg-white/5 px-1.5 py-0.5 rounded text-[10px]">
-                          {ver.changeSummary || (isLatest ? 'Current state' : 'Edited note')}
+                        <span className="inline-flex items-center gap-1 truncate max-w-[175px] bg-black/5 dark:bg-white/5 px-1.5 py-0.5 rounded text-[10px]">
+                          {ver.changeSummary?.startsWith('Auto') && (
+                            <Sparkles className="w-2.5 h-2.5 text-amber-500 shrink-0" />
+                          )}
+                          <span className="truncate">{ver.changeSummary || (isLatest ? 'Current state' : 'Edited note')}</span>
                         </span>
 
                         {versions.length > 1 && (

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   Pin,
   X,
@@ -22,7 +22,7 @@ import {
   Square,
   Share2,
 } from 'lucide-react';
-import { Note, NoteColor, NoteBackgroundTheme, TodoItem, NoteDrawing } from '@/types/note';
+import { Note, NoteColor, NoteBackgroundTheme, TodoItem, NoteDrawing, NoteVersion } from '@/types/note';
 import { getNoteColorClasses } from '@/lib/constants';
 import { NoteActions } from './NoteActions';
 import { KeepFormattingBar } from './KeepFormattingBar';
@@ -141,6 +141,24 @@ export const NoteModal: React.FC<NoteModalProps> = ({
     }
   };
 
+  const [autoSnapshotStatus, setAutoSnapshotStatus] = useState<'idle' | 'editing' | 'saved'>('idle');
+  const [lastSnapshotTime, setLastSnapshotTime] = useState<number | null>(null);
+
+  const lastSnapshottedRef = useRef<{
+    title: string;
+    content: string;
+    todos: TodoItem[];
+    isList: boolean;
+    color: NoteColor;
+    theme: NoteBackgroundTheme;
+    timestamp: number;
+  } | null>(null);
+
+  const activeNoteIdRef = useRef<string | null>(null);
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const maxWaitTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const lastRestoredVerIdRef = useRef<string | null>(null);
+
   const categoryObj = useMemo(
     () => (note?.category ? categories.find((c) => c.name === note.category) : null),
     [note?.category, categories]
@@ -151,25 +169,71 @@ export const NoteModal: React.FC<NoteModalProps> = ({
     return !unlockedCategoryNames.includes(categoryObj.name.toLowerCase());
   }, [categoryObj, unlockedCategoryNames]);
 
-  // Sync state when note opens
+  // Sync state when note opens or note changes
   useEffect(() => {
     if (note) {
-      const unlocked = note.isEncrypted ? getUnlockedNote(note.id) : undefined;
-      setTitle(unlocked?.title || note.title || '');
-      setContent(unlocked?.content || note.content || '');
-      setIsList(note.isList || false);
-      setTodos(unlocked?.todos || note.todos || []);
-      setIsPinned(note.isPinned || false);
-      setColor(note.color || 'default');
-      setTheme(note.theme || 'none');
-      setCategory(note.category || null);
-      setLabels(note.labels || []);
-      setReminder(note.reminder || null);
-      setImages(unlocked?.images || note.images || []);
-      setDrawings(note.drawings || []);
-      setLinkedNoteIds(note.linkedNoteIds || []);
-      setIsFormattingOpen(false);
-      setIsPreviewMode(false);
+      const isDifferentNote = activeNoteIdRef.current !== note.id;
+
+      if (isDifferentNote) {
+        const unlocked = note.isEncrypted ? getUnlockedNote(note.id) : undefined;
+        const initTitle = unlocked?.title || note.title || '';
+        const initContent = unlocked?.content || note.content || '';
+        const initTodos = unlocked?.todos || note.todos || [];
+
+        setTitle(initTitle);
+        setContent(initContent);
+        setIsList(note.isList || false);
+        setTodos(initTodos);
+        setIsPinned(note.isPinned || false);
+        setColor(note.color || 'default');
+        setTheme(note.theme || 'none');
+        setCategory(note.category || null);
+        setLabels(note.labels || []);
+        setReminder(note.reminder || null);
+        setImages(unlocked?.images || note.images || []);
+        setDrawings(note.drawings || []);
+        setLinkedNoteIds(note.linkedNoteIds || []);
+        setIsFormattingOpen(false);
+        setIsPreviewMode(false);
+        setAutoSnapshotStatus('idle');
+
+        activeNoteIdRef.current = note.id;
+        lastSnapshottedRef.current = {
+          title: initTitle.trim(),
+          content: initContent.trim(),
+          todos: JSON.parse(JSON.stringify(initTodos)),
+          isList: note.isList || false,
+          color: note.color || 'default',
+          theme: note.theme || 'none',
+          timestamp: note.updatedAt || Date.now(),
+        };
+      } else {
+        // Same note: check if a historical version was just restored
+        const latestVer = note.versions?.[0];
+        if (
+          latestVer &&
+          latestVer.id !== lastRestoredVerIdRef.current &&
+          latestVer.changeSummary?.startsWith('Restored version')
+        ) {
+          lastRestoredVerIdRef.current = latestVer.id;
+          setTitle(latestVer.title || '');
+          setContent(latestVer.content || '');
+          setTodos(latestVer.todos ? JSON.parse(JSON.stringify(latestVer.todos)) : []);
+          setIsList(latestVer.isList || false);
+          setColor(latestVer.color || 'default');
+          setTheme(latestVer.theme || 'none');
+          lastSnapshottedRef.current = {
+            title: (latestVer.title || '').trim(),
+            content: (latestVer.content || '').trim(),
+            todos: latestVer.todos ? JSON.parse(JSON.stringify(latestVer.todos)) : [],
+            isList: latestVer.isList || false,
+            color: latestVer.color || 'default',
+            theme: latestVer.theme || 'none',
+            timestamp: Date.now(),
+          };
+          setAutoSnapshotStatus('saved');
+        }
+      }
     }
   }, [note]);
 
@@ -188,94 +252,220 @@ export const NoteModal: React.FC<NoteModalProps> = ({
     [currentNoteForLinks, notes, note]
   );
 
+  const performAutoSnapshot = useCallback(
+    async (reason?: string) => {
+      if (!note) return;
 
-  if (!isOpen || !note) return null;
+      const rawContent = editorRef.current?.getHTML() || content;
+      const latestContent = renderMarkdownTablesInHtml(rawContent);
+      const trimmedTitle = title.trim();
+      const trimmedContent = latestContent.trim();
+      const finalTodos = newTodoInput.trim()
+        ? [...todos, { id: 'todo-' + Date.now(), text: newTodoInput.trim(), completed: false }]
+        : todos;
 
-  const handleSaveAndClose = async () => {
-    const rawContent = editorRef.current?.getHTML() || content;
-    const latestContent = renderMarkdownTablesInHtml(rawContent);
-    const finalTodos = newTodoInput.trim()
-      ? [...todos, { id: 'todo-' + Date.now(), text: newTodoInput.trim(), completed: false }]
-      : todos;
+      const lastSnap = lastSnapshottedRef.current;
+      const hasChanged =
+        !lastSnap ||
+        lastSnap.title !== trimmedTitle ||
+        lastSnap.content !== trimmedContent ||
+        JSON.stringify(lastSnap.todos) !== JSON.stringify(finalTodos) ||
+        lastSnap.isList !== isList ||
+        lastSnap.color !== color ||
+        lastSnap.theme !== theme;
 
-    if (activeStopwatch && activeStopwatch.noteId === note.id && activeStopwatch.elapsedSeconds > 0) {
-      await stopAndSaveReadingStopwatch();
-    }
+      if (!hasChanged) return;
 
-    if (note.isEncrypted) {
-      const sessionPassword = getSessionPassword(note.id);
-      if (sessionPassword) {
-        try {
-          const bundle = await encryptNote(
-            {
-              title: title.trim(),
-              content: latestContent.trim(),
+      // Avoid creating empty snapshots on completely empty note
+      if (!trimmedTitle && !trimmedContent && finalTodos.length === 0 && images.length === 0 && drawings.length === 0) {
+        return;
+      }
+
+      const now = Date.now();
+      const timeFormatted = new Date(now).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const changeSummary = reason || `Auto snapshot at ${timeFormatted}`;
+
+      const newSnapshot: NoteVersion = {
+        id: 'ver-' + now + '-' + Math.random().toString(36).substring(2, 6),
+        timestamp: now,
+        title: trimmedTitle,
+        content: trimmedContent,
+        isList,
+        todos: finalTodos ? JSON.parse(JSON.stringify(finalTodos)) : [],
+        color,
+        theme,
+        changeSummary,
+        wordCount: trimmedContent ? trimmedContent.replace(/<[^>]+>/g, ' ').split(/\s+/).filter(Boolean).length : 0,
+      };
+
+      const existingVersions = note.versions || [];
+      const prevVer = existingVersions[0];
+      const isRecentAuto =
+        prevVer &&
+        now - prevVer.timestamp < 30000 &&
+        (prevVer.changeSummary?.startsWith('Auto snapshot') || prevVer.changeSummary?.startsWith('Auto checkpoint'));
+
+      let updatedVersions: NoteVersion[];
+      if (isRecentAuto) {
+        // Consolidate recent auto-snapshot
+        updatedVersions = [{ ...newSnapshot, id: prevVer.id }, ...existingVersions.slice(1)];
+      } else {
+        // New version checkpoint
+        updatedVersions = [newSnapshot, ...existingVersions];
+      }
+
+      lastSnapshottedRef.current = {
+        title: trimmedTitle,
+        content: trimmedContent,
+        todos: finalTodos ? JSON.parse(JSON.stringify(finalTodos)) : [],
+        isList,
+        color,
+        theme,
+        timestamp: now,
+      };
+
+      if (note.isEncrypted) {
+        const sessionPassword = getSessionPassword(note.id);
+        if (sessionPassword) {
+          try {
+            const bundle = await encryptNote(
+              {
+                title: trimmedTitle,
+                content: trimmedContent,
+                todos: finalTodos,
+                images,
+              },
+              sessionPassword,
+              note.encryptedData?.hint
+            );
+
+            setUnlockedNote(note.id, {
+              title: trimmedTitle,
+              content: trimmedContent,
               todos: finalTodos,
               images,
-            },
-            sessionPassword,
-            note.encryptedData?.hint
-          );
+            });
 
-          setUnlockedNote(note.id, {
-            title: title.trim(),
-            content: latestContent.trim(),
-            todos: finalTodos,
-            images,
-          });
-
-          await updateNote(note.id, {
-            isEncrypted: true,
-            encryptedData: bundle,
-            title: note.title,
-            content: '',
-            todos: [],
-            images: [],
-            drawings,
-            color,
-            theme,
-            category: category || null,
-            labels,
-            isPinned,
-            reminder,
-            linkedNoteIds,
-          });
-          onClose();
-          return;
-        } catch (err) {
-          console.error('Failed to re-encrypt note on save:', err);
+            await updateNote(note.id, {
+              isEncrypted: true,
+              encryptedData: bundle,
+              title: note.title,
+              content: '',
+              todos: [],
+              images: [],
+              drawings,
+              color,
+              theme,
+              category: category || null,
+              labels,
+              isPinned,
+              reminder,
+              linkedNoteIds,
+              versions: updatedVersions,
+            });
+          } catch (err) {
+            console.error('Failed to auto-snapshot encrypted note:', err);
+          }
         }
       } else {
         await updateNote(note.id, {
+          title: trimmedTitle,
+          content: trimmedContent,
+          isList,
+          todos: finalTodos,
           color,
           theme,
           category: category || null,
           labels,
           isPinned,
           reminder,
+          images,
           drawings,
           linkedNoteIds,
+          versions: updatedVersions,
         });
-        onClose();
-        return;
       }
-    }
 
-    await updateNote(note.id, {
-      title: title.trim(),
-      content: latestContent.trim(),
+      setAutoSnapshotStatus('saved');
+      setLastSnapshotTime(now);
+
+      setTimeout(() => {
+        setAutoSnapshotStatus((prev) => (prev === 'saved' ? 'idle' : prev));
+      }, 2500);
+    },
+    [
+      note,
+      title,
+      content,
+      newTodoInput,
+      todos,
       isList,
-      todos: finalTodos,
       color,
       theme,
-      category: category || null,
+      category,
       labels,
       isPinned,
       reminder,
       images,
       drawings,
       linkedNoteIds,
-    });
+      updateNote,
+    ]
+  );
+
+  // Automatically trigger snapshots while editing note
+  useEffect(() => {
+    if (!isOpen || !note || activeNoteIdRef.current !== note.id) return;
+
+    const rawContent = editorRef.current?.getHTML() || content;
+    const latestContent = renderMarkdownTablesInHtml(rawContent);
+    const trimmedTitle = title.trim();
+    const trimmedContent = latestContent.trim();
+    const lastSnap = lastSnapshottedRef.current;
+
+    const hasChanged =
+      !lastSnap ||
+      lastSnap.title !== trimmedTitle ||
+      lastSnap.content !== trimmedContent ||
+      JSON.stringify(lastSnap.todos) !== JSON.stringify(todos) ||
+      lastSnap.isList !== isList ||
+      lastSnap.color !== color ||
+      lastSnap.theme !== theme;
+
+    if (!hasChanged) return;
+
+    setAutoSnapshotStatus('editing');
+
+    // Debounce: 2.5 seconds after editing pauses
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    debounceTimerRef.current = setTimeout(() => {
+      performAutoSnapshot();
+    }, 2500);
+
+    // Max wait: at least every 30 seconds of active continuous editing
+    if (!maxWaitTimerRef.current) {
+      maxWaitTimerRef.current = setTimeout(() => {
+        performAutoSnapshot('Auto checkpoint (30s editing)');
+        maxWaitTimerRef.current = null;
+      }, 30000);
+    }
+
+    return () => {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    };
+  }, [title, content, todos, isList, color, theme, category, labels, isOpen, note?.id, performAutoSnapshot]);
+
+  if (!isOpen || !note) return null;
+
+  const handleSaveAndClose = async () => {
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    if (maxWaitTimerRef.current) clearTimeout(maxWaitTimerRef.current);
+
+    if (activeStopwatch && activeStopwatch.noteId === note.id && activeStopwatch.elapsedSeconds > 0) {
+      await stopAndSaveReadingStopwatch();
+    }
+
+    await performAutoSnapshot('Auto snapshot on close');
     onClose();
   };
 
@@ -557,27 +747,37 @@ export const NoteModal: React.FC<NoteModalProps> = ({
                 ✓ {stopwatchToast}
               </span>
             )}
+
+            {/* Live Auto-Snapshot Status Indicator */}
+            {autoSnapshotStatus === 'editing' && (
+              <span className="text-[11px] font-medium text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/25 px-2.5 py-0.5 rounded-full flex items-center gap-1.5 animate-in fade-in">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                <span className="hidden sm:inline">Auto-snapshotting…</span>
+                <span className="sm:hidden">Saving…</span>
+              </span>
+            )}
+            {autoSnapshotStatus === 'saved' && (
+              <span className="text-[11px] font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 border border-emerald-500/25 px-2.5 py-0.5 rounded-full flex items-center gap-1 animate-in fade-in">
+                <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                <span className="hidden sm:inline">Snapshot saved</span>
+                <span className="sm:hidden">Saved</span>
+              </span>
+            )}
+
             <button
               type="button"
-              onClick={() => {
-                const rawContent = editorRef.current?.getHTML() || content;
-                const latestContent = renderMarkdownTablesInHtml(rawContent);
-                const currentSnapshotNote: Note = {
-                  ...note,
-                  title: title.trim(),
-                  content: latestContent.trim(),
-                  todos,
-                  isList,
-                  color,
-                  theme,
-                };
-                setVersionHistoryNote(currentSnapshotNote);
+              onClick={async () => {
+                if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+                if (maxWaitTimerRef.current) clearTimeout(maxWaitTimerRef.current);
+                await performAutoSnapshot('Snapshot before viewing history');
+                const latestNote = notes.find((n) => n.id === note.id) || note;
+                setVersionHistoryNote(latestNote);
               }}
               className="p-2 rounded-full transition-colors text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-black/10 relative"
               title={`Version history (${note.versions?.length || 1} versions)`}
             >
               <History className="w-5 h-5" />
-              {note.versions && note.versions.length > 1 && (
+              {note.versions && note.versions.length > 0 && (
                 <span className="absolute -top-0.5 -right-0.5 px-1 bg-amber-500 text-white text-[9px] font-bold rounded-full min-w-3.5 text-center leading-tight">
                   {note.versions.length}
                 </span>
