@@ -21,6 +21,8 @@ import {
   Pause,
   Square,
   Share2,
+  FilePlus,
+  Sparkles,
 } from 'lucide-react';
 import { Note, NoteColor, NoteBackgroundTheme, TodoItem, NoteDrawing, NoteVersion } from '@/types/note';
 import { getNoteColorClasses } from '@/lib/constants';
@@ -77,6 +79,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
 }) => {
   const {
     notes,
+    addNote,
     updateNote,
     toggleArchiveNote,
     trashNote,
@@ -116,6 +119,83 @@ export const NoteModal: React.FC<NoteModalProps> = ({
   const [showLinkModal, setShowLinkModal] = useState(false);
   const [stopwatchToast, setStopwatchToast] = useState<string | null>(null);
   const [copiedUrlToast, setCopiedUrlToast] = useState(false);
+
+  // Text selection and extract into new note
+  const modalContentRef = useRef<HTMLDivElement | null>(null);
+  const [selectedText, setSelectedText] = useState('');
+  const [floatingBubblePos, setFloatingBubblePos] = useState<{ x: number; y: number } | null>(null);
+  const [extractToast, setExtractToast] = useState<{ noteId: string; title: string } | null>(null);
+
+  useEffect(() => {
+    const handleSelection = () => {
+      if (typeof window === 'undefined') return;
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed) {
+        setSelectedText('');
+        setFloatingBubblePos(null);
+        return;
+      }
+
+      const text = sel.toString().trim();
+      if (text.length >= 2 && modalContentRef.current) {
+        try {
+          const range = sel.getRangeAt(0);
+          if (modalContentRef.current.contains(range.commonAncestorContainer)) {
+            const rect = range.getBoundingClientRect();
+            if (rect && rect.width > 0 && rect.height > 0) {
+              setSelectedText(text);
+              setFloatingBubblePos({
+                x: Math.max(90, Math.min(window.innerWidth - 90, rect.left + rect.width / 2)),
+                y: Math.max(20, rect.top - 46),
+              });
+              return;
+            }
+          }
+        } catch {
+          // ignore selection errors
+        }
+      }
+
+      setSelectedText('');
+      setFloatingBubblePos(null);
+    };
+
+    document.addEventListener('selectionchange', handleSelection);
+    return () => document.removeEventListener('selectionchange', handleSelection);
+  }, []);
+
+  const handleExtractToNewNote = async (customText?: string) => {
+    const raw = customText || selectedText || (typeof window !== 'undefined' ? window.getSelection()?.toString() : '') || '';
+    const textToExtract = raw.trim();
+    if (!textToExtract || !note) return;
+
+    // Smart title extraction from first line
+    const lines = textToExtract.split('\n').map((l) => l.trim()).filter(Boolean);
+    const cleanFirstLine = lines[0] ? lines[0].replace(/<[^>]+>/g, '').replace(/^[#*\-•\d.]+\s*/, '') : 'Extracted Note';
+    const newNoteTitle = cleanFirstLine.slice(0, 60) || 'Extracted Note';
+
+    const created = await addNote({
+      title: newNoteTitle,
+      content: textToExtract,
+      color: note.color,
+      theme: note.theme,
+      category: note.category,
+      labels: note.labels,
+      linkedNoteIds: [note.id],
+    });
+
+    if (created) {
+      setLinkedNoteIds((prev) => Array.from(new Set([...prev, created.id])));
+      setExtractToast({ noteId: created.id, title: newNoteTitle });
+      setTimeout(() => setExtractToast(null), 6000);
+    }
+
+    setSelectedText('');
+    setFloatingBubblePos(null);
+    if (typeof window !== 'undefined') {
+      window.getSelection()?.removeAllRanges();
+    }
+  };
 
   const handleCopyNoteUrl = () => {
     if (typeof window === 'undefined' || !note) return;
@@ -580,6 +660,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-3 sm:p-6 md:p-10 animate-in fade-in duration-150 overflow-y-auto"
     >
       <div
+        ref={modalContentRef}
         onClick={(e) => e.stopPropagation()}
         onPaste={(e) => {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -650,17 +731,90 @@ export const NoteModal: React.FC<NoteModalProps> = ({
           </div>
         )}
 
-        {/* Header: Title & Pin */}
-        <div className="flex items-center justify-between px-6 pt-5 pb-2 shrink-0 gap-3">
-          <div className="flex-1 flex items-center gap-2">
-            <input
-              type="text"
-              placeholder="Title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="w-full bg-transparent font-semibold text-stone-900 dark:text-stone-100 placeholder:text-stone-400 outline-none"
-              style={{ fontSize: 'calc(var(--note-font-size, 15px) * 1.25)' }}
-            />
+        {/* Floating Bubble: Extract Selected Text into New Note */}
+        {floatingBubblePos && selectedText && (
+          <div
+            style={{
+              position: 'fixed',
+              left: `${floatingBubblePos.x}px`,
+              top: `${floatingBubblePos.y}px`,
+              transform: 'translateX(-50%)',
+              zIndex: 100,
+            }}
+            className="animate-in fade-in zoom-in-95 duration-150"
+          >
+            <button
+              type="button"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+              onClick={() => handleExtractToNewNote()}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 shadow-2xl border border-white/20 dark:border-black/20 text-xs font-semibold hover:scale-105 active:scale-95 transition-all cursor-pointer whitespace-nowrap"
+              title="Extract highlighted text into a brand new note"
+            >
+              <FilePlus className="w-3.5 h-3.5 text-amber-500" />
+              <span>Extract to new note</span>
+            </button>
+          </div>
+        )}
+
+        {/* Success Toast after extracting note */}
+        {extractToast && (
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-2.5 px-4 py-2.5 rounded-2xl bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 shadow-2xl border border-black/10 dark:border-white/10 animate-in fade-in slide-in-from-top-4 duration-200">
+            <Sparkles className="w-4 h-4 text-amber-500 shrink-0" />
+            <span className="text-xs font-medium">
+              Extracted into note: <strong className="font-semibold">&quot;{extractToast.title}&quot;</strong>
+            </span>
+            <button
+              type="button"
+              onClick={async () => {
+                await handleSaveAndClose();
+                const targetNote = notes.find((n) => n.id === extractToast.noteId);
+                if (targetNote) {
+                  setEditingNote(targetNote);
+                }
+              }}
+              className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-amber-500 hover:bg-amber-600 text-white transition-colors"
+            >
+              Open Note
+            </button>
+            <button
+              type="button"
+              onClick={() => setExtractToast(null)}
+              className="p-1 text-stone-400 hover:text-white dark:hover:text-stone-900"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
+        {/* Header: Note Title (Shows FIRST, Full width, Word-wrapped) */}
+        <div className="px-6 pt-5 pb-1.5 shrink-0">
+          <textarea
+            placeholder="Title"
+            value={title}
+            rows={1}
+            onChange={(e) => {
+              setTitle(e.target.value);
+              e.target.style.height = 'auto';
+              e.target.style.height = `${e.target.scrollHeight}px`;
+            }}
+            ref={(el) => {
+              if (el) {
+                el.style.height = 'auto';
+                el.style.height = `${el.scrollHeight}px`;
+              }
+            }}
+            className="w-full bg-transparent font-semibold text-stone-900 dark:text-stone-100 placeholder:text-stone-400 outline-none resize-none leading-snug overflow-hidden block"
+            style={{ fontSize: 'calc(var(--note-font-size, 15px) * 1.25)' }}
+          />
+        </div>
+
+        {/* Action Menus Toolbar (Positioned neatly BELOW the title) */}
+        <div className="flex items-center justify-between px-6 pb-2.5 pt-0.5 shrink-0 gap-2 flex-wrap border-b border-black/5 dark:border-white/5">
+          {/* Left: AES Encryption status / Lock button */}
+          <div className="flex items-center gap-2">
             {note.isEncrypted && (
               <div className="shrink-0 flex items-center gap-1.5">
                 <span
@@ -683,7 +837,9 @@ export const NoteModal: React.FC<NoteModalProps> = ({
               </div>
             )}
           </div>
-          <div className="flex items-center gap-1.5 flex-wrap justify-end">
+
+          {/* Right: Menus & Action Buttons (Stopwatch, Auto-snapshot status, Extract, History, Preview, URL, Share, Pin) */}
+          <div className="flex items-center gap-1.5 flex-wrap justify-end ml-auto">
             {/* Reading Stopwatch Controls */}
             {isThisNoteStopwatchActive ? (
               <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-800 dark:text-emerald-300 animate-in fade-in">
@@ -764,6 +920,29 @@ export const NoteModal: React.FC<NoteModalProps> = ({
               </span>
             )}
 
+            {/* Extract Selected Text to New Note Button */}
+            <button
+              type="button"
+              onClick={() => handleExtractToNewNote()}
+              disabled={!selectedText}
+              className={`p-2 rounded-full transition-colors relative ${
+                selectedText
+                  ? 'text-amber-600 bg-amber-100 dark:bg-amber-950/60 dark:text-amber-400 shadow-xs ring-1 ring-amber-500/50'
+                  : 'text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 hover:bg-black/10'
+              }`}
+              title={
+                selectedText
+                  ? `Extract selected text ("${selectedText.slice(0, 25)}...") into new note`
+                  : 'Extract selected text into new note (highlight text in note to activate)'
+              }
+            >
+              <FilePlus className="w-5 h-5" />
+              {selectedText && (
+                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-amber-500 animate-ping" />
+              )}
+            </button>
+
+            {/* Version History Button */}
             <button
               type="button"
               onClick={async () => {
@@ -783,6 +962,8 @@ export const NoteModal: React.FC<NoteModalProps> = ({
                 </span>
               )}
             </button>
+
+            {/* Markdown Preview Button */}
             {!isList && (
               <button
                 type="button"
@@ -797,6 +978,8 @@ export const NoteModal: React.FC<NoteModalProps> = ({
                 {isPreviewMode ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
               </button>
             )}
+
+            {/* Copy Note URL Button */}
             <button
               type="button"
               onClick={handleCopyNoteUrl}
@@ -805,6 +988,8 @@ export const NoteModal: React.FC<NoteModalProps> = ({
             >
               {copiedUrlToast ? <Check className="w-5 h-5 text-emerald-500" /> : <Link2 className="w-5 h-5" />}
             </button>
+
+            {/* Share Note Button */}
             <button
               type="button"
               onClick={() => {
@@ -827,6 +1012,8 @@ export const NoteModal: React.FC<NoteModalProps> = ({
             >
               <Share2 className="w-5 h-5" />
             </button>
+
+            {/* Pin Note Button */}
             <button
               type="button"
               onClick={() => setIsPinned(!isPinned)}
@@ -1184,7 +1371,10 @@ export const NoteModal: React.FC<NoteModalProps> = ({
         {/* Google Keep Authentic Formatting Bar (H1, H2, Aa, B, I, U, Lists, Clear) */}
         {!isList && isFormattingOpen && (
           <div className="px-6 py-2 border-t border-black/5 dark:border-white/5 bg-black/2 dark:bg-white/2">
-            <KeepFormattingBar onFormat={handleFormatText} />
+            <KeepFormattingBar
+              onFormat={handleFormatText}
+              onExtractSelection={() => handleExtractToNewNote()}
+            />
           </div>
         )}
 

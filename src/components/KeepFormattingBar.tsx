@@ -11,16 +11,19 @@ import {
   ListOrdered,
   CheckSquare,
   RemoveFormatting,
+  FilePlus,
 } from 'lucide-react';
 import { GoogleKeepFormatCommand } from '@/lib/formatUtils';
 
 interface KeepFormattingBarProps {
   onFormat: (cmd: GoogleKeepFormatCommand) => void;
+  onExtractSelection?: () => void;
   className?: string;
 }
 
 export const KeepFormattingBar: React.FC<KeepFormattingBarProps> = ({
   onFormat,
+  onExtractSelection,
   className = '',
 }) => {
   return (
@@ -148,6 +151,22 @@ export const KeepFormattingBar: React.FC<KeepFormattingBarProps> = ({
       >
         <RemoveFormatting className="w-4 h-4" />
       </button>
+
+      {/* Extract Selected Text to New Note */}
+      {onExtractSelection && (
+        <>
+          <div className="h-4 w-px bg-stone-300 dark:bg-stone-600 mx-0.5 sm:mx-1" />
+          <button
+            type="button"
+            onClick={onExtractSelection}
+            className="flex items-center gap-1 px-2 py-1 rounded-md hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 transition-colors text-xs font-semibold"
+            title="Extract selected text into new note"
+          >
+            <FilePlus className="w-3.5 h-3.5 text-amber-500" />
+            <span className="hidden sm:inline">Extract</span>
+          </button>
+        </>
+      )}
     </div>
   );
 };

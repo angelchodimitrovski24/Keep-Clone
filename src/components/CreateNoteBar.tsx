@@ -389,13 +389,23 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
 
         {/* Header & Pin */}
         <div className="flex items-center justify-between px-4 pt-3 pb-1">
-          <input
-            type="text"
+          <textarea
             placeholder="Title"
             value={title}
-            onChange={(e) => setTitle(e.target.value)}
+            rows={1}
+            onChange={(e) => {
+              setTitle(e.target.value);
+              e.target.style.height = 'auto';
+              e.target.style.height = `${e.target.scrollHeight}px`;
+            }}
+            ref={(el) => {
+              if (el) {
+                el.style.height = 'auto';
+                el.style.height = `${el.scrollHeight}px`;
+              }
+            }}
             style={{ fontSize: 'calc(var(--note-font-size, 15px) * 1.15)' }}
-            className="w-full bg-transparent font-semibold text-stone-900 dark:text-stone-100 placeholder:text-stone-500 outline-none"
+            className="w-full bg-transparent font-semibold text-stone-900 dark:text-stone-100 placeholder:text-stone-500 outline-none resize-none leading-snug overflow-hidden block"
           />
           <button
             type="button"

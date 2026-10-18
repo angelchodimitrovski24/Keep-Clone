@@ -320,7 +320,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
 
               {activeNote.title && (
                 <h3
-                  className="font-semibold text-stone-900 dark:text-stone-100 mb-1.5 tracking-tight line-clamp-2"
+                  className="font-semibold text-stone-900 dark:text-stone-100 mb-1.5 tracking-tight break-words whitespace-pre-wrap"
                   style={{ fontSize: 'calc(var(--note-font-size, 15px) * 1.15)' }}
                 >
                   {activeNote.title}
