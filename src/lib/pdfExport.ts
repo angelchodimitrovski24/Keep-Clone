@@ -3,6 +3,7 @@ import { PDFDocument } from 'pdf-lib';
 import JSZip from 'jszip';
 import { Note, Label, Category } from '@/types/note';
 import { getUnlockedNote } from './encryptionSession';
+import { resolveLocalMediaUrl } from './formatUtils';
 
 export interface PdfExportProgress {
   currentNote: number;
@@ -30,68 +31,171 @@ export interface PdfExportResult {
 }
 
 /**
- * Converts image URL or base64 into a clean base64 data URL and retrieves dimensions
+ * Extracts all image sources from note.images and embedded in note.content (HTML and Markdown)
+ */
+export function extractAllImagesFromNote(
+  note: Note,
+  unlockedContent?: string,
+  unlockedImages?: string[]
+): string[] {
+  const allImages: string[] = [];
+
+  // 1. Any images in note.images / unlockedImages
+  const baseImages = unlockedImages || note.images || [];
+  for (const img of baseImages) {
+    if (img && !allImages.includes(img)) {
+      allImages.push(img);
+    }
+  }
+
+  // 2. Extract from content (HTML or Markdown)
+  const content = unlockedContent ?? note.content ?? '';
+  if (content) {
+    // HTML <img> tags: <img ... src="..." ... />
+    const imgTagRegex = /<img[^>]+src=["']([^"']+)["']/gi;
+    let match;
+    while ((match = imgTagRegex.exec(content)) !== null) {
+      if (match[1] && !allImages.includes(match[1])) {
+        allImages.push(match[1]);
+      }
+    }
+
+    // Markdown image links: ![alt](url)
+    const mdImgRegex = /!\[.*?\]\((.+?)\)/g;
+    while ((match = mdImgRegex.exec(content)) !== null) {
+      if (match[1] && !allImages.includes(match[1])) {
+        allImages.push(match[1]);
+      }
+    }
+
+    // keep-media data-serve-url or data-saved-path
+    const mediaServeRegex = /data-serve-url=["']([^"']+)["']/gi;
+    while ((match = mediaServeRegex.exec(content)) !== null) {
+      if (match[1] && !allImages.includes(match[1])) {
+        allImages.push(match[1]);
+      }
+    }
+  }
+
+  return allImages;
+}
+
+/**
+ * Converts image URL, local path, or base64 into a clean base64 data URL and retrieves dimensions
  */
 async function resolveImageDimensions(
-  src: string
+  rawSrc: string
 ): Promise<{ dataUrl: string; width: number; height: number; format: 'JPEG' | 'PNG' } | null> {
-  if (typeof window === 'undefined') return null;
+  if (typeof window === 'undefined' || !rawSrc) return null;
 
+  const src = resolveLocalMediaUrl(rawSrc);
+  if (!src) return null;
+
+  // If already a clean data URL
+  if (src.startsWith('data:image/')) {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const isPng = src.startsWith('data:image/png');
+        resolve({
+          dataUrl: src,
+          width: img.naturalWidth || img.width || 400,
+          height: img.naturalHeight || img.height || 300,
+          format: isPng ? 'PNG' : 'JPEG',
+        });
+      };
+      img.onerror = () => resolve(null);
+      img.src = src;
+    });
+  }
+
+  // If a URL or blob URL, load on canvas or fallback to direct fetch
   return new Promise((resolve) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
 
+    const timer = setTimeout(() => {
+      resolve(null);
+    }, 7000);
+
     img.onload = () => {
+      clearTimeout(timer);
       try {
         const naturalWidth = img.naturalWidth || img.width || 400;
         const naturalHeight = img.naturalHeight || img.height || 300;
 
-        // If it's already a clean data URL
-        if (src.startsWith('data:image/')) {
-          const isPng = src.startsWith('data:image/png');
-          resolve({
-            dataUrl: src,
-            width: naturalWidth,
-            height: naturalHeight,
-            format: isPng ? 'PNG' : 'JPEG',
-          });
-          return;
-        }
-
-        // Otherwise convert URL to canvas data URL
         const canvas = document.createElement('canvas');
         canvas.width = naturalWidth;
         canvas.height = naturalHeight;
         const ctx = canvas.getContext('2d');
         if (ctx) {
           ctx.drawImage(img, 0, 0);
-          const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
+          const isPng = src.toLowerCase().includes('.png');
+          const dataUrl = canvas.toDataURL(isPng ? 'image/png' : 'image/jpeg', 0.88);
           resolve({
             dataUrl,
             width: naturalWidth,
             height: naturalHeight,
-            format: 'JPEG',
+            format: isPng ? 'PNG' : 'JPEG',
           });
           return;
         }
       } catch (err) {
-        console.warn('Failed to resolve image on canvas:', err);
+        console.warn('Canvas conversion failed, trying fetch fallback:', err);
       }
       resolve(null);
     };
 
-    img.onerror = () => resolve(null);
+    img.onerror = async () => {
+      clearTimeout(timer);
+      // Fallback: try fetching as Blob -> FileReader dataUrl
+      try {
+        const res = await fetch(src);
+        if (res.ok) {
+          const blob = await res.blob();
+          const reader = new FileReader();
+          reader.onload = () => {
+            const dataUrl = reader.result as string;
+            if (dataUrl) {
+              const fallbackImg = new Image();
+              fallbackImg.onload = () => {
+                const isPng = blob.type === 'image/png';
+                resolve({
+                  dataUrl,
+                  width: fallbackImg.naturalWidth || 400,
+                  height: fallbackImg.naturalHeight || 300,
+                  format: isPng ? 'PNG' : 'JPEG',
+                });
+              };
+              fallbackImg.onerror = () => resolve(null);
+              fallbackImg.src = dataUrl;
+              return;
+            }
+            resolve(null);
+          };
+          reader.onerror = () => resolve(null);
+          reader.readAsDataURL(blob);
+          return;
+        }
+      } catch (e) {
+        console.warn('Fetch fallback failed for image:', e);
+      }
+      resolve(null);
+    };
+
     img.src = src;
   });
 }
 
 /**
- * Strips HTML tags and converts common structures to clean text suitable for NotebookLM
+ * Strips HTML tags and markdown image links, converting common structures to clean text suitable for NotebookLM
  */
 function cleanHtmlContentForPdf(html: string): string {
   if (!html) return '';
 
   return html
+    // Remove markdown image syntax so raw path is not left in text
+    .replace(/!\[.*?\]\(.*?\)/g, '')
     // Handle headings
     .replace(/<h1[^>]*>(.*?)<\/h1>/gi, '\n# $1\n')
     .replace(/<h2[^>]*>(.*?)<\/h2>/gi, '\n## $1\n')
@@ -232,7 +336,7 @@ export async function exportNotesToPdf(
     const rawContent = unlocked?.content || note.content || '';
     const noteContent = cleanHtmlContentForPdf(rawContent);
     const noteTodos = unlocked?.todos || note.todos || [];
-    const noteImages = unlocked?.images || note.images || [];
+    const allNoteImages = extractAllImagesFromNote(note, unlocked?.content, unlocked?.images);
     const noteDrawings = note.drawings || [];
 
     // Note Section Header: Title
@@ -250,30 +354,88 @@ export async function exportNotesToPdf(
     doc.text(titleLines, marginLeft, currentY);
     currentY += titleLines.length * 6 + 2;
 
-    // Metadata Bar: Category, Labels, Dates
-    const metaParts: string[] = [];
-    if (note.category) {
-      const catObj = categoriesMap.get(note.category);
-      metaParts.push(`Category: ${catObj?.icon || '📁'} ${note.category}`);
-    }
-    if (note.labels && note.labels.length > 0) {
-      metaParts.push(`Tags: ${note.labels.map((l) => `#${l}`).join(' ')}`);
-    }
-    if (note.updatedAt) {
-      metaParts.push(`Updated: ${new Date(note.updatedAt).toLocaleDateString()}`);
-    }
-    if (note.isEncrypted && !unlocked) {
-      metaParts.push(`[AES-256 Encrypted (Locked)]`);
+    // Beautiful Label & Category Badges directly UNDER the Title
+    const hasCategory = Boolean(note.category);
+    const labelsArray = note.labels || [];
+    const hasBadges = hasCategory || labelsArray.length > 0;
+
+    if (hasBadges) {
+      ensureSpace(10);
+      let badgeX = marginLeft;
+      const badgeHeight = 5.2;
+      const badgeRadius = 1.6;
+      const pillGap = 2;
+      const lineAdvance = badgeHeight + 2;
+
+      // 1. Category Badge
+      if (note.category) {
+        const catObj = categoriesMap.get(note.category);
+        const catText = `${catObj?.icon || '📁'} ${note.category}`;
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8);
+        const textWidth = doc.getTextWidth(catText);
+        const pillWidth = textWidth + 4.5;
+
+        if (badgeX + pillWidth > marginLeft + contentWidth) {
+          currentY += lineAdvance;
+          badgeX = marginLeft;
+          ensureSpace(badgeHeight + 4);
+        }
+
+        doc.setFillColor(254, 243, 199); // amber-100
+        doc.setDrawColor(245, 158, 11);  // amber-500
+        doc.setLineWidth(0.25);
+        doc.roundedRect(badgeX, currentY, pillWidth, badgeHeight, badgeRadius, badgeRadius, 'FD');
+
+        doc.setTextColor(146, 64, 14); // amber-800
+        doc.text(catText, badgeX + 2.2, currentY + 3.6);
+
+        badgeX += pillWidth + pillGap;
+      }
+
+      // 2. Labels Badges
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+
+      for (const label of labelsArray) {
+        const labelText = `#${label}`;
+        const textWidth = doc.getTextWidth(labelText);
+        const pillWidth = textWidth + 4.5;
+
+        if (badgeX + pillWidth > marginLeft + contentWidth) {
+          currentY += lineAdvance;
+          badgeX = marginLeft;
+          ensureSpace(badgeHeight + 4);
+        }
+
+        doc.setFillColor(241, 245, 249); // slate-100
+        doc.setDrawColor(203, 213, 225); // slate-300
+        doc.setLineWidth(0.2);
+        doc.roundedRect(badgeX, currentY, pillWidth, badgeHeight, badgeRadius, badgeRadius, 'FD');
+
+        doc.setTextColor(51, 65, 85); // slate-700
+        doc.text(labelText, badgeX + 2.2, currentY + 3.6);
+
+        badgeX += pillWidth + pillGap;
+      }
+
+      currentY += lineAdvance + 1;
     }
 
-    if (metaParts.length > 0) {
+    // Sub-title Metadata info line: Date and Encryption status
+    const metaInfo: string[] = [];
+    if (note.updatedAt) {
+      metaInfo.push(`Updated ${new Date(note.updatedAt).toLocaleDateString(undefined, { dateStyle: 'medium' })}`);
+    }
+    if (note.isEncrypted && !unlocked) {
+      metaInfo.push(`[AES-256 Encrypted (Locked)]`);
+    }
+    if (metaInfo.length > 0) {
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8.5);
-      doc.setTextColor(100, 116, 139); // Slate-500
-      const metaText = metaParts.join('  •  ');
-      const metaLines = doc.splitTextToSize(metaText, contentWidth);
-      doc.text(metaLines, marginLeft, currentY);
-      currentY += metaLines.length * 4.5 + 4;
+      doc.setFontSize(7.5);
+      doc.setTextColor(148, 163, 184); // slate-400
+      doc.text(metaInfo.join('  •  '), marginLeft, currentY);
+      currentY += 4.5;
     }
 
     // Render Text Content
@@ -315,10 +477,10 @@ export async function exportNotesToPdf(
       currentY += 2;
     }
 
-    // Render Note Images
-    if (noteImages.length > 0) {
-      for (let imgIdx = 0; imgIdx < noteImages.length; imgIdx++) {
-        const imgSrc = noteImages[imgIdx];
+    // Render Note Images (Both attached images and embedded content images)
+    if (allNoteImages.length > 0) {
+      for (let imgIdx = 0; imgIdx < allNoteImages.length; imgIdx++) {
+        const imgSrc = allNoteImages[imgIdx];
         try {
           const resolved = await resolveImageDimensions(imgSrc);
           if (resolved) {

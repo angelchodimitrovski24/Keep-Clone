@@ -824,6 +824,54 @@ export const NoteModal: React.FC<NoteModalProps> = ({
             className="w-full bg-transparent font-semibold text-stone-900 dark:text-stone-100 placeholder:text-stone-400 outline-none resize-none leading-snug overflow-hidden block"
             style={{ fontSize: 'calc(var(--note-font-size, 15px) * 1.25)' }}
           />
+
+          {/* Beautiful Category & Labels directly under the Title */}
+          {((category) || (labels && labels.length > 0)) && (
+            <div className="flex flex-wrap items-center gap-1.5 mt-2 mb-1">
+              {category && (() => {
+                const catObj = categories.find((c) => c.name === category);
+                return (
+                  <span
+                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold shadow-2xs group transition-all"
+                    style={{
+                      backgroundColor: catObj?.color ? `${catObj.color}20` : 'rgba(59, 130, 246, 0.15)',
+                      color: catObj?.color || '#3b82f6',
+                      border: `1px solid ${catObj?.color ? `${catObj.color}40` : 'rgba(59, 130, 246, 0.3)'}`,
+                    }}
+                  >
+                    <span>{catObj?.icon || '📁'}</span>
+                    <span>{category}</span>
+                    <button
+                      type="button"
+                      onClick={() => setCategory(null)}
+                      className="hover:opacity-75 ml-0.5 rounded-full p-0.5 hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
+                      title="Remove category"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                );
+              })()}
+
+              {labels.map((lbl) => (
+                <span
+                  key={lbl}
+                  className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium bg-black/5 dark:bg-white/10 text-stone-800 dark:text-stone-200 border border-black/5 dark:border-white/5 hover:border-black/15 dark:hover:border-white/15 transition-colors"
+                >
+                  <span className="text-stone-400 dark:text-stone-500 font-semibold">#</span>
+                  <span>{lbl}</span>
+                  <button
+                    type="button"
+                    onClick={() => setLabels((prev) => prev.filter((l) => l !== lbl))}
+                    className="hover:text-red-500 ml-0.5 rounded-full p-0.5 hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
+                    title="Remove label"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Action Menus Toolbar (Positioned neatly BELOW the title) */}
@@ -1316,48 +1364,6 @@ export const NoteModal: React.FC<NoteModalProps> = ({
                   </button>
                 </span>
               )}
-
-              {/* Category chip */}
-              {category && (() => {
-                const catObj = categories.find((c) => c.name === category);
-                return (
-                  <span
-                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold shadow-2xs"
-                    style={{
-                      backgroundColor: catObj?.color ? `${catObj.color}20` : 'rgba(59, 130, 246, 0.15)',
-                      color: catObj?.color || '#3b82f6',
-                      border: `1px solid ${catObj?.color ? `${catObj.color}40` : 'rgba(59, 130, 246, 0.3)'}`,
-                    }}
-                  >
-                    <span>{catObj?.icon || '📁'}</span>
-                    <span>{category}</span>
-                    <button
-                      type="button"
-                      onClick={() => setCategory(null)}
-                      className="hover:opacity-75 ml-0.5"
-                      title="Remove category"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </span>
-                );
-              })()}
-
-              {labels.map((lbl) => (
-                <span
-                  key={lbl}
-                  className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium bg-black/10 dark:bg-white/10 text-stone-800 dark:text-stone-200"
-                >
-                  {lbl}
-                  <button
-                    type="button"
-                    onClick={() => setLabels((prev) => prev.filter((l) => l !== lbl))}
-                    className="hover:text-red-500 ml-0.5"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </span>
-              ))}
             </div>
 
             <div className="text-[11px] text-stone-400 dark:text-stone-500 flex items-center justify-between gap-2 flex-wrap pt-1">

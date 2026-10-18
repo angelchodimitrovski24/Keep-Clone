@@ -339,6 +339,35 @@ export const NoteCard: React.FC<NoteCardProps> = ({
                 </h3>
               )}
 
+              {/* Beautiful Category & Labels directly under the Title */}
+              {((note.category) || (note.labels && note.labels.length > 0)) && (
+                <div className="flex flex-wrap items-center gap-1.5 mb-2.5 mt-0.5">
+                  {note.category && (
+                    <span
+                      className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold shadow-2xs transition-all hover:opacity-90"
+                      style={{
+                        backgroundColor: categoryObj?.color ? `${categoryObj.color}20` : 'rgba(59, 130, 246, 0.15)',
+                        color: categoryObj?.color || '#3b82f6',
+                        border: `1px solid ${categoryObj?.color ? `${categoryObj.color}40` : 'rgba(59, 130, 246, 0.3)'}`,
+                      }}
+                    >
+                      <span className="text-[12px]">{categoryObj?.icon || '📁'}</span>
+                      <span>{note.category}</span>
+                    </span>
+                  )}
+
+                  {note.labels?.map((label) => (
+                    <span
+                      key={label}
+                      className="inline-flex items-center gap-0.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-black/5 dark:bg-white/10 text-stone-700 dark:text-stone-300 border border-black/5 dark:border-white/5 hover:border-black/10 dark:hover:border-white/15 transition-colors"
+                    >
+                      <span className="text-stone-400 dark:text-stone-500 font-semibold">#</span>
+                      <span>{label}</span>
+                    </span>
+                  ))}
+                </div>
+              )}
+
               {/* List items view */}
               {activeNote.isList ? (
                 <div className="space-y-1.5 my-1" style={{ fontSize: 'var(--note-font-size, 15px)' }}>
@@ -399,42 +428,20 @@ export const NoteCard: React.FC<NoteCardProps> = ({
                 </div>
               )}
 
-              {/* Category, Labels & Reminders badges */}
-              <div className="flex flex-wrap items-center gap-1.5 mt-3 pt-1">
-                {note.category && (
-                  <span
-                    className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold shadow-2xs"
-                    style={{
-                      backgroundColor: categoryObj?.color ? `${categoryObj.color}20` : 'rgba(59, 130, 246, 0.15)',
-                      color: categoryObj?.color || '#3b82f6',
-                      border: `1px solid ${categoryObj?.color ? `${categoryObj.color}40` : 'rgba(59, 130, 246, 0.3)'}`,
-                    }}
-                  >
-                    <span>{categoryObj?.icon || '📁'}</span>
-                    <span>{note.category}</span>
-                  </span>
-                )}
-
-                {note.reminder && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-black/5 dark:bg-white/10 text-stone-700 dark:text-stone-300">
-                    <Bell className="w-3 h-3 text-amber-500" />
-                    {new Date(note.reminder).toLocaleDateString([], {
-                      month: 'short',
-                      day: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
-                  </span>
-                )}
-
-                {note.labels?.map((label) => (
-                  <span
-                    key={label}
-                    className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-black/5 dark:bg-white/10 text-stone-700 dark:text-stone-300"
-                  >
-                    {label}
-                  </span>
-                ))}
+              {/* Bottom Metadata Badges (Reminders, files, reading stopwatch) */}
+              {(note.reminder || attachedFileCount > 0 || (note.totalReadingTime && note.totalReadingTime > 0) || activeStopwatch?.noteId === note.id) && (
+                <div className="flex flex-wrap items-center gap-1.5 mt-3 pt-1">
+                  {note.reminder && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-black/5 dark:bg-white/10 text-stone-700 dark:text-stone-300">
+                      <Bell className="w-3 h-3 text-amber-500" />
+                      {new Date(note.reminder).toLocaleDateString([], {
+                        month: 'short',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </span>
+                  )}
 
                 {attachedFileCount > 0 && (
                   <span
@@ -466,8 +473,9 @@ export const NoteCard: React.FC<NoteCardProps> = ({
                   </span>
                 )}
               </div>
-            </div>
-          </>
+            )}
+          </div>
+        </>
         )}
 
         {/* Themed Background Illustration */}
