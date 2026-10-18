@@ -1,4 +1,5 @@
 import { renderMarkdownTablesInHtml } from './tableUtils';
+import { getMediaBlobUrl, getSyncLocalMediaFolder } from './localPaste';
 
 export type GoogleKeepFormatCommand =
   | 'h1'
@@ -236,19 +237,33 @@ export function resolveLocalMediaUrl(rawPath: string): string {
     trimmed.startsWith('http://') ||
     trimmed.startsWith('https://') ||
     trimmed.startsWith('data:image/') ||
+    trimmed.startsWith('blob:') ||
     trimmed.startsWith('/api/')
   ) {
     return trimmed;
   }
 
   const normalized = trimmed.replace(/\\/g, '/');
+
+  // Check client media blob cache first (e.g. pasted in current session or offline)
+  const cachedUrl = getMediaBlobUrl(normalized);
+  if (cachedUrl) return cachedUrl;
+
   const lastSlash = normalized.lastIndexOf('/');
+  const fileName = lastSlash !== -1 ? normalized.substring(lastSlash + 1) : normalized;
+  const cachedByName = getMediaBlobUrl(fileName);
+  if (cachedByName) return cachedByName;
+
   let folder = '';
   let file = normalized;
 
   if (lastSlash !== -1) {
     folder = normalized.substring(0, lastSlash);
     file = normalized.substring(lastSlash + 1);
+  }
+
+  if (!folder && typeof window !== 'undefined') {
+    folder = getSyncLocalMediaFolder();
   }
 
   return `/api/local-media?folder=${encodeURIComponent(folder)}&file=${encodeURIComponent(file)}`;
@@ -262,7 +277,7 @@ export function renderMarkdownImagesInString(str: string): string {
   return str.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_match, alt, rawPath) => {
     const serveUrl = resolveLocalMediaUrl(rawPath.trim());
     const displayAlt = alt || 'image';
-    return `<div class="my-2"><p class="text-xs font-mono text-stone-400 select-all my-0.5">![${displayAlt}](${rawPath})</p><img src="${serveUrl}" alt="${displayAlt}" class="rounded-xl max-h-96 w-auto my-1 border border-black/10 dark:border-white/10" loading="lazy" /></div>`;
+    return `<div class="my-2 keep-media-img-wrapper"><img src="${serveUrl}" alt="${displayAlt}" title="${rawPath}" class="rounded-xl max-h-96 w-auto my-1 border border-black/10 dark:border-white/10 shadow-xs object-contain" loading="lazy" /></div>`;
   });
 }
 

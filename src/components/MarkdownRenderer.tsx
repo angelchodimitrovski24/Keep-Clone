@@ -101,15 +101,13 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
             const resolvedSrc = resolveLocalMediaUrl(rawSrc);
             return (
               <span className="block my-2">
-                <span className="block text-xs font-mono text-stone-400 select-all my-0.5 truncate max-w-full">
-                  ![{alt || 'image'}]({rawSrc})
-                </span>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   {...props}
                   src={resolvedSrc}
                   alt={alt || 'Image'}
-                  className="rounded-xl max-h-80 w-auto my-1 border border-black/10 dark:border-white/10"
+                  title={rawSrc}
+                  className="rounded-xl max-h-80 w-auto my-1 border border-black/10 dark:border-white/10 shadow-xs object-contain"
                   loading="lazy"
                 />
               </span>

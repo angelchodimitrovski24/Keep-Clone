@@ -70,6 +70,8 @@ export const LocalFolderModal: React.FC<LocalFolderModalProps> = ({ isOpen, onCl
       if (handle) {
         await saveSettingToDB('browserDirectoryHandle', handle);
         setBrowserHandleName(handle.name);
+        setFolderInput(handle.name);
+        setLocalMediaFolder(handle.name);
         setStatusMessage(`Connected browser directory: "${handle.name}"`);
       }
     } catch (err) {

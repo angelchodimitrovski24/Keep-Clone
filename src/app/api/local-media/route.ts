@@ -56,11 +56,18 @@ function getUniqueFilePath(dir: string, desiredName: string): { finalName: strin
   };
 }
 
+function getDefaultMediaFolder(): string {
+  if (process.env.VERCEL) {
+    return path.join('/tmp', 'local-media');
+  }
+  return path.join(process.cwd(), 'local-media');
+}
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const action = searchParams.get('action');
 
-  const defaultFolder = path.join(process.cwd(), 'local-media');
+  const defaultFolder = getDefaultMediaFolder();
 
   if (action === 'default') {
     return NextResponse.json({ defaultFolder });
@@ -76,10 +83,15 @@ export async function GET(req: NextRequest) {
   try {
     // Prevent directory traversal outside the target folder
     const safeFileName = path.basename(file);
-    const fullFilePath = path.join(/*turbopackIgnore: true*/ folder, safeFileName);
+    let fullFilePath = path.join(/*turbopackIgnore: true*/ folder, safeFileName);
 
     if (!fs.existsSync(/*turbopackIgnore: true*/ fullFilePath)) {
-      return NextResponse.json({ error: 'File not found' }, { status: 404 });
+      const fallbackPath = path.join(/*turbopackIgnore: true*/ defaultFolder, safeFileName);
+      if (fs.existsSync(/*turbopackIgnore: true*/ fallbackPath)) {
+        fullFilePath = fallbackPath;
+      } else {
+        return NextResponse.json({ error: 'File not found' }, { status: 404 });
+      }
     }
 
     const fileBuffer = fs.readFileSync(/*turbopackIgnore: true*/ fullFilePath);
@@ -104,12 +116,20 @@ export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
     const rawFolder = formData.get('folderPath') as string | null;
-    const defaultFolder = path.join(process.cwd(), 'local-media');
-    const targetFolder = rawFolder && rawFolder.trim() ? rawFolder.trim() : defaultFolder;
+    const defaultFolder = getDefaultMediaFolder();
+    let targetFolder = rawFolder && rawFolder.trim() ? rawFolder.trim() : defaultFolder;
 
     // Ensure target folder exists
-    if (!fs.existsSync(/*turbopackIgnore: true*/ targetFolder)) {
-      fs.mkdirSync(/*turbopackIgnore: true*/ targetFolder, { recursive: true });
+    try {
+      if (!fs.existsSync(/*turbopackIgnore: true*/ targetFolder)) {
+        fs.mkdirSync(/*turbopackIgnore: true*/ targetFolder, { recursive: true });
+      }
+    } catch (e) {
+      console.warn('Could not create targetFolder, falling back to defaultFolder:', e);
+      targetFolder = defaultFolder;
+      if (!fs.existsSync(/*turbopackIgnore: true*/ targetFolder)) {
+        fs.mkdirSync(/*turbopackIgnore: true*/ targetFolder, { recursive: true });
+      }
     }
 
     const uploadedFiles = formData.getAll('files') as File[];

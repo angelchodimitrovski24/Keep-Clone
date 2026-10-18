@@ -132,51 +132,17 @@ export const NoteCard: React.FC<NoteCardProps> = ({
     const filesArray = Array.from(files);
     e.target.value = '';
 
-    // 1. Convert image files to data URLs for top images gallery
-    const imageFiles = filesArray.filter((f) => f.type.startsWith('image/'));
-    const newImageDataUrls: string[] = [];
-    if (imageFiles.length > 0) {
-      const dataUrls = await Promise.all(
-        imageFiles.map(
-          (file) =>
-            new Promise<string>((resolve) => {
-              const reader = new FileReader();
-              reader.onload = (ev) => resolve((ev.target?.result as string) || '');
-              reader.onerror = () => resolve('');
-              reader.readAsDataURL(file);
-            })
-        )
-      );
-      newImageDataUrls.push(...dataUrls.filter(Boolean));
-    }
-
-    // 2. Convert all files into media blocks for note content
-    let contentAppend = '';
     try {
       const saved = await copyFilesToLocalFolder(filesArray);
       if (saved.length > 0) {
-        contentAppend = saved
-          .map((f) =>
-            f.isImage
-              ? `<p class="font-mono text-xs text-stone-400 my-1">${f.markdownLink}</p><img src="${f.serveUrl}" alt="${f.fileName}" class="rounded-xl max-h-96 w-auto my-2 border border-black/10 dark:border-white/10" /><p></p>`
-              : `<div data-keep-media="true" data-is-image="false" data-file-name="${f.fileName}" data-saved-path="${f.savedPath}" data-serve-url="${f.serveUrl}" data-markdown-link="${f.markdownLink}" data-file-size="${f.size}"><div class="keep-media-md">${f.markdownLink}</div><a href="${f.serveUrl}" download="${f.fileName}" target="_blank" rel="noopener noreferrer" class="keep-media-file-link">📎 ${f.fileName}</a></div><p></p>`
-          )
-          .join('');
+        const blocks = saved.map((f) => f.markdownLink).join('\n\n');
+        const newContent = activeNote.content
+          ? `${activeNote.content}\n\n${blocks}`
+          : blocks;
+        updateNote(note.id, { content: newContent });
       }
     } catch (err) {
       console.error('Failed to attach files in NoteCard:', err);
-    }
-
-    const updates: Partial<Note> = {};
-    if (newImageDataUrls.length > 0) {
-      updates.images = [...(note.images || []), ...newImageDataUrls];
-    }
-    if (contentAppend) {
-      updates.content = (activeNote.content || '') + contentAppend;
-    }
-
-    if (Object.keys(updates).length > 0) {
-      updateNote(note.id, updates);
     }
   };
 

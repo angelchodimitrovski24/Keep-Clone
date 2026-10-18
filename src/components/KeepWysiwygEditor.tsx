@@ -84,17 +84,7 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
 
             for (const file of savedFiles) {
               if (file.isImage) {
-                // 1. Text paragraph with the actual Markdown link: ![filename.png](path)
-                nodesToInsert.push({
-                  type: 'paragraph',
-                  content: [
-                    {
-                      type: 'text',
-                      text: file.markdownLink,
-                    },
-                  ],
-                });
-                // 2. Rendered image directly below it
+                // Rendered image directly
                 nodesToInsert.push({
                   type: 'image',
                   attrs: {
@@ -103,7 +93,7 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
                     title: file.savedPath,
                   },
                 });
-                // 3. Empty paragraph to allow continuing to write
+                // Empty paragraph to allow continuing to write
                 nodesToInsert.push({
                   type: 'paragraph',
                 });

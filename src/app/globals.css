@@ -297,15 +297,7 @@ body {
 }
 
 .keep-media-md {
-  padding: 0.25rem 0.6rem;
-  font-family: var(--font-geist-mono), monospace;
-  font-size: 0.7rem;
-  color: rgba(120, 120, 120, 0.9);
-  background: rgba(128, 128, 128, 0.07);
-  border-bottom: 1px solid rgba(150, 150, 150, 0.18);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  display: none !important;
 }
 
 .keep-media-img {

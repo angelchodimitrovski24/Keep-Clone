@@ -132,60 +132,112 @@ async function writeToBrowserDirectoryHandleIfPresent(
   }
 }
 
+// In-memory cache mapping normalized paths and filenames to loadable URLs (blob: or serveUrl)
+const mediaBlobUrlCache = new Map<string, string>();
+
+export function registerMediaBlobUrl(pathOrName: string, url: string) {
+  if (!pathOrName || !url) return;
+  const key = pathOrName.trim().replace(/\\/g, '/').toLowerCase();
+  mediaBlobUrlCache.set(key, url);
+  const baseName = key.split('/').pop();
+  if (baseName) {
+    mediaBlobUrlCache.set(baseName, url);
+  }
+}
+
+export function getMediaBlobUrl(pathOrName: string): string | undefined {
+  if (!pathOrName) return undefined;
+  const key = pathOrName.trim().replace(/\\/g, '/').toLowerCase();
+  const direct = mediaBlobUrlCache.get(key);
+  if (direct) return direct;
+  const baseName = key.split('/').pop();
+  if (baseName) return mediaBlobUrlCache.get(baseName);
+  return undefined;
+}
+
+export function makeTimestampName(ext: string): string {
+  const now = new Date();
+  const stamp =
+    now.getFullYear().toString() +
+    String(now.getMonth() + 1).padStart(2, '0') +
+    String(now.getDate()).padStart(2, '0') +
+    '-' +
+    String(now.getHours()).padStart(2, '0') +
+    String(now.getMinutes()).padStart(2, '0') +
+    String(now.getSeconds()).padStart(2, '0') +
+    '-' +
+    String(now.getMilliseconds()).padStart(3, '0');
+  return `pasted-${stamp}${ext || '.png'}`;
+}
+
 function convertFileToClientDataUrlMedia(file: File): Promise<SavedLocalMediaFile> {
   return new Promise((resolve) => {
     const isImage = file.type.startsWith('image/') || /\.(png|jpe?g|gif|webp|svg|bmp|avif)$/i.test(file.name);
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result as string;
-      const safeName = file.name || (isImage ? `image-${Date.now()}.png` : `file-${Date.now()}`);
-      resolve({
-        fileName: safeName,
-        folderPath: 'local-browser',
-        savedPath: safeName,
-        serveUrl: dataUrl,
-        isImage,
-        size: file.size,
-        mimeType: file.type || (isImage ? 'image/png' : 'application/octet-stream'),
-        markdownLink: isImage ? `![${safeName}](${dataUrl})` : `[${safeName}](${dataUrl})`,
-      });
-    };
-    reader.onerror = () => {
-      const safeName = file.name || 'file';
-      resolve({
-        fileName: safeName,
-        folderPath: 'local-browser',
-        savedPath: safeName,
-        serveUrl: '',
-        isImage,
-        size: file.size,
-        mimeType: file.type || 'application/octet-stream',
-        markdownLink: `[${safeName}](#)`,
-      });
-    };
-    reader.readAsDataURL(file);
+    const ext = file.name && file.name.includes('.') ? file.name.substring(file.name.lastIndexOf('.')) : (isImage ? '.png' : '');
+    const safeName =
+      file.name && file.name !== 'image.png' && file.name !== 'blob'
+        ? file.name
+        : makeTimestampName(ext || (isImage ? '.png' : ''));
+
+    const syncFolder = getSyncLocalMediaFolder() || 'local-media';
+    const normalizedFolder = syncFolder.replace(/\\/g, '/');
+    const savedPath = `${normalizedFolder}/${safeName}`;
+
+    // Create a local blob URL for immediate rendering
+    let blobUrl = '';
+    try {
+      blobUrl = URL.createObjectURL(file);
+    } catch {
+      blobUrl = '';
+    }
+
+    if (blobUrl) {
+      registerMediaBlobUrl(savedPath, blobUrl);
+      registerMediaBlobUrl(safeName, blobUrl);
+    }
+
+    const serveUrl = `/api/local-media?folder=${encodeURIComponent(normalizedFolder)}&file=${encodeURIComponent(safeName)}`;
+    const markdownLink = isImage ? `![${safeName}](${savedPath})` : `[${safeName}](${savedPath})`;
+
+    resolve({
+      fileName: safeName,
+      folderPath: normalizedFolder,
+      savedPath,
+      serveUrl: blobUrl || serveUrl,
+      isImage,
+      size: file.size,
+      mimeType: file.type || (isImage ? 'image/png' : 'application/octet-stream'),
+      markdownLink,
+    });
   });
 }
 
 function convertImageUrlToClientMedia(url: string): SavedLocalMediaFile {
   const isDataUrl = url.startsWith('data:image/');
-  const fileName = `image-${Date.now()}.png`;
+  const fileName = makeTimestampName('.png');
+  const syncFolder = getSyncLocalMediaFolder() || 'local-media';
+  const normalizedFolder = syncFolder.replace(/\\/g, '/');
+  const savedPath = `${normalizedFolder}/${fileName}`;
+
+  registerMediaBlobUrl(savedPath, url);
+  registerMediaBlobUrl(fileName, url);
+
   return {
     fileName,
-    folderPath: 'local-browser',
-    savedPath: url,
+    folderPath: normalizedFolder,
+    savedPath,
     serveUrl: url,
     isImage: true,
     size: 0,
     mimeType: isDataUrl ? url.split(';')[0].replace('data:', '') : 'image/png',
-    markdownLink: `![${fileName}](${url})`,
+    markdownLink: `![${fileName}](${savedPath})`,
   };
 }
 
 /**
  * Synchronously initiates the FormData upload during the paste/drop event tick
  * so clipboard File blobs are never invalidated by the browser before fetch() reads them!
- * Falls back seamlessly to client-side Data URLs if running on Vercel or when local-media server is unavailable.
+ * Writes physically to local-media folder (server or Browser DirectoryHandle).
  */
 export async function copyFilesToLocalFolder(
   files: File[],
@@ -215,11 +267,11 @@ export async function copyFilesToLocalFolder(
     method: 'POST',
     body: formData,
   }).catch((err) => {
-    console.warn('Local media upload fetch error (falling back to Data URLs):', err);
+    console.warn('Local media upload fetch error (falling back to client media):', err);
     return null;
   });
 
-  // Also snapshot buffers for optional Browser DirectoryHandle mirror
+  // Also snapshot buffers for optional Browser DirectoryHandle mirror (physical save on client drive)
   if (files.length > 0) {
     Promise.all(
       files.map(async (f) => ({
@@ -240,14 +292,20 @@ export async function copyFilesToLocalFolder(
         await saveSettingToDB('localMediaFolder', data.folderPath);
       }
       if (data.files && data.files.length > 0) {
-        return data.files as SavedLocalMediaFile[];
+        const savedList = data.files as SavedLocalMediaFile[];
+        // Register urls into client cache
+        for (const item of savedList) {
+          registerMediaBlobUrl(item.savedPath, item.serveUrl);
+          registerMediaBlobUrl(item.fileName, item.serveUrl);
+        }
+        return savedList;
       }
     }
   } catch (err) {
-    console.warn('Local media processing error, falling back to Data URLs:', err);
+    console.warn('Local media processing error, falling back to client media:', err);
   }
 
-  // Guaranteed fallback: convert files & imageUrls to Data URLs client-side
+  // Client fallback: generate proper local markdown links and register local blob URLs
   const clientFiles = await Promise.all(files.map(convertFileToClientDataUrlMedia));
   const clientUrls = imageUrls.map(convertImageUrlToClientMedia);
   return [...clientFiles, ...clientUrls];
