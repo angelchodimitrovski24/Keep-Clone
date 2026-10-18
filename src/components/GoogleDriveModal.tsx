@@ -21,10 +21,11 @@ import {
   FolderPlus,
   ChevronRight,
   Check,
+  Search,
   HardDrive,
   Info,
-  CornerLeftUp,
   FolderCheck,
+  Globe,
 } from 'lucide-react';
 import { useKeep } from '@/context/KeepContext';
 import { generateBackupZipBlob } from '@/lib/backupZip';
@@ -38,7 +39,7 @@ import {
   listGoogleDriveBackups,
   downloadGoogleDriveBackup,
   deleteGoogleDriveBackup,
-  listGoogleDriveFolders,
+  getAllGoogleDriveFolders,
   createGoogleDriveFolder,
   ensureKeepBackupsFolder,
   formatBytes,
@@ -57,6 +58,7 @@ export const GoogleDriveModal: React.FC = () => {
     notes,
   } = useKeep();
 
+  const [activeTab, setActiveTab] = useState<'export' | 'import'>('export');
   const [authState, setAuthState] = useState<GoogleDriveAuthState>(() => getStoredDriveAuth());
   const [clientIdInput, setClientIdInput] = useState<string>('');
   const [showConfigHelp, setShowConfigHelp] = useState(false);
@@ -65,15 +67,13 @@ export const GoogleDriveModal: React.FC = () => {
   const [importingId, setImportingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  // Folder navigation & contents state
-  const [currentFolder, setCurrentFolder] = useState<{ id: string; name: string }>({
-    id: 'root',
-    name: 'My Drive',
-  });
-  const [breadcrumbs, setBreadcrumbs] = useState<Array<{ id: string; name: string }>>([
-    { id: 'root', name: 'My Drive' },
-  ]);
-  const [selectedExportFolder, setSelectedExportFolder] = useState<{ id: string; name: string }>(() => {
+  // Folders list across Drive
+  const [allFolders, setAllFolders] = useState<GoogleDriveFolder[]>([]);
+  const [isLoadingFolders, setIsLoadingFolders] = useState(false);
+  const [folderSearchQuery, setFolderSearchQuery] = useState('');
+
+  // Selected folder for Export
+  const [exportFolder, setExportFolder] = useState<{ id: string; name: string }>(() => {
     if (typeof window !== 'undefined') {
       try {
         const saved = localStorage.getItem(STORAGE_KEY_EXPORT_FOLDER);
@@ -82,59 +82,79 @@ export const GoogleDriveModal: React.FC = () => {
     }
     return { id: 'root', name: 'Google Keep Backups' };
   });
+  const [isExportFolderPickerOpen, setIsExportFolderPickerOpen] = useState(false);
 
-  const [subfolders, setSubfolders] = useState<GoogleDriveFolder[]>([]);
+  // Selected folder for Import
+  const [importFolder, setImportFolder] = useState<{ id: string; name: string }>({
+    id: 'all',
+    name: 'All Drive Backups',
+  });
+  const [isImportFolderPickerOpen, setIsImportFolderPickerOpen] = useState(false);
+
+  // Backups list for import
   const [backups, setBackups] = useState<GoogleDriveFile[]>([]);
-  const [isLoadingContents, setIsLoadingContents] = useState(false);
-  const [isSearchingAllDrive, setIsSearchingAllDrive] = useState(false);
+  const [isLoadingBackups, setIsLoadingBackups] = useState(false);
 
-  // Create folder dialog state
+  // Inline Create Folder
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
   const [isSubmittingFolder, setIsSubmittingFolder] = useState(false);
 
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
 
-  // Save export folder preference
-  const saveExportFolder = (folder: { id: string; name: string }) => {
-    setSelectedExportFolder(folder);
+  // Load all folders from Google Drive
+  const loadAllFolders = useCallback(async (token: string) => {
+    setIsLoadingFolders(true);
+    try {
+      const folders = await getAllGoogleDriveFolders(token);
+      setAllFolders(folders);
+      return folders;
+    } catch (err: unknown) {
+      console.warn('Failed to load folders:', err);
+      return [];
+    } finally {
+      setIsLoadingFolders(false);
+    }
+  }, []);
+
+  // Load backups for the selected import folder
+  const loadBackupsForFolder = useCallback(async (token: string, folderId: string) => {
+    setIsLoadingBackups(true);
+    setFeedback(null);
+    try {
+      const files = await listGoogleDriveBackups(token, folderId);
+      setBackups(files);
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : 'Failed to load backups from Google Drive.';
+      setFeedback({ type: 'error', message: errorMsg });
+    } finally {
+      setIsLoadingBackups(false);
+    }
+  }, []);
+
+  // Save selected export folder
+  const selectExportFolder = (folder: { id: string; name: string }) => {
+    setExportFolder(folder);
     try {
       localStorage.setItem(STORAGE_KEY_EXPORT_FOLDER, JSON.stringify(folder));
     } catch {}
+    setIsExportFolderPickerOpen(false);
     setFeedback({
       type: 'info',
-      message: `Set "${folder.name}" as destination folder for exports.`,
+      message: `Selected "${folder.name}" as the folder where backups will be exported.`,
     });
   };
 
-  // Load contents of a folder (both subfolders and backup files)
-  const loadFolderContents = useCallback(
-    async (token: string, folderId: string, searchAll = false) => {
-      setIsLoadingContents(true);
-      setFeedback(null);
-      try {
-        // Fetch subfolders if not searching all
-        if (!searchAll) {
-          const folderList = await listGoogleDriveFolders(token, folderId);
-          setSubfolders(folderList);
-        } else {
-          setSubfolders([]);
-        }
+  // Select import folder
+  const selectImportFolder = (folder: { id: string; name: string }) => {
+    setImportFolder(folder);
+    setIsImportFolderPickerOpen(false);
+    if (authState.accessToken) {
+      loadBackupsForFolder(authState.accessToken, folder.id);
+    }
+  };
 
-        // Fetch backup files in this folder (or all)
-        const fileList = await listGoogleDriveBackups(token, searchAll ? 'all' : folderId);
-        setBackups(fileList);
-      } catch (err: unknown) {
-        const errorMsg = err instanceof Error ? err.message : 'Failed to load Google Drive folder contents.';
-        setFeedback({ type: 'error', message: errorMsg });
-      } finally {
-        setIsLoadingContents(false);
-      }
-    },
-    []
-  );
-
-  // Initial load when modal opens
+  // Sync state whenever modal opens
   useEffect(() => {
     if (isGoogleDriveModalOpen) {
       const currentAuth = getStoredDriveAuth();
@@ -143,46 +163,29 @@ export const GoogleDriveModal: React.FC = () => {
       setFeedback(null);
 
       if (currentAuth.isConnected && currentAuth.accessToken) {
-        // If we have a saved export folder that isn't 'root', locate or check it
-        ensureKeepBackupsFolder(currentAuth.accessToken).then((defaultFolderId) => {
-          if (defaultFolderId && defaultFolderId !== 'root') {
-            // If user hasn't set custom folder yet, set default to Google Keep Backups
-            if (selectedExportFolder.name === 'Google Keep Backups') {
-              saveExportFolder({ id: defaultFolderId, name: 'Google Keep Backups' });
-            }
+        // Load all folders
+        loadAllFolders(currentAuth.accessToken).then((folders) => {
+          // Check if "Google Keep Backups" exists
+          const defaultKeepFolder = folders.find((f) => f.name === 'Google Keep Backups');
+          if (defaultKeepFolder && exportFolder.id === 'root') {
+            setExportFolder({ id: defaultKeepFolder.id, name: defaultKeepFolder.name });
+          } else if (!defaultKeepFolder) {
+            // Auto ensure it
+            ensureKeepBackupsFolder(currentAuth.accessToken!).then((id) => {
+              if (id && id !== 'root') {
+                setExportFolder({ id, name: 'Google Keep Backups' });
+              }
+            });
           }
         });
 
-        loadFolderContents(currentAuth.accessToken, currentFolder.id, isSearchingAllDrive);
+        // Load backups
+        loadBackupsForFolder(currentAuth.accessToken, importFolder.id);
       }
     }
-  }, [isGoogleDriveModalOpen, currentFolder.id, isSearchingAllDrive, loadFolderContents]);
+  }, [isGoogleDriveModalOpen, loadAllFolders, loadBackupsForFolder, exportFolder.id, importFolder.id]);
 
   if (!isGoogleDriveModalOpen) return null;
-
-  // Navigate to a folder
-  const navigateToFolder = (folder: { id: string; name: string }) => {
-    if (!authState.accessToken) return;
-    setIsSearchingAllDrive(false);
-    setCurrentFolder(folder);
-
-    // Update breadcrumbs
-    const existingIndex = breadcrumbs.findIndex((b) => b.id === folder.id);
-    if (existingIndex >= 0) {
-      setBreadcrumbs(breadcrumbs.slice(0, existingIndex + 1));
-    } else {
-      setBreadcrumbs((prev) => [...prev, folder]);
-    }
-
-    loadFolderContents(authState.accessToken, folder.id, false);
-  };
-
-  // Navigate one level up
-  const navigateUp = () => {
-    if (breadcrumbs.length <= 1 || !authState.accessToken) return;
-    const parent = breadcrumbs[breadcrumbs.length - 2];
-    navigateToFolder(parent);
-  };
 
   // Handle Google Drive Connect
   const handleConnect = async () => {
@@ -215,12 +218,8 @@ export const GoogleDriveModal: React.FC = () => {
         message: `Successfully connected to Google Drive${res.user?.email ? ` as ${res.user.email}` : ''}!`,
       });
 
-      // Auto ensure folder and load
-      const defaultId = await ensureKeepBackupsFolder(res.accessToken);
-      if (defaultId && defaultId !== 'root') {
-        saveExportFolder({ id: defaultId, name: 'Google Keep Backups' });
-      }
-      await loadFolderContents(res.accessToken, currentFolder.id, isSearchingAllDrive);
+      await loadAllFolders(res.accessToken);
+      await loadBackupsForFolder(res.accessToken, importFolder.id);
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : 'Google authentication failed.';
       setFeedback({ type: 'error', message: errorMsg });
@@ -239,13 +238,13 @@ export const GoogleDriveModal: React.FC = () => {
       user: null,
       clientId: getStoredClientId(),
     });
-    setSubfolders([]);
+    setAllFolders([]);
     setBackups([]);
     setFeedback({ type: 'info', message: 'Disconnected from Google Drive.' });
   };
 
-  // Handle Create Folder
-  const handleCreateFolder = async (e: React.FormEvent) => {
+  // Handle Create New Folder
+  const handleCreateFolder = async (e: React.FormEvent, forTarget: 'export' | 'import') => {
     e.preventDefault();
     if (!authState.accessToken || !newFolderName.trim()) return;
 
@@ -256,7 +255,7 @@ export const GoogleDriveModal: React.FC = () => {
       const created = await createGoogleDriveFolder(
         authState.accessToken,
         newFolderName.trim(),
-        currentFolder.id
+        'root'
       );
 
       setFeedback({
@@ -267,8 +266,15 @@ export const GoogleDriveModal: React.FC = () => {
       setNewFolderName('');
       setIsCreatingFolder(false);
 
-      // Refresh current folder
-      await loadFolderContents(authState.accessToken, currentFolder.id, false);
+      // Refresh folders list
+      const refreshedFolders = await loadAllFolders(authState.accessToken);
+
+      // Automatically select the new folder
+      if (forTarget === 'export') {
+        selectExportFolder({ id: created.id, name: created.name });
+      } else {
+        selectImportFolder({ id: created.id, name: created.name });
+      }
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : 'Failed to create folder in Google Drive.';
       setFeedback({ type: 'error', message: errorMsg });
@@ -277,7 +283,7 @@ export const GoogleDriveModal: React.FC = () => {
     }
   };
 
-  // Handle Export to Google Drive (using selected folder)
+  // Handle Export to Google Drive
   const handleExportToDrive = async () => {
     if (!authState.accessToken) {
       setFeedback({ type: 'error', message: 'You must connect to Google Drive first.' });
@@ -291,21 +297,23 @@ export const GoogleDriveModal: React.FC = () => {
       // 1. Generate full ZIP bundle
       const { blob, filename, notesCount, mediaCount } = await generateBackupZipBlob();
 
-      // 2. Upload to the selected destination folder using resumable upload
+      // 2. Upload to selected export folder using resumable upload
       const uploadedFile = await uploadBackupToGoogleDrive(
         authState.accessToken,
         blob,
         filename,
-        selectedExportFolder.id
+        exportFolder.id
       );
 
       setFeedback({
         type: 'success',
-        message: `Export successful! Saved "${uploadedFile.name}" (${notesCount} notes, ${mediaCount} media files) into "${selectedExportFolder.name}".`,
+        message: `Export successful! Saved "${uploadedFile.name}" (${notesCount} notes, ${mediaCount} media files) into "${exportFolder.name}".`,
       });
 
-      // 3. Refresh file list in current folder
-      await loadFolderContents(authState.accessToken, currentFolder.id, isSearchingAllDrive);
+      // 3. Refresh backups if viewing that folder
+      if (importFolder.id === exportFolder.id || importFolder.id === 'all') {
+        await loadBackupsForFolder(authState.accessToken, importFolder.id);
+      }
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : 'Export to Google Drive failed.';
       setFeedback({ type: 'error', message: errorMsg });
@@ -322,17 +330,16 @@ export const GoogleDriveModal: React.FC = () => {
     setFeedback(null);
 
     try {
-      // 1. Download file blob from Google Drive as File
       const downloadedFile = await downloadGoogleDriveBackup(
         authState.accessToken,
         file.id,
         file.name
       );
 
-      // 2. Close this modal so the ImportSummaryModal can be displayed smoothly
+      // Close this modal to show the ImportSummaryModal
       setIsGoogleDriveModalOpen(false);
 
-      // 3. Run the intelligent reconciliation import pipeline
+      // Run intelligent reconciliation import pipeline
       await importDataSmart(downloadedFile);
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : 'Failed to import backup from Google Drive.';
@@ -366,6 +373,11 @@ export const GoogleDriveModal: React.FC = () => {
     }
   };
 
+  // Filtered folders by search query
+  const filteredFolders = allFolders.filter((f) =>
+    f.name.toLowerCase().includes(folderSearchQuery.toLowerCase())
+  );
+
   return (
     <div
       onClick={() => setIsGoogleDriveModalOpen(false)}
@@ -387,11 +399,11 @@ export const GoogleDriveModal: React.FC = () => {
                   Google Drive Cloud Backup
                 </h3>
                 <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300">
-                  Folder Sync
+                  Custom Folders
                 </span>
               </div>
               <p className="text-xs text-stone-500 dark:text-stone-400">
-                Choose custom folders to export notes or restore intelligent backups
+                Choose any folder in your Google Drive to export or import notes
               </p>
             </div>
           </div>
@@ -403,6 +415,47 @@ export const GoogleDriveModal: React.FC = () => {
             <X className="w-5 h-5" />
           </button>
         </div>
+
+        {/* Modal Navigation Tabs (Export vs Import) */}
+        {authState.isConnected && (
+          <div className="flex items-center border-b border-stone-200 dark:border-stone-800 px-6 bg-stone-50/60 dark:bg-stone-900/40 text-xs">
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('export');
+                setIsExportFolderPickerOpen(false);
+                setIsImportFolderPickerOpen(false);
+              }}
+              className={`flex items-center gap-2 py-3 px-4 font-semibold border-b-2 transition-all ${
+                activeTab === 'export'
+                  ? 'border-blue-600 text-blue-600 dark:text-blue-400'
+                  : 'border-transparent text-stone-600 dark:text-stone-400 hover:text-stone-900'
+              }`}
+            >
+              <CloudUpload className="w-4 h-4" />
+              <span>Export to Google Drive</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('import');
+                setIsExportFolderPickerOpen(false);
+                setIsImportFolderPickerOpen(false);
+                if (authState.accessToken) {
+                  loadBackupsForFolder(authState.accessToken, importFolder.id);
+                }
+              }}
+              className={`flex items-center gap-2 py-3 px-4 font-semibold border-b-2 transition-all ${
+                activeTab === 'import'
+                  ? 'border-emerald-600 text-emerald-600 dark:text-emerald-400'
+                  : 'border-transparent text-stone-600 dark:text-stone-400 hover:text-stone-900'
+              }`}
+            >
+              <CloudDownload className="w-4 h-4" />
+              <span>Import from Google Drive</span>
+            </button>
+          </div>
+        )}
 
         {/* Modal Body */}
         <div className="p-6 overflow-y-auto space-y-6 flex-1">
@@ -445,10 +498,10 @@ export const GoogleDriveModal: React.FC = () => {
                     <img
                       src={authState.user.picture}
                       alt={authState.user.name || 'User'}
-                      className="w-10 h-10 rounded-full border border-emerald-500 ring-2 ring-emerald-500/20"
+                      className="w-9 h-9 rounded-full border border-emerald-500 ring-2 ring-emerald-500/20"
                     />
                   ) : (
-                    <div className="w-10 h-10 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold">
+                    <div className="w-9 h-9 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-sm">
                       {authState.user?.name ? authState.user.name[0].toUpperCase() : 'G'}
                     </div>
                   )}
@@ -561,377 +614,408 @@ export const GoogleDriveModal: React.FC = () => {
             )}
           </div>
 
-          {/* Section: One-Click Export with Target Folder */}
-          <div className="p-4 rounded-xl border border-stone-200 dark:border-stone-700 bg-stone-50/70 dark:bg-stone-900/30">
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-sm font-semibold text-stone-900 dark:text-stone-100 flex items-center gap-2">
-                <CloudUpload className="w-4 h-4 text-blue-500" />
-                Upload New Backup to Google Drive
-              </label>
-              <span className="text-xs text-stone-500 dark:text-stone-400">
-                {notes.length} notes ready
-              </span>
+          {!authState.isConnected ? (
+            <div className="p-8 text-center rounded-xl border border-dashed border-stone-300 dark:border-stone-700 text-stone-400 text-xs">
+              Sign in with Google above to open folders, choose destination folders, and export/import notes.
             </div>
-
-            {/* Destination Folder Selector Display */}
-            <div className="flex items-center justify-between p-2.5 mb-3 rounded-lg bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200/70 dark:border-blue-900/40 text-xs">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="text-blue-700 dark:text-blue-300 font-medium shrink-0">
-                  Destination Folder:
-                </span>
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-600/10 text-blue-900 dark:text-blue-200 font-semibold truncate">
-                  <Folder className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                  {selectedExportFolder.name}
-                </span>
+          ) : activeTab === 'export' ? (
+            /* ======================================================== */
+            /* TAB 1: EXPORT TO GOOGLE DRIVE WITH FOLDER CHOOSER        */
+            /* ======================================================== */
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-semibold text-stone-900 dark:text-stone-100 flex items-center justify-between mb-1">
+                  <span className="flex items-center gap-2">
+                    <CloudUpload className="w-4 h-4 text-blue-500" />
+                    Export Notes to Google Drive
+                  </span>
+                  <span className="text-xs font-normal text-stone-500">
+                    {notes.length} notes ready
+                  </span>
+                </label>
+                <p className="text-xs text-stone-500 dark:text-stone-400">
+                  Select which folder in your Google Drive will receive your full notes backup ZIP bundle.
+                </p>
               </div>
 
-              {authState.isConnected && currentFolder.id !== selectedExportFolder.id && (
-                <button
-                  type="button"
-                  onClick={() => saveExportFolder(currentFolder)}
-                  className="px-2.5 py-1 rounded bg-blue-600 hover:bg-blue-700 text-white font-medium text-[11px] shrink-0 transition-colors shadow-xs"
-                >
-                  Set Current ({currentFolder.name})
-                </button>
-              )}
-            </div>
+              {/* Destination Folder Banner with "Choose Folder" Button */}
+              <div className="p-4 rounded-xl border border-blue-200 dark:border-blue-900/60 bg-blue-50/50 dark:bg-blue-950/20 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-9 h-9 rounded-lg bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                      <FolderOpen className="w-5 h-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-[11px] font-semibold text-blue-700 dark:text-blue-300 uppercase tracking-wider">
+                        Destination Folder
+                      </div>
+                      <div className="font-bold text-sm text-stone-900 dark:text-stone-100 truncate" title={exportFolder.name}>
+                        {exportFolder.name}
+                      </div>
+                    </div>
+                  </div>
 
-            <p className="text-xs text-stone-500 dark:text-stone-400 mb-3">
-              Bundles all your local notes, attachments, drawings, and markdown files into a single ZIP archive directly into your chosen folder.
-            </p>
-
-            <button
-              type="button"
-              onClick={handleExportToDrive}
-              disabled={!authState.isConnected || isExporting}
-              className="w-full flex items-center justify-center gap-2.5 py-2.5 px-4 rounded-xl bg-linear-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold text-xs shadow-md transition-all"
-            >
-              {isExporting ? (
-                <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  <span>Packaging &amp; Uploading to &quot;{selectedExportFolder.name}&quot;...</span>
-                </>
-              ) : (
-                <>
-                  <CloudUpload className="w-4 h-4" />
-                  <span>Export Notes to &quot;{selectedExportFolder.name}&quot;</span>
-                </>
-              )}
-            </button>
-          </div>
-
-          <hr className="border-stone-200 dark:border-stone-800" />
-
-          {/* Section: Google Drive Folder Navigator & Backups */}
-          <div>
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
-              <div className="flex items-center gap-2">
-                <HardDrive className="w-4 h-4 text-emerald-500" />
-                <h4 className="text-sm font-semibold text-stone-900 dark:text-stone-100">
-                  Google Drive Folder &amp; Backup Navigator
-                </h4>
-              </div>
-
-              {authState.isConnected && (
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setIsCreatingFolder(!isCreatingFolder)}
-                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-stone-300 dark:border-stone-700 hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-700 dark:text-stone-300 text-xs font-medium transition-colors"
-                  >
-                    <FolderPlus className="w-3.5 h-3.5 text-blue-500" />
-                    <span>+ New Folder</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      authState.accessToken &&
-                      loadFolderContents(authState.accessToken, currentFolder.id, isSearchingAllDrive)
-                    }
-                    disabled={isLoadingContents}
-                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-stone-300 dark:border-stone-700 hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-500 hover:text-stone-800 dark:hover:text-stone-200 text-xs font-medium transition-colors"
-                    title="Refresh folder contents"
-                  >
-                    <RefreshCw className={`w-3.5 h-3.5 ${isLoadingContents ? 'animate-spin' : ''}`} />
-                    <span>Refresh</span>
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Create Folder Form Popover */}
-            {isCreatingFolder && (
-              <form
-                onSubmit={handleCreateFolder}
-                className="p-3 mb-3 rounded-xl border border-blue-300 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/20 flex flex-col sm:flex-row items-center gap-2 text-xs animate-in fade-in"
-              >
-                <FolderPlus className="w-4 h-4 text-blue-600 shrink-0" />
-                <span className="font-medium text-stone-800 dark:text-stone-200 shrink-0">
-                  New Folder in &quot;{currentFolder.name}&quot;:
-                </span>
-                <input
-                  type="text"
-                  placeholder="e.g. Work Backups"
-                  value={newFolderName}
-                  onChange={(e) => setNewFolderName(e.target.value)}
-                  autoFocus
-                  className="flex-1 px-3 py-1.5 rounded-lg border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
-                />
-                <button
-                  type="submit"
-                  disabled={isSubmittingFolder || !newFolderName.trim()}
-                  className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium transition-colors"
-                >
-                  {isSubmittingFolder ? 'Creating...' : 'Create Folder'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsCreatingFolder(false)}
-                  className="px-2 py-1.5 rounded-lg hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-500"
-                >
-                  Cancel
-                </button>
-              </form>
-            )}
-
-            {/* Breadcrumb Navigation Bar */}
-            {authState.isConnected && (
-              <div className="flex items-center justify-between p-2 mb-2 rounded-xl border border-stone-200 dark:border-stone-800 bg-stone-100/70 dark:bg-stone-900/60 text-xs overflow-x-auto">
-                <div className="flex items-center gap-1 min-w-0">
-                  {breadcrumbs.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={navigateUp}
-                      className="p-1 rounded hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-500 mr-1"
-                      title="Go up to parent folder"
-                    >
-                      <CornerLeftUp className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-
-                  {breadcrumbs.map((b, idx) => (
-                    <React.Fragment key={b.id}>
-                      {idx > 0 && <ChevronRight className="w-3.5 h-3.5 text-stone-400 shrink-0" />}
-                      <button
-                        type="button"
-                        onClick={() => navigateToFolder(b)}
-                        className={`px-1.5 py-0.5 rounded font-medium truncate max-w-[140px] transition-colors ${
-                          idx === breadcrumbs.length - 1
-                            ? 'text-blue-600 dark:text-blue-400 font-semibold bg-blue-500/10'
-                            : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-200'
-                        }`}
-                      >
-                        {b.name}
-                      </button>
-                    </React.Fragment>
-                  ))}
-                </div>
-
-                <div className="flex items-center gap-2 shrink-0">
-                  {/* Select as destination folder button */}
-                  <button
-                    type="button"
-                    onClick={() => saveExportFolder(currentFolder)}
-                    className={`flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-medium transition-colors ${
-                      selectedExportFolder.id === currentFolder.id
-                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
-                        : 'hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-600 dark:text-stone-300'
-                    }`}
-                    title="Export future backups to this folder"
-                  >
-                    {selectedExportFolder.id === currentFolder.id ? (
-                      <>
-                        <Check className="w-3 h-3 text-emerald-600" />
-                        <span>Export Target</span>
-                      </>
-                    ) : (
-                      <span>Set as Export Target</span>
-                    )}
-                  </button>
-
-                  {/* Toggle: Search All vs Current Folder */}
                   <button
                     type="button"
                     onClick={() => {
-                      const next = !isSearchingAllDrive;
-                      setIsSearchingAllDrive(next);
-                      if (authState.accessToken) {
-                        loadFolderContents(authState.accessToken, currentFolder.id, next);
+                      setIsExportFolderPickerOpen(!isExportFolderPickerOpen);
+                      if (!isExportFolderPickerOpen && authState.accessToken) {
+                        loadAllFolders(authState.accessToken);
                       }
                     }}
-                    className={`px-2 py-1 rounded text-[11px] font-medium border transition-colors ${
-                      isSearchingAllDrive
-                        ? 'border-blue-500 bg-blue-500/10 text-blue-600 font-semibold'
-                        : 'border-stone-300 dark:border-stone-700 text-stone-500 hover:text-stone-800'
-                    }`}
+                    className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs shadow-xs transition-colors shrink-0"
                   >
-                    {isSearchingAllDrive ? 'Showing All Backups' : 'In Current Folder'}
+                    <Folder className="w-4 h-4" />
+                    <span>{isExportFolderPickerOpen ? 'Hide Folders' : 'Choose / Change Folder'}</span>
                   </button>
                 </div>
-              </div>
-            )}
 
-            {/* Folder Contents Display */}
-            {!authState.isConnected ? (
-              <div className="p-8 text-center rounded-xl border border-dashed border-stone-300 dark:border-stone-700 text-stone-400 text-xs">
-                Connect your Google Drive above to navigate folders and manage backups.
-              </div>
-            ) : isLoadingContents ? (
-              <div className="p-8 flex flex-col items-center justify-center gap-2 text-stone-400 text-xs">
-                <Loader2 className="w-5 h-5 animate-spin text-blue-500" />
-                <span>Loading folder contents from Google Drive...</span>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {/* 1. Subfolders list */}
-                {!isSearchingAllDrive && subfolders.length > 0 && (
-                  <div>
-                    <div className="text-[11px] font-semibold text-stone-400 uppercase tracking-wider mb-1.5 px-1">
-                      Folders ({subfolders.length})
+                {/* Interactive Folder Picker (when opened) */}
+                {isExportFolderPickerOpen && (
+                  <div className="pt-3 border-t border-blue-200/70 dark:border-blue-900/40 space-y-3 animate-in fade-in">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="relative flex-1">
+                        <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-stone-400" />
+                        <input
+                          type="text"
+                          placeholder="Search folders..."
+                          value={folderSearchQuery}
+                          onChange={(e) => setFolderSearchQuery(e.target.value)}
+                          className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setIsCreatingFolder(!isCreatingFolder)}
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-blue-300 dark:border-blue-700 hover:bg-blue-100 dark:hover:bg-blue-900/40 text-blue-700 dark:text-blue-300 text-xs font-medium transition-colors shrink-0"
+                      >
+                        <FolderPlus className="w-3.5 h-3.5" />
+                        <span>+ New Folder</span>
+                      </button>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
-                      {subfolders.map((f) => (
-                        <div
-                          key={f.id}
-                          className="flex items-center justify-between p-2 rounded-xl border border-stone-200 dark:border-stone-800 bg-stone-50/70 dark:bg-stone-900/50 hover:bg-blue-50/50 dark:hover:bg-blue-950/20 hover:border-blue-300 dark:hover:border-blue-800 transition-all text-xs group"
-                        >
-                          <button
-                            type="button"
-                            onClick={() => navigateToFolder({ id: f.id, name: f.name })}
-                            className="flex items-center gap-2 min-w-0 flex-1 text-left"
-                            title={`Open folder "${f.name}"`}
-                          >
-                            <FolderOpen className="w-4 h-4 text-amber-500 shrink-0 group-hover:scale-110 transition-transform" />
-                            <span className="font-medium text-stone-800 dark:text-stone-200 truncate">
-                              {f.name}
-                            </span>
-                          </button>
 
-                          <button
-                            type="button"
-                            onClick={() => saveExportFolder({ id: f.id, name: f.name })}
-                            className={`p-1 rounded text-[10px] font-medium opacity-60 hover:opacity-100 transition-opacity ${
-                              selectedExportFolder.id === f.id
-                                ? 'text-emerald-600 font-bold'
-                                : 'text-stone-400 hover:text-blue-600'
-                            }`}
-                            title="Set as destination folder for exports"
-                          >
-                            {selectedExportFolder.id === f.id ? '✓ Target' : 'Set Target'}
-                          </button>
+                    {/* Inline Create Folder Input */}
+                    {isCreatingFolder && (
+                      <form
+                        onSubmit={(e) => handleCreateFolder(e, 'export')}
+                        className="flex items-center gap-2 p-2.5 rounded-lg bg-white dark:bg-stone-800 border border-blue-400 text-xs animate-in fade-in"
+                      >
+                        <FolderPlus className="w-4 h-4 text-blue-600 shrink-0" />
+                        <input
+                          type="text"
+                          placeholder="Enter new folder name..."
+                          value={newFolderName}
+                          onChange={(e) => setNewFolderName(e.target.value)}
+                          autoFocus
+                          className="flex-1 px-2.5 py-1 rounded border border-stone-300 dark:border-stone-700 bg-stone-50 dark:bg-stone-900 text-xs focus:outline-none"
+                        />
+                        <button
+                          type="submit"
+                          disabled={isSubmittingFolder || !newFolderName.trim()}
+                          className="px-3 py-1 rounded bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium text-xs"
+                        >
+                          {isSubmittingFolder ? 'Creating...' : 'Create & Select'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setIsCreatingFolder(false)}
+                          className="px-2 py-1 text-stone-500 hover:text-stone-800"
+                        >
+                          Cancel
+                        </button>
+                      </form>
+                    )}
+
+                    {/* Folders List Grid */}
+                    {isLoadingFolders ? (
+                      <div className="p-4 flex items-center justify-center gap-2 text-xs text-stone-400">
+                        <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
+                        <span>Loading folders from Google Drive...</span>
+                      </div>
+                    ) : filteredFolders.length === 0 ? (
+                      <div className="p-4 text-center text-xs text-stone-400">
+                        No folders found matching &quot;{folderSearchQuery}&quot;. Click &quot;+ New Folder&quot; to create one.
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-52 overflow-y-auto p-1">
+                        {filteredFolders.map((f) => {
+                          const isSelected = exportFolder.id === f.id;
+                          return (
+                            <button
+                              key={f.id}
+                              type="button"
+                              onClick={() => selectExportFolder({ id: f.id, name: f.name })}
+                              className={`flex items-center justify-between p-2.5 rounded-xl border text-left text-xs transition-all ${
+                                isSelected
+                                  ? 'border-blue-600 bg-blue-600 text-white font-semibold shadow-xs'
+                                  : 'border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800 hover:border-blue-300 text-stone-800 dark:text-stone-200'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <Folder className={`w-4 h-4 shrink-0 ${isSelected ? 'text-white' : 'text-amber-500'}`} />
+                                <span className="truncate">{f.name}</span>
+                              </div>
+                              {isSelected && <Check className="w-3.5 h-3.5 text-white shrink-0 ml-1" />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Action Button: Export Current Notes to Chosen Folder */}
+              <button
+                type="button"
+                onClick={handleExportToDrive}
+                disabled={isExporting}
+                className="w-full flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl bg-linear-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 text-white font-semibold text-sm shadow-md transition-all"
+              >
+                {isExporting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Packaging &amp; Uploading to &quot;{exportFolder.name}&quot;...</span>
+                  </>
+                ) : (
+                  <>
+                    <CloudUpload className="w-4 h-4" />
+                    <span>Export All Notes to &quot;{exportFolder.name}&quot;</span>
+                  </>
+                )}
+              </button>
+            </div>
+          ) : (
+            /* ======================================================== */
+            /* TAB 2: IMPORT FROM GOOGLE DRIVE WITH FOLDER CHOOSER        */
+            /* ======================================================== */
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-semibold text-stone-900 dark:text-stone-100 flex items-center justify-between mb-1">
+                  <span className="flex items-center gap-2">
+                    <CloudDownload className="w-4 h-4 text-emerald-500" />
+                    Import Backups from Google Drive
+                  </span>
+                  <span className="text-xs font-normal text-stone-500">
+                    {backups.length} backup{backups.length !== 1 ? 's' : ''} found
+                  </span>
+                </label>
+                <p className="text-xs text-stone-500 dark:text-stone-400">
+                  Choose which folder to restore from. Smart restore only updates changed notes and skips duplicates.
+                </p>
+              </div>
+
+              {/* Source Folder Banner with "Choose Folder" Button */}
+              <div className="p-4 rounded-xl border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/50 dark:bg-emerald-950/20 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-9 h-9 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                      {importFolder.id === 'all' ? (
+                        <Globe className="w-5 h-5" />
+                      ) : (
+                        <FolderOpen className="w-5 h-5" />
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 uppercase tracking-wider">
+                        Source Folder
+                      </div>
+                      <div className="font-bold text-sm text-stone-900 dark:text-stone-100 truncate" title={importFolder.name}>
+                        {importFolder.name}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsImportFolderPickerOpen(!isImportFolderPickerOpen);
+                        if (!isImportFolderPickerOpen && authState.accessToken) {
+                          loadAllFolders(authState.accessToken);
+                        }
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs shadow-xs transition-colors"
+                    >
+                      <Folder className="w-3.5 h-3.5" />
+                      <span>{isImportFolderPickerOpen ? 'Hide Folders' : 'Choose Folder'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        authState.accessToken && loadBackupsForFolder(authState.accessToken, importFolder.id)
+                      }
+                      disabled={isLoadingBackups}
+                      className="p-1.5 rounded-lg border border-emerald-300 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 text-emerald-800 dark:text-emerald-200 transition-colors"
+                      title="Refresh backups list"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${isLoadingBackups ? 'animate-spin' : ''}`} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Interactive Folder Picker for Import */}
+                {isImportFolderPickerOpen && (
+                  <div className="pt-3 border-t border-emerald-200/70 dark:border-emerald-900/40 space-y-3 animate-in fade-in">
+                    <div className="relative">
+                      <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-stone-400" />
+                      <input
+                        type="text"
+                        placeholder="Search folders to import from..."
+                        value={folderSearchQuery}
+                        onChange={(e) => setFolderSearchQuery(e.target.value)}
+                        className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-52 overflow-y-auto p-1">
+                      {/* Special option: All Drive */}
+                      <button
+                        type="button"
+                        onClick={() => selectImportFolder({ id: 'all', name: 'All Drive Backups (Search Everywhere)' })}
+                        className={`flex items-center justify-between p-2.5 rounded-xl border text-left text-xs transition-all ${
+                          importFolder.id === 'all'
+                            ? 'border-emerald-600 bg-emerald-600 text-white font-semibold shadow-xs'
+                            : 'border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800 hover:border-emerald-300 text-stone-800 dark:text-stone-200'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Globe className={`w-4 h-4 shrink-0 ${importFolder.id === 'all' ? 'text-white' : 'text-blue-500'}`} />
+                          <span className="truncate">All Drive Backups</span>
                         </div>
-                      ))}
+                        {importFolder.id === 'all' && <Check className="w-3.5 h-3.5 text-white shrink-0 ml-1" />}
+                      </button>
+
+                      {filteredFolders.map((f) => {
+                        const isSelected = importFolder.id === f.id;
+                        return (
+                          <button
+                            key={f.id}
+                            type="button"
+                            onClick={() => selectImportFolder({ id: f.id, name: f.name })}
+                            className={`flex items-center justify-between p-2.5 rounded-xl border text-left text-xs transition-all ${
+                              isSelected
+                                ? 'border-emerald-600 bg-emerald-600 text-white font-semibold shadow-xs'
+                                : 'border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800 hover:border-emerald-300 text-stone-800 dark:text-stone-200'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <Folder className={`w-4 h-4 shrink-0 ${isSelected ? 'text-white' : 'text-amber-500'}`} />
+                              <span className="truncate">{f.name}</span>
+                            </div>
+                            {isSelected && <Check className="w-3.5 h-3.5 text-white shrink-0 ml-1" />}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
+              </div>
 
-                {/* 2. Backup Files list */}
-                <div>
-                  <div className="text-[11px] font-semibold text-stone-400 uppercase tracking-wider mb-1.5 px-1 flex items-center justify-between">
-                    <span>
-                      {isSearchingAllDrive ? 'All Drive Backups' : `Backups in "${currentFolder.name}"`} ({backups.length})
-                    </span>
-                  </div>
-
-                  {backups.length === 0 ? (
-                    <div className="p-6 text-center rounded-xl border border-dashed border-stone-200 dark:border-stone-800 text-stone-500 dark:text-stone-400 text-xs space-y-1">
-                      <FolderCheck className="w-6 h-6 text-stone-400 mx-auto mb-1 stroke-1" />
-                      <p className="font-medium text-stone-700 dark:text-stone-300">
-                        No backup archives in this folder yet.
-                      </p>
-                      <p className="text-[11px] text-stone-400">
-                        Export your notes here or navigate to another folder.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="divide-y divide-stone-200 dark:divide-stone-800 rounded-xl border border-stone-200 dark:border-stone-700 overflow-hidden max-h-56 overflow-y-auto">
-                      {backups.map((b) => (
-                        <div
-                          key={b.id}
-                          className="p-2.5 bg-white dark:bg-[#202124] hover:bg-stone-50 dark:hover:bg-stone-800/60 transition-colors flex items-center justify-between gap-3 text-xs"
-                        >
-                          <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                            <div className="w-7 h-7 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
-                              <FileArchive className="w-3.5 h-3.5" />
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <div className="font-medium text-stone-800 dark:text-stone-200 truncate" title={b.name}>
-                                {b.name}
-                              </div>
-                              <div className="text-[11px] text-stone-400 flex items-center gap-2 mt-0.5">
-                                <span>{formatBytes(b.size)}</span>
-                                <span>&bull;</span>
-                                <span>{b.modifiedTime ? new Date(b.modifiedTime).toLocaleString() : 'Unknown date'}</span>
-                              </div>
-                            </div>
+              {/* Backups List in Selected Folder */}
+              {isLoadingBackups ? (
+                <div className="p-8 flex flex-col items-center justify-center gap-2 text-stone-400 text-xs">
+                  <Loader2 className="w-5 h-5 animate-spin text-emerald-500" />
+                  <span>Searching &quot;{importFolder.name}&quot; for backups...</span>
+                </div>
+              ) : backups.length === 0 ? (
+                <div className="p-8 text-center rounded-xl border border-dashed border-stone-200 dark:border-stone-800 text-stone-500 dark:text-stone-400 text-xs space-y-1">
+                  <FolderCheck className="w-8 h-8 text-stone-400 mx-auto mb-1 stroke-1" />
+                  <p className="font-medium text-stone-700 dark:text-stone-300">
+                    No backup files found in &quot;{importFolder.name}&quot;.
+                  </p>
+                  <p className="text-[11px] text-stone-400">
+                    Click &quot;Choose Folder&quot; above to select another folder or choose &quot;All Drive Backups&quot;.
+                  </p>
+                </div>
+              ) : (
+                <div className="divide-y divide-stone-200 dark:divide-stone-800 rounded-xl border border-stone-200 dark:border-stone-700 overflow-hidden max-h-64 overflow-y-auto">
+                  {backups.map((b) => (
+                    <div
+                      key={b.id}
+                      className="p-3 bg-white dark:bg-[#202124] hover:bg-stone-50 dark:hover:bg-stone-800/60 transition-colors flex items-center justify-between gap-3 text-xs"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                        <div className="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                          <FileArchive className="w-4 h-4" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="font-medium text-stone-800 dark:text-stone-200 truncate" title={b.name}>
+                            {b.name}
                           </div>
-
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            {/* Open in Google Drive */}
-                            {b.webViewLink && (
-                              <a
-                                href={b.webViewLink}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="p-1.5 rounded-lg hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-500 hover:text-stone-800 dark:hover:text-stone-200 transition-colors"
-                                title="Open file in Google Drive"
-                              >
-                                <ExternalLink className="w-3.5 h-3.5" />
-                              </a>
-                            )}
-
-                            {/* Delete Backup */}
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteBackup(b.id, b.name)}
-                              disabled={deletingId === b.id}
-                              className="p-1.5 rounded-lg hover:bg-rose-100 dark:hover:bg-rose-900/40 text-stone-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors"
-                              title="Delete from Google Drive"
-                            >
-                              {deletingId === b.id ? (
-                                <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-500" />
-                              ) : (
-                                <Trash2 className="w-3.5 h-3.5" />
-                              )}
-                            </button>
-
-                            {/* Smart Import Button */}
-                            <button
-                              type="button"
-                              onClick={() => handleImportFromDrive(b)}
-                              disabled={importingId === b.id}
-                              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-medium text-xs transition-colors shadow-xs"
-                              title="Intelligently import this backup without duplicate notes"
-                            >
-                              {importingId === b.id ? (
-                                <>
-                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                  <span>Importing...</span>
-                                </>
-                              ) : (
-                                <>
-                                  <CloudDownload className="w-3.5 h-3.5" />
-                                  <span>Import</span>
-                                </>
-                              )}
-                            </button>
+                          <div className="text-[11px] text-stone-400 flex items-center gap-2 mt-0.5">
+                            <span>{formatBytes(b.size)}</span>
+                            <span>&bull;</span>
+                            <span>{b.modifiedTime ? new Date(b.modifiedTime).toLocaleString() : 'Unknown date'}</span>
                           </div>
                         </div>
-                      ))}
+                      </div>
+
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {/* Open in Google Drive */}
+                        {b.webViewLink && (
+                          <a
+                            href={b.webViewLink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-1.5 rounded-lg hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-500 hover:text-stone-800 dark:hover:text-stone-200 transition-colors"
+                            title="Open file in Google Drive"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </a>
+                        )}
+
+                        {/* Delete Backup */}
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteBackup(b.id, b.name)}
+                          disabled={deletingId === b.id}
+                          className="p-1.5 rounded-lg hover:bg-rose-100 dark:hover:bg-rose-900/40 text-stone-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors"
+                          title="Delete from Google Drive"
+                        >
+                          {deletingId === b.id ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-500" />
+                          ) : (
+                            <Trash2 className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+
+                        {/* Smart Import Button */}
+                        <button
+                          type="button"
+                          onClick={() => handleImportFromDrive(b)}
+                          disabled={importingId === b.id}
+                          className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-semibold text-xs transition-colors shadow-xs"
+                          title="Intelligently import this backup without duplicate notes"
+                        >
+                          {importingId === b.id ? (
+                            <>
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              <span>Importing...</span>
+                            </>
+                          ) : (
+                            <>
+                              <CloudDownload className="w-3.5 h-3.5" />
+                              <span>Import</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
                     </div>
-                  )}
+                  ))}
                 </div>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Footer */}
         <div className="flex items-center justify-between px-6 py-3.5 border-t border-stone-200 dark:border-stone-800 bg-stone-50 dark:bg-stone-900/40 text-xs text-stone-500">
           <div className="flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-            <span>Files are encrypted in transit and stored safely in your personal Google Drive.</span>
+            <span>Your notes are backed up directly to your personal Google Drive account.</span>
           </div>
           <button
             type="button"

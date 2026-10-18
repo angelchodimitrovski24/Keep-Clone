@@ -251,6 +251,7 @@ export async function getDriveUserInfo(accessToken: string): Promise<GoogleDrive
 export interface GoogleDriveFolder {
   id: string;
   name: string;
+  parents?: string[];
   modifiedTime?: string;
 }
 
@@ -358,6 +359,44 @@ export async function createGoogleDriveFolder(
   }
 
   return await res.json();
+}
+
+/**
+ * Retrieves all folders across the user's Google Drive for quick picker selection.
+ */
+export async function getAllGoogleDriveFolders(
+  accessToken: string
+): Promise<GoogleDriveFolder[]> {
+  const query = encodeURIComponent("mimeType = 'application/vnd.google-apps.folder' and trashed = false");
+  const fields = encodeURIComponent('files(id,name,parents,modifiedTime)');
+
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files?q=${query}&fields=${fields}&orderBy=name%20asc&pageSize=100`,
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    }
+  );
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Failed to retrieve folders: ${errText || res.statusText}`);
+  }
+
+  const data = await res.json();
+  const list: GoogleDriveFolder[] = (data.files || []).map((f: { id: string; name: string; parents?: string[]; modifiedTime?: string }) => ({
+    id: f.id,
+    name: f.name,
+    parents: f.parents,
+    modifiedTime: f.modifiedTime,
+  }));
+
+  // Always include My Drive (Root)
+  return [
+    { id: 'root', name: 'My Drive (Root)' },
+    ...list,
+  ];
 }
 
 /**
