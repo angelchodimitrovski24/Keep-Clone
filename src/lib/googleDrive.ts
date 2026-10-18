@@ -30,8 +30,15 @@ export interface GoogleDriveAuthState {
   clientId: string;
 }
 
-const STORAGE_KEY_AUTH = 'keep_gdrive_auth';
-const STORAGE_KEY_CLIENT_ID = 'keep_gdrive_client_id';
+export interface StoredDriveFolder {
+  id: string;
+  name: string;
+}
+
+export const STORAGE_KEY_AUTH = 'keep_gdrive_auth';
+export const STORAGE_KEY_CLIENT_ID = 'keep_gdrive_client_id';
+export const STORAGE_KEY_EXPORT_FOLDER = 'keep_gdrive_export_folder';
+export const STORAGE_KEY_IMPORT_FOLDER = 'keep_gdrive_import_folder';
 
 const DRIVE_SCOPES = [
   'https://www.googleapis.com/auth/drive.file',
@@ -164,6 +171,64 @@ export function disconnectGoogleDrive(): void {
     }
   }
   localStorage.removeItem(STORAGE_KEY_AUTH);
+}
+
+/**
+ * Retrieves the stored destination export folder from localStorage.
+ */
+export function getStoredExportFolder(): StoredDriveFolder | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_EXPORT_FOLDER);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed.id === 'string' && typeof parsed.name === 'string') {
+        return parsed;
+      }
+    }
+  } catch {}
+  return null;
+}
+
+/**
+ * Saves the chosen export folder in localStorage.
+ */
+export function saveStoredExportFolder(folder: StoredDriveFolder): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(STORAGE_KEY_EXPORT_FOLDER, JSON.stringify(folder));
+  } catch (e) {
+    console.error('Failed to save export folder:', e);
+  }
+}
+
+/**
+ * Retrieves the stored import folder from localStorage.
+ */
+export function getStoredImportFolder(): StoredDriveFolder | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_IMPORT_FOLDER);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed.id === 'string' && typeof parsed.name === 'string') {
+        return parsed;
+      }
+    }
+  } catch {}
+  return null;
+}
+
+/**
+ * Saves the chosen import folder in localStorage.
+ */
+export function saveStoredImportFolder(folder: StoredDriveFolder): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(STORAGE_KEY_IMPORT_FOLDER, JSON.stringify(folder));
+  } catch (e) {
+    console.error('Failed to save import folder:', e);
+  }
 }
 
 /**

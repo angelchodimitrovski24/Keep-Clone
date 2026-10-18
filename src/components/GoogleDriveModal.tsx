@@ -46,9 +46,15 @@ import {
   GoogleDriveAuthState,
   GoogleDriveFile,
   GoogleDriveFolder,
+  STORAGE_KEY_EXPORT_FOLDER,
+  STORAGE_KEY_IMPORT_FOLDER,
+  getStoredExportFolder,
+  saveStoredExportFolder,
+  getStoredImportFolder,
+  saveStoredImportFolder,
+  StoredDriveFolder,
 } from '@/lib/googleDrive';
-
-const STORAGE_KEY_EXPORT_FOLDER = 'keep_gdrive_export_folder';
+import { getSettingFromDB, saveSettingToDB } from '@/lib/db';
 
 export const GoogleDriveModal: React.FC = () => {
   const {
@@ -72,22 +78,15 @@ export const GoogleDriveModal: React.FC = () => {
   const [isLoadingFolders, setIsLoadingFolders] = useState(false);
   const [folderSearchQuery, setFolderSearchQuery] = useState('');
 
-  // Selected folder for Export
-  const [exportFolder, setExportFolder] = useState<{ id: string; name: string }>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const saved = localStorage.getItem(STORAGE_KEY_EXPORT_FOLDER);
-        if (saved) return JSON.parse(saved);
-      } catch {}
-    }
-    return { id: 'root', name: 'Google Keep Backups' };
+  // Selected folder for Export (persisted in localStorage and IndexedDB)
+  const [exportFolder, setExportFolder] = useState<StoredDriveFolder>(() => {
+    return getStoredExportFolder() || { id: 'root', name: 'Google Keep Backups' };
   });
   const [isExportFolderPickerOpen, setIsExportFolderPickerOpen] = useState(false);
 
-  // Selected folder for Import
-  const [importFolder, setImportFolder] = useState<{ id: string; name: string }>({
-    id: 'all',
-    name: 'All Drive Backups',
+  // Selected folder for Import (persisted in localStorage and IndexedDB)
+  const [importFolder, setImportFolder] = useState<StoredDriveFolder>(() => {
+    return getStoredImportFolder() || { id: 'all', name: 'All Drive Backups' };
   });
   const [isImportFolderPickerOpen, setIsImportFolderPickerOpen] = useState(false);
 
@@ -132,58 +131,107 @@ export const GoogleDriveModal: React.FC = () => {
     }
   }, []);
 
-  // Save selected export folder
+  // Save selected export folder (persists in localStorage + IndexedDB)
   const selectExportFolder = (folder: { id: string; name: string }) => {
     setExportFolder(folder);
-    try {
-      localStorage.setItem(STORAGE_KEY_EXPORT_FOLDER, JSON.stringify(folder));
-    } catch {}
+    saveStoredExportFolder(folder);
+    saveSettingToDB(STORAGE_KEY_EXPORT_FOLDER, folder).catch(() => {});
     setIsExportFolderPickerOpen(false);
     setFeedback({
       type: 'info',
-      message: `Selected "${folder.name}" as the folder where backups will be exported.`,
+      message: `Selected "${folder.name}" as destination folder. This choice is remembered.`,
     });
   };
 
-  // Select import folder
+  // Select import folder (persists in localStorage + IndexedDB)
   const selectImportFolder = (folder: { id: string; name: string }) => {
     setImportFolder(folder);
+    saveStoredImportFolder(folder);
+    saveSettingToDB(STORAGE_KEY_IMPORT_FOLDER, folder).catch(() => {});
     setIsImportFolderPickerOpen(false);
     if (authState.accessToken) {
       loadBackupsForFolder(authState.accessToken, folder.id);
     }
   };
 
+  // Restore folder preferences from IndexedDB if localStorage was empty
+  useEffect(() => {
+    getSettingFromDB<StoredDriveFolder | null>(STORAGE_KEY_EXPORT_FOLDER, null)
+      .then((folder) => {
+        if (folder && !getStoredExportFolder()) {
+          setExportFolder(folder);
+          saveStoredExportFolder(folder);
+        }
+      })
+      .catch(() => {});
+
+    getSettingFromDB<StoredDriveFolder | null>(STORAGE_KEY_IMPORT_FOLDER, null)
+      .then((folder) => {
+        if (folder && !getStoredImportFolder()) {
+          setImportFolder(folder);
+          saveStoredImportFolder(folder);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   // Sync state whenever modal opens
   useEffect(() => {
-    if (isGoogleDriveModalOpen) {
-      const currentAuth = getStoredDriveAuth();
-      setAuthState(currentAuth);
-      setClientIdInput(currentAuth.clientId || getStoredClientId());
-      setFeedback(null);
+    if (!isGoogleDriveModalOpen) return;
 
-      if (currentAuth.isConnected && currentAuth.accessToken) {
-        // Load all folders
-        loadAllFolders(currentAuth.accessToken).then((folders) => {
-          // Check if "Google Keep Backups" exists
-          const defaultKeepFolder = folders.find((f) => f.name === 'Google Keep Backups');
-          if (defaultKeepFolder && exportFolder.id === 'root') {
-            setExportFolder({ id: defaultKeepFolder.id, name: defaultKeepFolder.name });
-          } else if (!defaultKeepFolder) {
-            // Auto ensure it
-            ensureKeepBackupsFolder(currentAuth.accessToken!).then((id) => {
-              if (id && id !== 'root') {
-                setExportFolder({ id, name: 'Google Keep Backups' });
-              }
-            });
-          }
-        });
+    const currentAuth = getStoredDriveAuth();
+    setAuthState(currentAuth);
+    setClientIdInput(currentAuth.clientId || getStoredClientId());
+    setFeedback(null);
 
-        // Load backups
-        loadBackupsForFolder(currentAuth.accessToken, importFolder.id);
-      }
+    // Make sure we have the latest saved export folder
+    const savedExport = getStoredExportFolder();
+    if (savedExport) {
+      setExportFolder(savedExport);
     }
-  }, [isGoogleDriveModalOpen, loadAllFolders, loadBackupsForFolder, exportFolder.id, importFolder.id]);
+
+    if (currentAuth.isConnected && currentAuth.accessToken) {
+      // Load all folders
+      loadAllFolders(currentAuth.accessToken).then((folders) => {
+        const stored = getStoredExportFolder();
+        if (stored) {
+          // The user explicitly chose a folder! Keep their selection intact.
+          // If the folder exists in Drive and was renamed, update its name.
+          const matched = folders.find((f) => f.id === stored.id);
+          if (matched && matched.name !== stored.name) {
+            const updated = { id: matched.id, name: matched.name };
+            setExportFolder(updated);
+            saveStoredExportFolder(updated);
+            saveSettingToDB(STORAGE_KEY_EXPORT_FOLDER, updated).catch(() => {});
+          }
+          return;
+        }
+
+        // Only run if the user has NEVER chosen a destination folder:
+        const defaultKeepFolder = folders.find((f) => f.name === 'Google Keep Backups');
+        if (defaultKeepFolder) {
+          const initFolder = { id: defaultKeepFolder.id, name: defaultKeepFolder.name };
+          setExportFolder(initFolder);
+          saveStoredExportFolder(initFolder);
+          saveSettingToDB(STORAGE_KEY_EXPORT_FOLDER, initFolder).catch(() => {});
+        } else {
+          // Auto ensure it
+          ensureKeepBackupsFolder(currentAuth.accessToken!).then((id) => {
+            if (id && id !== 'root') {
+              const initFolder = { id, name: 'Google Keep Backups' };
+              setExportFolder(initFolder);
+              saveStoredExportFolder(initFolder);
+              saveSettingToDB(STORAGE_KEY_EXPORT_FOLDER, initFolder).catch(() => {});
+            }
+          });
+        }
+      });
+
+      // Load backups for current import folder
+      const curImport = getStoredImportFolder() || importFolder;
+      loadBackupsForFolder(currentAuth.accessToken, curImport.id);
+    }
+  }, [isGoogleDriveModalOpen, loadAllFolders, loadBackupsForFolder]);
 
   if (!isGoogleDriveModalOpen) return null;
 
@@ -646,8 +694,14 @@ export const GoogleDriveModal: React.FC = () => {
                       <FolderOpen className="w-5 h-5" />
                     </div>
                     <div className="min-w-0">
-                      <div className="text-[11px] font-semibold text-blue-700 dark:text-blue-300 uppercase tracking-wider">
-                        Destination Folder
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-semibold text-blue-700 dark:text-blue-300 uppercase tracking-wider">
+                          Destination Folder
+                        </span>
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                          Remembered
+                        </span>
                       </div>
                       <div className="font-bold text-sm text-stone-900 dark:text-stone-100 truncate" title={exportFolder.name}>
                         {exportFolder.name}
@@ -818,8 +872,14 @@ export const GoogleDriveModal: React.FC = () => {
                       )}
                     </div>
                     <div className="min-w-0">
-                      <div className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 uppercase tracking-wider">
-                        Source Folder
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 uppercase tracking-wider">
+                          Source Folder
+                        </span>
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                          Remembered
+                        </span>
                       </div>
                       <div className="font-bold text-sm text-stone-900 dark:text-stone-100 truncate" title={importFolder.name}>
                         {importFolder.name}
