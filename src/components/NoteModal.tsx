@@ -115,6 +115,15 @@ export const NoteModal: React.FC<NoteModalProps> = ({
   const [showEncryptModal, setShowEncryptModal] = useState(false);
   const [showLinkModal, setShowLinkModal] = useState(false);
   const [stopwatchToast, setStopwatchToast] = useState<string | null>(null);
+  const [copiedUrlToast, setCopiedUrlToast] = useState(false);
+
+  const handleCopyNoteUrl = () => {
+    if (typeof window === 'undefined' || !note) return;
+    const fullUrl = `${window.location.origin}/note/${encodeURIComponent(note.id)}`;
+    navigator.clipboard.writeText(fullUrl);
+    setCopiedUrlToast(true);
+    setTimeout(() => setCopiedUrlToast(false), 2000);
+  };
 
   const editorRef = useRef<KeepWysiwygEditorHandle | null>(null);
 
@@ -590,6 +599,14 @@ export const NoteModal: React.FC<NoteModalProps> = ({
             )}
             <button
               type="button"
+              onClick={handleCopyNoteUrl}
+              className="p-2 rounded-full text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-black/10 transition-colors"
+              title={`Copy note full URL (${typeof window !== 'undefined' ? window.location.origin : ''}/note/${note.id})`}
+            >
+              {copiedUrlToast ? <Check className="w-5 h-5 text-emerald-500" /> : <Link2 className="w-5 h-5" />}
+            </button>
+            <button
+              type="button"
               onClick={() => {
                 setSharingNote({
                   ...note,
@@ -941,9 +958,25 @@ export const NoteModal: React.FC<NoteModalProps> = ({
               ))}
             </div>
 
-            <div className="text-[11px] text-stone-400 dark:text-stone-500 flex items-center justify-end gap-1">
-              <Clock className="w-3 h-3" />
-              Edited {new Date(note.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            <div className="text-[11px] text-stone-400 dark:text-stone-500 flex items-center justify-between gap-2 flex-wrap pt-1">
+              <div className="flex items-center gap-1.5 font-mono text-[11px] bg-black/5 dark:bg-white/5 px-2.5 py-1 rounded-md border border-black/5 dark:border-white/5">
+                <Link2 className="w-3 h-3 text-stone-400 shrink-0" />
+                <span className="truncate max-w-[200px] sm:max-w-[340px] text-stone-600 dark:text-stone-400 select-all">
+                  {typeof window !== 'undefined' ? `${window.location.origin}/note/${note.id}` : `/note/${note.id}`}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleCopyNoteUrl}
+                  className="hover:text-stone-700 dark:hover:text-stone-200 ml-1 font-sans text-[10px] font-semibold text-amber-600 dark:text-amber-400 hover:underline shrink-0"
+                >
+                  {copiedUrlToast ? 'Copied!' : 'Copy'}
+                </button>
+              </div>
+
+              <div className="flex items-center gap-1">
+                <Clock className="w-3 h-3" />
+                Edited {new Date(note.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </div>
             </div>
           </div>
         </div>
