@@ -35,7 +35,8 @@ import { extractClipboardPayload, copyFilesToLocalFolder } from '@/lib/localPast
 import { EncryptNoteModal } from './EncryptNoteModal';
 import { LinkNoteModal } from './LinkNoteModal';
 import { getBidirectionalLinks } from '@/lib/noteLinks';
-import { getUnlockedNote } from '@/lib/encryptionSession';
+import { encryptNote } from '@/lib/crypto';
+import { getUnlockedNote, setUnlockedNote, getSessionPassword, lockNoteInSession } from '@/lib/encryptionSession';
 import { NoteThemeArtwork } from './NoteThemeArtwork';
 
 function formatStopwatchTime(seconds: number): string {
@@ -190,6 +191,65 @@ export const NoteModal: React.FC<NoteModalProps> = ({
 
     if (activeStopwatch && activeStopwatch.noteId === note.id && activeStopwatch.elapsedSeconds > 0) {
       await stopAndSaveReadingStopwatch();
+    }
+
+    if (note.isEncrypted) {
+      const sessionPassword = getSessionPassword(note.id);
+      if (sessionPassword) {
+        try {
+          const bundle = await encryptNote(
+            {
+              title: title.trim(),
+              content: latestContent.trim(),
+              todos: finalTodos,
+              images,
+            },
+            sessionPassword,
+            note.encryptedData?.hint
+          );
+
+          setUnlockedNote(note.id, {
+            title: title.trim(),
+            content: latestContent.trim(),
+            todos: finalTodos,
+            images,
+          });
+
+          await updateNote(note.id, {
+            isEncrypted: true,
+            encryptedData: bundle,
+            title: note.title,
+            content: '',
+            todos: [],
+            images: [],
+            drawings,
+            color,
+            theme,
+            category: category || null,
+            labels,
+            isPinned,
+            reminder,
+            linkedNoteIds,
+          });
+          onClose();
+          return;
+        } catch (err) {
+          console.error('Failed to re-encrypt note on save:', err);
+        }
+      } else {
+        await updateNote(note.id, {
+          color,
+          theme,
+          category: category || null,
+          labels,
+          isPinned,
+          reminder,
+          drawings,
+          linkedNoteIds,
+        });
+        onClose();
+        return;
+      }
     }
 
     await updateNote(note.id, {
@@ -403,9 +463,25 @@ export const NoteModal: React.FC<NoteModalProps> = ({
               style={{ fontSize: 'calc(var(--note-font-size, 15px) * 1.25)' }}
             />
             {note.isEncrypted && (
-              <span className="shrink-0 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30">
-                <Lock className="w-3 h-3" /> Encrypted
-              </span>
+              <div className="shrink-0 flex items-center gap-1.5">
+                <span
+                  className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 shadow-xs"
+                  title="Protected with AES-256-GCM zero-knowledge encryption"
+                >
+                  <Lock className="w-3 h-3 text-amber-600 dark:text-amber-400" /> AES-256 Protected
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    lockNoteInSession(note.id);
+                    onClose();
+                  }}
+                  className="px-2 py-0.5 rounded-full bg-stone-200 hover:bg-stone-300 dark:bg-stone-800 dark:hover:bg-stone-700 text-[11px] font-medium text-stone-700 dark:text-stone-300 transition-colors"
+                  title="Lock note immediately (clears decrypted cache from session)"
+                >
+                  Lock Now
+                </button>
+              </div>
             )}
           </div>
           <div className="flex items-center gap-1.5 flex-wrap justify-end">

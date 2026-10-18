@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { Lock, KeyRound, AlertCircle, X, ShieldAlert } from 'lucide-react';
 import { Note } from '@/types/note';
 import { decryptNote, DecryptedNotePayload } from '@/lib/crypto';
-import { setUnlockedNote } from '@/lib/encryptionSession';
+import { setUnlockedNote, setSessionPassword } from '@/lib/encryptionSession';
 
 interface UnlockNoteModalProps {
   note: Note | null;
@@ -43,8 +43,9 @@ export const UnlockNoteModal: React.FC<UnlockNoteModalProps> = ({
       setIsProcessing(true);
       const decrypted = await decryptNote(note.encryptedData, password);
 
-      // Cache decrypted payload in current session
+      // Cache decrypted payload and password in current session
       setUnlockedNote(note.id, decrypted);
+      setSessionPassword(note.id, password);
 
       const restoredNote: Note = {
         ...note,

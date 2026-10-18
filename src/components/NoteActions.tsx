@@ -378,7 +378,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
               ? 'text-amber-600 dark:text-amber-400 bg-amber-500/15'
               : 'hover:bg-black/10 dark:hover:bg-white/10'
           }`}
-          title={note.isEncrypted ? 'Note is encrypted (Settings)' : 'Encrypt note with password'}
+          title={note.isEncrypted ? 'Note is encrypted with AES-256 (Settings)' : 'Encrypt note with AES-256 (Password protect)'}
         >
           <Lock className="w-4 h-4" />
         </button>
@@ -488,8 +488,8 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                 }}
                 className="w-full text-left px-3.5 py-2.5 sm:py-2 flex items-center gap-2.5 hover:bg-stone-100 dark:hover:bg-stone-700"
               >
-                <Lock className="w-4 h-4" />
-                {note.isEncrypted ? 'Encryption settings' : 'Encrypt note'}
+                <Lock className="w-4 h-4 text-amber-500" />
+                {note.isEncrypted ? 'Encryption Settings (AES-256)' : 'Encrypt Note (AES-256)'}
               </button>
             )}
 

@@ -9,17 +9,21 @@ import {
   X,
   Plus,
   Trash2,
+  Lock,
 } from 'lucide-react';
 import { useKeep } from '@/context/KeepContext';
 import { NoteActions } from './NoteActions';
 import { KeepFormattingBar } from './KeepFormattingBar';
 import { KeepWysiwygEditor, KeepWysiwygEditorHandle } from './KeepWysiwygEditor';
-import { NoteColor, NoteBackgroundTheme, TodoItem, NoteDrawing } from '@/types/note';
+import { NoteColor, NoteBackgroundTheme, TodoItem, NoteDrawing, Note } from '@/types/note';
 import { getNoteColorClasses } from '@/lib/constants';
 import { GoogleKeepFormatCommand } from '@/lib/formatUtils';
 import { extractClipboardPayload, copyFilesToLocalFolder } from '@/lib/localPaste';
 import { renderMarkdownTablesInHtml } from '@/lib/tableUtils';
 import { LinkNoteModal } from './LinkNoteModal';
+import { EncryptNoteModal } from './EncryptNoteModal';
+import { encryptNote } from '@/lib/crypto';
+import { setUnlockedNote, setSessionPassword } from '@/lib/encryptionSession';
 import { NoteThemeArtwork } from './NoteThemeArtwork';
 
 interface CreateNoteBarProps {
@@ -45,6 +49,10 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
   const [linkedNoteIds, setLinkedNoteIds] = useState<string[]>([]);
   const [showLinkModal, setShowLinkModal] = useState(false);
   const [isFormattingOpen, setIsFormattingOpen] = useState(false);
+  const [isEncrypted, setIsEncrypted] = useState(false);
+  const [encryptionPassword, setEncryptionPassword] = useState('');
+  const [encryptionHint, setEncryptionHint] = useState('');
+  const [showEncryptModal, setShowEncryptModal] = useState(false);
 
   // Sync category with active category filter when collapsed
   React.useEffect(() => {
@@ -127,6 +135,10 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
     setLinkedNoteIds([]);
     setShowLinkModal(false);
     setIsFormattingOpen(false);
+    setIsEncrypted(false);
+    setEncryptionPassword('');
+    setEncryptionHint('');
+    setShowEncryptModal(false);
     setIsExpanded(false);
   };
 
@@ -144,21 +156,67 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
         ? [...todos, { id: 'todo-' + Date.now(), text: newTodoInput.trim(), completed: false }]
         : todos;
 
-      await addNote({
-        title: title.trim(),
-        content: latestContent.trim(),
-        isList,
-        todos: finalTodos,
-        color,
-        theme,
-        category: category || null,
-        labels: labels.length > 0 ? labels : selectedLabel ? [selectedLabel] : [],
-        isPinned,
-        reminder,
-        images,
-        drawings,
-        linkedNoteIds,
-      });
+      const noteLabels = labels.length > 0 ? labels : selectedLabel ? [selectedLabel] : [];
+
+      if (isEncrypted && encryptionPassword) {
+        try {
+          const bundle = await encryptNote(
+            {
+              title: title.trim(),
+              content: latestContent.trim(),
+              todos: finalTodos,
+              images,
+            },
+            encryptionPassword,
+            encryptionHint
+          );
+
+          const created = await addNote({
+            title: title.trim() || 'Encrypted Note',
+            content: '',
+            isList,
+            todos: [],
+            color,
+            theme,
+            category: category || null,
+            labels: noteLabels,
+            isPinned,
+            reminder,
+            images: [],
+            drawings,
+            linkedNoteIds,
+            isEncrypted: true,
+            encryptedData: bundle,
+          });
+
+          // Cache in session so user sees their new note unlocked immediately
+          setUnlockedNote(created.id, {
+            title: title.trim(),
+            content: latestContent.trim(),
+            todos: finalTodos,
+            images,
+          });
+          setSessionPassword(created.id, encryptionPassword);
+        } catch (err) {
+          console.error('Failed to encrypt note on create:', err);
+        }
+      } else {
+        await addNote({
+          title: title.trim(),
+          content: latestContent.trim(),
+          isList,
+          todos: finalTodos,
+          color,
+          theme,
+          category: category || null,
+          labels: noteLabels,
+          isPinned,
+          reminder,
+          images,
+          drawings,
+          linkedNoteIds,
+        });
+      }
     }
     resetForm();
   };
@@ -474,6 +532,25 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
                 </button>
               </span>
             )}
+
+            {isEncrypted && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/30 shadow-xs">
+                <Lock className="w-3 h-3 text-amber-600 dark:text-amber-400" />
+                <span>AES-256 Protected</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsEncrypted(false);
+                    setEncryptionPassword('');
+                    setEncryptionHint('');
+                  }}
+                  className="hover:text-red-500"
+                  title="Remove encryption"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
           </div>
         </div>
 
@@ -487,7 +564,7 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
         {/* Footer toolbar */}
         <div className="flex items-center justify-between px-3 py-2 border-t border-black/5 dark:border-white/5">
           <NoteActions
-            note={{ color, theme, isList, labels, reminder, category }}
+            note={{ color, theme, isList, labels, reminder, category, isEncrypted }}
             onColorChange={setColor}
             onThemeChange={setTheme}
             onSelectCategory={setCategory}
@@ -496,6 +573,7 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
             onAddReminder={(r) => setReminder(r)}
             onToggleLabel={handleToggleLabel}
             onLinkNote={() => setShowLinkModal(true)}
+            onEncrypt={() => setShowEncryptModal(true)}
             showFormattingToggle={!isList}
             isFormattingOpen={isFormattingOpen}
             onToggleFormatting={() => setIsFormattingOpen(!isFormattingOpen)}
@@ -525,6 +603,49 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
             setContent((prev) => `${prev}\n${linkSyntax}`);
           }
           setLinkedNoteIds((prev) => Array.from(new Set([...prev, target.id])));
+        }}
+      />
+
+      {/* Encrypt Note Dialog for New Note */}
+      <EncryptNoteModal
+        note={
+          {
+            id: 'temp-create-note',
+            title,
+            content,
+            isList,
+            todos,
+            images,
+            drawings: [],
+            isPinned: false,
+            color: 'default',
+            theme: 'none',
+            order: 0,
+            labels: [],
+            isArchived: false,
+            isTrash: false,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            isEncrypted,
+            encryptedData:
+              isEncrypted && encryptionHint
+                ? { ciphertext: '', iv: '', salt: '', hint: encryptionHint, timestamp: Date.now() }
+                : null,
+          } as Note
+        }
+        isOpen={showEncryptModal}
+        onClose={() => setShowEncryptModal(false)}
+        onEncrypted={async (updates, pass) => {
+          setIsEncrypted(true);
+          setEncryptionPassword(pass || '');
+          setEncryptionHint(updates.encryptedData?.hint || '');
+          setShowEncryptModal(false);
+        }}
+        onDecryptedPermanently={async () => {
+          setIsEncrypted(false);
+          setEncryptionPassword('');
+          setEncryptionHint('');
+          setShowEncryptModal(false);
         }}
       />
     </div>

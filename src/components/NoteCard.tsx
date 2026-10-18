@@ -18,7 +18,7 @@ import { NoteActions } from './NoteActions';
 import { useKeep } from '@/context/KeepContext';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { toggleMarkdownCheckbox } from '@/lib/formatUtils';
-import { isNoteUnlockedInSession, getUnlockedNote } from '@/lib/encryptionSession';
+import { isNoteUnlockedInSession, getUnlockedNote, lockNoteInSession } from '@/lib/encryptionSession';
 import { UnlockNoteModal } from './UnlockNoteModal';
 import { EncryptNoteModal } from './EncryptNoteModal';
 import { LinkNoteModal } from './LinkNoteModal';
@@ -230,21 +230,37 @@ export const NoteCard: React.FC<NoteCardProps> = ({
             )}
           </div>
         ) : isLocked ? (
-          <div className="p-5 py-7 flex flex-col items-center justify-center text-center gap-2 cursor-pointer">
-            <div className="w-12 h-12 rounded-2xl bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center mb-1">
+          <div
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowUnlockModal(true);
+            }}
+            className="p-5 py-7 flex flex-col items-center justify-center text-center gap-2 cursor-pointer"
+          >
+            <div className="w-12 h-12 rounded-2xl bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center mb-1 shadow-xs ring-1 ring-amber-500/30">
               <Lock className="w-6 h-6" />
             </div>
             <h4 className="font-semibold text-stone-900 dark:text-stone-100 text-sm">
               {note.title || 'Encrypted Note'}
             </h4>
             <p className="text-xs text-stone-500 max-w-[200px]">
-              Password protected (AES-256). Click to unlock.
+              Encrypted with AES-256-GCM. Click to unlock.
             </p>
             {note.encryptedData?.hint && (
               <span className="mt-1 text-[11px] text-amber-800 dark:text-amber-200 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/20">
                 Hint: {note.encryptedData.hint}
               </span>
             )}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowUnlockModal(true);
+              }}
+              className="mt-2 px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-stone-950 font-semibold text-xs shadow-xs transition-colors"
+            >
+              Unlock Note
+            </button>
           </div>
         ) : (
           <>
@@ -282,6 +298,26 @@ export const NoteCard: React.FC<NoteCardProps> = ({
 
             {/* Note Content */}
             <div className="p-4 pt-3 flex-1 flex flex-col justify-start">
+              {/* AES Unlocked Badge */}
+              {note.isEncrypted && (
+                <div className="flex items-center justify-between mb-2 pb-1.5 border-b border-black/5 dark:border-white/5">
+                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 dark:text-amber-400">
+                    <Lock className="w-3 h-3" /> Unlocked (AES-256)
+                  </span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      lockNoteInSession(note.id);
+                    }}
+                    className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-500/15 text-amber-800 dark:text-amber-200 hover:bg-amber-500/25 transition-colors"
+                    title="Lock note now (protect sensitive data)"
+                  >
+                    Lock Now
+                  </button>
+                </div>
+              )}
+
               {activeNote.title && (
                 <h3
                   className="font-semibold text-stone-900 dark:text-stone-100 mb-1.5 tracking-tight line-clamp-2"

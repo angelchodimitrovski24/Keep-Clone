@@ -10,7 +10,7 @@ interface EncryptNoteModalProps {
   note: Note;
   isOpen: boolean;
   onClose: () => void;
-  onEncrypted: (updatedNote: Partial<Note>) => Promise<void>;
+  onEncrypted: (updatedNote: Partial<Note>, password?: string) => Promise<void>;
   onDecryptedPermanently?: () => Promise<void>;
 }
 
@@ -62,14 +62,17 @@ export const EncryptNoteModal: React.FC<EncryptNoteModalProps> = ({
       // Lock note in session so user must enter password to unlock
       lockNoteInSession(note.id);
 
-      await onEncrypted({
-        isEncrypted: true,
-        encryptedData: bundle,
-        // Mask plaintext in database storage
-        content: '',
-        todos: [],
-        images: [],
-      });
+      await onEncrypted(
+        {
+          isEncrypted: true,
+          encryptedData: bundle,
+          // Mask plaintext in database storage
+          content: '',
+          todos: [],
+          images: [],
+        },
+        password
+      );
 
       onClose();
     } catch (err) {
