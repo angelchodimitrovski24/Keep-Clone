@@ -157,6 +157,8 @@ export async function POST(req: NextRequest) {
       return `pasted-${stamp}${ext || '.png'}`;
     };
 
+    const preserveName = formData.get('preserveName') === 'true' || formData.get('preserveName') === '1';
+
     for (const file of uploadedFiles) {
       const arrayBuffer = await file.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
@@ -182,7 +184,18 @@ export async function POST(req: NextRequest) {
         originalName = makeTimestampName(extFromMime || '.png');
       }
 
-      const { finalName, fullPath } = getUniqueFilePath(targetFolder, originalName);
+      let finalName: string;
+      let fullPath: string;
+
+      if (preserveName) {
+        finalName = sanitizeFileName(originalName) || originalName;
+        fullPath = path.join(/*turbopackIgnore: true*/ targetFolder, finalName);
+      } else {
+        const unique = getUniqueFilePath(targetFolder, originalName);
+        finalName = unique.finalName;
+        fullPath = unique.fullPath;
+      }
+
       fs.writeFileSync(/*turbopackIgnore: true*/ fullPath, buffer);
 
       const ext = path.extname(finalName);

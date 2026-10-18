@@ -10,7 +10,16 @@ import {
   getAllLabelsFromDB,
   getAllCategoriesFromDB,
   getAllReadingSessionsFromDB,
+  saveMediaToDB,
+  getMediaFromDB,
 } from './db';
+import { extractAllImagesFromNote } from './pdfExport';
+import { resolveLocalMediaUrl } from './formatUtils';
+import {
+  registerMediaBlobUrl,
+  getMediaBlobUrl,
+  getSyncLocalMediaFolder,
+} from './localPaste';
 
 export interface ImportResult {
   success: boolean;
@@ -23,6 +32,26 @@ export interface ImportResult {
   mediaExtracted: number;
   message: string;
 }
+
+export interface BackupMediaManifestItem {
+  fileName: string;
+  archivePath: string;
+  originalSrc: string;
+  noteId: string;
+  type: 'image' | 'drawing';
+}
+
+const MIME_MAP: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.svg': 'image/svg+xml',
+  '.bmp': 'image/bmp',
+  '.avif': 'image/avif',
+  '.pdf': 'application/pdf',
+};
 
 function parseDataUrl(dataUrl: string): { mimeType: string; extension: string; base64Data: string } | null {
   const match = dataUrl.match(/^data:([a-zA-Z0-9/+-]+);base64,(.+)$/);
@@ -38,6 +67,76 @@ function parseDataUrl(dataUrl: string): { mimeType: string; extension: string; b
 
 function sanitizeFilename(name: string): string {
   return name.replace(/[^a-zA-Z0-9_\u00C0-\u024F\u0400-\u04FF-]/g, '_').substring(0, 50) || 'untitled';
+}
+
+/**
+ * Fetches or decodes binary data for an image source (from base64, IndexedDB, or server /api/local-media)
+ */
+async function fetchMediaBinary(rawSrc: string): Promise<{ data: ArrayBuffer; extension: string; mimeType: string } | null> {
+  if (!rawSrc) return null;
+  const trimmed = rawSrc.trim();
+
+  // 1. Data URL
+  if (trimmed.startsWith('data:')) {
+    const parsed = parseDataUrl(trimmed);
+    if (parsed) {
+      try {
+        const binaryString = atob(parsed.base64Data);
+        const len = binaryString.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        return { data: bytes.buffer, extension: parsed.extension, mimeType: parsed.mimeType };
+      } catch {
+        return null;
+      }
+    }
+  }
+
+  // 2. Extract clean file name
+  const clean = trimmed.replace(/\\/g, '/');
+  const withoutQuery = clean.split('?')[0];
+  const fileName = withoutQuery.split('/').pop() || '';
+  const ext = fileName.includes('.') ? fileName.substring(fileName.lastIndexOf('.')).toLowerCase() : '.png';
+
+  // 3. Check IndexedDB media store (instant local access)
+  try {
+    const record = await getMediaFromDB(fileName);
+    if (record && record.blob) {
+      const buffer = await record.blob.arrayBuffer();
+      return {
+        data: buffer,
+        extension: ext.replace('.', '') || 'png',
+        mimeType: record.mimeType || 'image/png',
+      };
+    }
+  } catch {}
+
+  // 4. Resolve media URL via resolveLocalMediaUrl or direct fetch
+  const targetUrl = resolveLocalMediaUrl(trimmed);
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 6000);
+    const res = await fetch(targetUrl, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    if (res.ok) {
+      const buffer = await res.arrayBuffer();
+      const mime = res.headers.get('content-type') || 'image/png';
+      let extension = ext.replace('.', '') || 'png';
+      if (!extension || extension === 'local-media') {
+        if (mime.includes('jpeg') || mime.includes('jpg')) extension = 'jpg';
+        else if (mime.includes('gif')) extension = 'gif';
+        else if (mime.includes('webp')) extension = 'webp';
+        else extension = 'png';
+      }
+      return { data: buffer, extension, mimeType: mime };
+    }
+  } catch (err) {
+    console.warn('Could not fetch media binary for export:', targetUrl, err);
+  }
+
+  return null;
 }
 
 /**
@@ -59,23 +158,14 @@ export async function generateBackupZipBlob(): Promise<{
   const drawingsFolder = mediaFolder?.folder('drawings');
   const notesFolder = zip.folder('notes');
 
+  const addedMediaFiles = new Set<string>();
+  const mediaManifest: BackupMediaManifestItem[] = [];
+
   // Process and extract media from notes
   for (const note of rawData.notes) {
     const safeTitle = sanitizeFilename(note.title || `note_${note.id}`);
 
-    // 1. Extract note images to media/images/
-    if (note.images && Array.isArray(note.images)) {
-      note.images.forEach((imgUrl, idx) => {
-        const parsed = parseDataUrl(imgUrl);
-        if (parsed) {
-          const filename = `${safeTitle}_${note.id.slice(-6)}_img_${idx + 1}.${parsed.extension}`;
-          imagesFolder?.file(filename, parsed.base64Data, { base64: true });
-          mediaCount++;
-        }
-      });
-    }
-
-    // 2. Extract note canvas drawings to media/drawings/
+    // 1. Extract note canvas drawings to media/drawings/
     if (note.drawings && Array.isArray(note.drawings)) {
       note.drawings.forEach((drawing, idx) => {
         const parsed = parseDataUrl(drawing.dataUrl);
@@ -83,8 +173,58 @@ export async function generateBackupZipBlob(): Promise<{
           const filename = `${safeTitle}_${note.id.slice(-6)}_drawing_${idx + 1}.${parsed.extension}`;
           drawingsFolder?.file(filename, parsed.base64Data, { base64: true });
           mediaCount++;
+          mediaManifest.push({
+            fileName: filename,
+            archivePath: `media/drawings/${filename}`,
+            originalSrc: drawing.dataUrl,
+            noteId: note.id,
+            type: 'drawing',
+          });
         }
       });
+    }
+
+    // 2. Extract ALL images from note (both attached note.images AND embedded in note.content)
+    const allImages = extractAllImagesFromNote(note);
+    for (let idx = 0; idx < allImages.length; idx++) {
+      const imgUrl = allImages[idx];
+      if (!imgUrl) continue;
+
+      let filename = '';
+      const clean = imgUrl.trim().replace(/\\/g, '/').split('?')[0];
+      const baseName = clean.split('/').pop();
+      if (baseName && /\.(png|jpe?g|gif|webp|svg|bmp|avif)$/i.test(baseName)) {
+        filename = sanitizeFilename(baseName);
+        if (!filename.includes('.')) {
+          const extMatch = baseName.match(/\.(png|jpe?g|gif|webp|svg|bmp|avif)$/i);
+          filename += extMatch ? extMatch[0].toLowerCase() : '.png';
+        }
+      }
+
+      if (!filename || filename === 'image.png' || filename === 'blob.png') {
+        filename = `${safeTitle}_${note.id.slice(-6)}_img_${idx + 1}.png`;
+      }
+
+      if (addedMediaFiles.has(filename)) {
+        continue;
+      }
+
+      const mediaBinary = await fetchMediaBinary(imgUrl);
+      if (mediaBinary) {
+        if (!filename.includes('.')) {
+          filename += `.${mediaBinary.extension}`;
+        }
+        imagesFolder?.file(filename, mediaBinary.data);
+        addedMediaFiles.add(filename);
+        mediaCount++;
+        mediaManifest.push({
+          fileName: filename,
+          archivePath: `media/images/${filename}`,
+          originalSrc: imgUrl,
+          noteId: note.id,
+          type: 'image',
+        });
+      }
     }
 
     // 3. Create human-readable markdown file for each note
@@ -119,6 +259,7 @@ export async function generateBackupZipBlob(): Promise<{
     version: '2.0.0',
     exportFormat: 'zip-bundle',
     totalMediaFiles: mediaCount,
+    mediaManifest,
   };
   zip.file('data.json', JSON.stringify(backupJson, null, 2));
 
@@ -214,9 +355,83 @@ export async function importBackupSmart(file: File): Promise<ImportResult> {
         parsedData = JSON.parse(jsonContent);
       }
 
-      // Count media files in archive
+      // Extract and restore all media files in archive
       const mediaFiles = zip.file(/^media\//);
-      mediaExtractedCount = mediaFiles.length;
+      const filesToUpload: File[] = [];
+
+      for (const mediaFile of mediaFiles) {
+        if (mediaFile.dir) continue;
+        const fileName = mediaFile.name.split('/').pop();
+        if (!fileName) continue;
+
+        try {
+          const arrayBuffer = await mediaFile.async('arraybuffer');
+          const ext = fileName.includes('.') ? fileName.substring(fileName.lastIndexOf('.')).toLowerCase() : '.png';
+          const mimeType = MIME_MAP[ext] || (mediaFile.name.includes('/images/') ? 'image/png' : 'application/octet-stream');
+          const blob = new Blob([arrayBuffer], { type: mimeType });
+
+          // 1. Save to IndexedDB media store (persists offline and across sessions)
+          await saveMediaToDB({
+            id: fileName,
+            fileName,
+            blob,
+            mimeType,
+            size: arrayBuffer.byteLength,
+            updatedAt: Date.now(),
+          });
+
+          // 2. Register blob URL in memory cache for immediate instant rendering
+          const blobUrl = URL.createObjectURL(blob);
+          registerMediaBlobUrl(fileName, blobUrl);
+          registerMediaBlobUrl(mediaFile.name, blobUrl);
+
+          // 3. Prepare for physical filesystem save on server via /api/local-media
+          const fileObj = new File([blob], fileName, { type: mimeType });
+          filesToUpload.push(fileObj);
+
+          mediaExtractedCount++;
+        } catch (err) {
+          console.warn('Failed extracting media file from archive:', mediaFile.name, err);
+        }
+      }
+
+      // If running with server, upload all media files to /api/local-media with preserveName=true
+      if (filesToUpload.length > 0 && typeof window !== 'undefined') {
+        try {
+          const formData = new FormData();
+          formData.append('preserveName', 'true');
+          const syncFolder = getSyncLocalMediaFolder();
+          if (syncFolder) {
+            formData.append('folderPath', syncFolder);
+          }
+          for (const f of filesToUpload) {
+            formData.append('files', f, f.name);
+          }
+
+          fetch('/api/local-media', {
+            method: 'POST',
+            body: formData,
+          }).catch((err) => {
+            console.warn('Server filesystem media write skipped (IndexedDB active):', err);
+          });
+        } catch (err) {
+          console.warn('Failed to upload extracted files to local-media server:', err);
+        }
+      }
+
+      // Re-map original image sources from mediaManifest to newly extracted blob URLs
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const manifest = (parsedData as any)?.mediaManifest;
+      if (Array.isArray(manifest)) {
+        for (const item of manifest) {
+          if (item && item.fileName && item.originalSrc) {
+            const blobUrl = getMediaBlobUrl(item.fileName);
+            if (blobUrl) {
+              registerMediaBlobUrl(item.originalSrc, blobUrl);
+            }
+          }
+        }
+      }
     } catch (err) {
       console.error('Error extracting ZIP archive:', err);
       return {
@@ -412,7 +627,7 @@ export async function importBackupSmart(file: File): Promise<ImportResult> {
     }
   }
 
-  const summaryMessage = `Import completed: ${notesAdded} new notes added, ${notesUpdated} updated with newer changes, ${notesSkipped} unchanged. ${labelsAdded} labels, ${categoriesAdded} categories, and ${sessionsAdded} reading sessions merged.`;
+  const summaryMessage = `Import completed: ${notesAdded} new notes added, ${notesUpdated} updated with newer changes, ${notesSkipped} unchanged. ${labelsAdded} labels, ${categoriesAdded} categories, ${sessionsAdded} reading sessions merged, and ${mediaExtractedCount} media files restored.`;
 
   return {
     success: true,

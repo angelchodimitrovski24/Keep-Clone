@@ -1,4 +1,4 @@
-import { getSettingFromDB, saveSettingToDB } from './db';
+import { getSettingFromDB, saveSettingToDB, saveMediaToDB, getAllMediaFromDB } from './db';
 
 export interface SavedLocalMediaFile {
   fileName: string;
@@ -155,6 +155,25 @@ export function getMediaBlobUrl(pathOrName: string): string | undefined {
   return undefined;
 }
 
+/**
+ * Loads all locally cached media records from IndexedDB and registers blob URLs for instant offline/PWA rendering
+ */
+export async function initLocalMediaCache(): Promise<void> {
+  if (typeof window === 'undefined') return;
+  try {
+    const records = await getAllMediaFromDB();
+    for (const record of records) {
+      if (record && record.blob) {
+        const blobUrl = URL.createObjectURL(record.blob);
+        registerMediaBlobUrl(record.id, blobUrl);
+        registerMediaBlobUrl(record.fileName, blobUrl);
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to load local media from IndexedDB:', err);
+  }
+}
+
 export function makeTimestampName(ext: string): string {
   const now = new Date();
   const stamp =
@@ -271,8 +290,20 @@ export async function copyFilesToLocalFolder(
     return null;
   });
 
-  // Also snapshot buffers for optional Browser DirectoryHandle mirror (physical save on client drive)
+  // Also persist buffers to IndexedDB media store for offline/PWA access and snapshot to DirectoryHandle
   if (files.length > 0) {
+    for (const f of files) {
+      const isImg = f.type.startsWith('image/') || /\.(png|jpe?g|gif|webp|svg|bmp|avif)$/i.test(f.name);
+      const safeName = f.name && f.name !== 'image.png' && f.name !== 'blob' ? f.name : makeTimestampName(isImg ? '.png' : '');
+      saveMediaToDB({
+        id: safeName,
+        fileName: safeName,
+        blob: f,
+        mimeType: f.type || (isImg ? 'image/png' : 'application/octet-stream'),
+        size: f.size,
+      }).catch(() => {});
+    }
+
     Promise.all(
       files.map(async (f) => ({
         name: f.name,

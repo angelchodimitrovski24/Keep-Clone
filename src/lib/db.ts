@@ -39,10 +39,26 @@ interface KeepDB extends DBSchema {
     key: string;
     value: unknown;
   };
+  media: {
+    key: string;
+    value: KeepMediaRecord;
+    indexes: {
+      'by-filename': string;
+    };
+  };
+}
+
+export interface KeepMediaRecord {
+  id: string;
+  fileName: string;
+  blob: Blob;
+  mimeType: string;
+  size: number;
+  updatedAt: number;
 }
 
 const DB_NAME = 'google-keep-local-db';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 
 let dbPromise: Promise<IDBPDatabase<KeepDB>> | null = null;
 
@@ -85,6 +101,12 @@ export function getKeepDB() {
         // Settings Store
         if (!db.objectStoreNames.contains('settings')) {
           db.createObjectStore('settings');
+        }
+
+        // Media Store (Offline / Mobile persistent images & attachments)
+        if (!db.objectStoreNames.contains('media')) {
+          const mediaStore = db.createObjectStore('media', { keyPath: 'id' });
+          mediaStore.createIndex('by-filename', 'fileName');
         }
       },
     });
@@ -376,3 +398,48 @@ export async function importAllData(data: {
   }
   await tx.done;
 }
+
+// ----------------- MEDIA REPOSITORY (Offline / Client Persistence) -----------------
+
+export async function saveMediaToDB(media: {
+  id: string;
+  fileName: string;
+  blob: Blob;
+  mimeType: string;
+  size: number;
+  updatedAt?: number;
+}): Promise<string> {
+  const db = await getKeepDB();
+  if (!db) return media.id;
+  const record: KeepMediaRecord = {
+    id: media.id,
+    fileName: media.fileName,
+    blob: media.blob,
+    mimeType: media.mimeType,
+    size: media.size,
+    updatedAt: media.updatedAt || Date.now(),
+  };
+  await db.put('media', record);
+  return record.id;
+}
+
+export async function getMediaFromDB(idOrFileName: string): Promise<KeepMediaRecord | undefined> {
+  const db = await getKeepDB();
+  if (!db) return undefined;
+  const direct = await db.get('media', idOrFileName);
+  if (direct) return direct;
+  return await db.getFromIndex('media', 'by-filename', idOrFileName);
+}
+
+export async function getAllMediaFromDB(): Promise<KeepMediaRecord[]> {
+  const db = await getKeepDB();
+  if (!db) return [];
+  return await db.getAll('media');
+}
+
+export async function deleteMediaFromDB(id: string): Promise<void> {
+  const db = await getKeepDB();
+  if (!db) return;
+  await db.delete('media', id);
+}
+

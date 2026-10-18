@@ -17,7 +17,7 @@ import { KeepFormattingBar } from './KeepFormattingBar';
 import { KeepWysiwygEditor, KeepWysiwygEditorHandle } from './KeepWysiwygEditor';
 import { NoteColor, NoteBackgroundTheme, TodoItem, NoteDrawing, Note } from '@/types/note';
 import { getNoteColorClasses } from '@/lib/constants';
-import { GoogleKeepFormatCommand } from '@/lib/formatUtils';
+import { GoogleKeepFormatCommand, resolveLocalMediaUrl } from '@/lib/formatUtils';
 import { extractClipboardPayload, copyFilesToLocalFolder } from '@/lib/localPaste';
 import { renderMarkdownTablesInHtml } from '@/lib/tableUtils';
 import { LinkNoteModal } from './LinkNoteModal';
@@ -383,7 +383,7 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
             {images.map((img, idx) => (
               <div key={idx} className="relative group rounded-lg overflow-hidden max-h-48">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={img} alt="Attachment" className="w-full h-full object-cover" />
+                <img src={resolveLocalMediaUrl(img)} alt="Attachment" className="w-full h-full object-cover" />
                 <button
                   type="button"
                   onClick={() => setImages((prev) => prev.filter((_, i) => i !== idx))}

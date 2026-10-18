@@ -25,7 +25,7 @@ import {
   deleteReadingSessionFromDB,
   clearAllReadingSessionsFromDB,
 } from '@/lib/db';
-import { setSyncLocalMediaFolder } from '@/lib/localPaste';
+import { setSyncLocalMediaFolder, initLocalMediaCache } from '@/lib/localPaste';
 import { hashCategoryPassword, verifyCategoryPassword } from '@/lib/crypto';
 import {
   isCategoryUnlockedInSession,
@@ -303,6 +303,9 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
         getSettingFromDB<FontSizeOption>('fontSize', 'medium'),
         getAllReadingSessionsFromDB(),
       ]);
+
+      // Initialize in-memory blob URLs from offline IndexedDB media store
+      await initLocalMediaCache().catch(() => {});
 
       setReadingSessions(storedReadingSessions);
 
@@ -1289,6 +1292,7 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
     async (file: File): Promise<ImportResult> => {
       const result = await importBackupSmart(file);
       if (result.success) {
+        await initLocalMediaCache().catch(() => {});
         await loadInitialData();
       }
       setImportSummary(result);

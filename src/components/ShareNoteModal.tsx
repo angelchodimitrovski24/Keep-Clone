@@ -18,6 +18,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { Note } from '@/types/note';
+import { resolveLocalMediaUrl } from '@/lib/formatUtils';
 
 interface ShareNoteModalProps {
   note: Note | null;
@@ -239,7 +240,7 @@ export const ShareNoteModal: React.FC<ShareNoteModalProps> = ({
                     className="w-14 h-14 rounded-xl border border-stone-300 dark:border-stone-600 overflow-hidden shrink-0 bg-stone-200 dark:bg-stone-700"
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={img} alt="Thumbnail preview" className="w-full h-full object-cover" />
+                    <img src={resolveLocalMediaUrl(img)} alt="Thumbnail preview" className="w-full h-full object-cover" />
                   </div>
                 ))}
                 {note.images.length > 4 && (

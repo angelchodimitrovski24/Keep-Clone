@@ -237,20 +237,41 @@ export function resolveLocalMediaUrl(rawPath: string): string {
     trimmed.startsWith('http://') ||
     trimmed.startsWith('https://') ||
     trimmed.startsWith('data:image/') ||
-    trimmed.startsWith('blob:') ||
-    trimmed.startsWith('/api/')
+    trimmed.startsWith('blob:')
   ) {
+    return trimmed;
+  }
+
+  // If already an /api/local-media URL, check if we have a locally cached blob URL first (for offline/PWA/mobile)
+  if (trimmed.startsWith('/api/local-media')) {
+    try {
+      const qIndex = trimmed.indexOf('?');
+      if (qIndex !== -1) {
+        const params = new URLSearchParams(trimmed.substring(qIndex));
+        const fileParam = params.get('file');
+        if (fileParam) {
+          const cached = getMediaBlobUrl(fileParam);
+          if (cached) return cached;
+        }
+      }
+    } catch {
+      // Ignore URL parse error
+    }
+    return trimmed;
+  }
+
+  if (trimmed.startsWith('/api/')) {
     return trimmed;
   }
 
   const normalized = trimmed.replace(/\\/g, '/');
 
-  // Check client media blob cache first (e.g. pasted in current session or offline)
+  // Check client media blob cache first (e.g. pasted in current session, offline, or imported from Drive)
   const cachedUrl = getMediaBlobUrl(normalized);
   if (cachedUrl) return cachedUrl;
 
   const lastSlash = normalized.lastIndexOf('/');
-  const fileName = lastSlash !== -1 ? normalized.substring(lastSlash + 1) : normalized;
+  const fileName = (lastSlash !== -1 ? normalized.substring(lastSlash + 1) : normalized).split('?')[0];
   const cachedByName = getMediaBlobUrl(fileName);
   if (cachedByName) return cachedByName;
 

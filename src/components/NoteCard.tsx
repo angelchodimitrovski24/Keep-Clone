@@ -18,7 +18,7 @@ import { getNoteColorClasses } from '@/lib/constants';
 import { NoteActions } from './NoteActions';
 import { useKeep } from '@/context/KeepContext';
 import { MarkdownRenderer } from './MarkdownRenderer';
-import { toggleMarkdownCheckbox } from '@/lib/formatUtils';
+import { toggleMarkdownCheckbox, resolveLocalMediaUrl } from '@/lib/formatUtils';
 import { copyFilesToLocalFolder } from '@/lib/localPaste';
 import { isNoteUnlockedInSession, getUnlockedNote, lockNoteInSession } from '@/lib/encryptionSession';
 import { UnlockNoteModal } from './UnlockNoteModal';
@@ -287,7 +287,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
                   <div key={idx} className="relative aspect-video max-h-48 overflow-hidden">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
-                      src={img}
+                      src={resolveLocalMediaUrl(img)}
                       alt="attachment"
                       className="w-full h-full object-cover"
                       loading="lazy"

@@ -26,6 +26,7 @@ import { getNoteColorClasses } from '@/lib/constants';
 import { NoteThemeArtwork } from './NoteThemeArtwork';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { saveNoteToDB } from '@/lib/db';
+import { resolveLocalMediaUrl } from '@/lib/formatUtils';
 
 interface SharedNoteViewProps {
   note: SharedNoteData;
@@ -301,7 +302,7 @@ export const SharedNoteView: React.FC<SharedNoteViewProps> = ({ note, shortId })
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
-                        src={imgUrl}
+                        src={resolveLocalMediaUrl(imgUrl)}
                         alt={`Note visual ${index + 1}`}
                         className="w-full h-full object-cover max-h-96 group-hover:scale-102 transition-transform duration-200"
                         loading="lazy"
