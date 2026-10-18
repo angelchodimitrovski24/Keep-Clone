@@ -16,6 +16,7 @@ import {
   Settings as SettingsIcon,
   Sparkles,
   Cloud,
+  FileText,
 } from 'lucide-react';
 import { useKeep, getFontSizeInPx } from '@/context/KeepContext';
 import { FontSizeOption, AppThemeMode } from '@/types/note';
@@ -25,6 +26,7 @@ export const SettingsModal: React.FC = () => {
     isSettingsOpen,
     setIsSettingsOpen,
     setIsGoogleDriveModalOpen,
+    setIsPdfExportModalOpen,
     fontSize,
     setFontSize,
     themeMode,
@@ -321,6 +323,18 @@ export const SettingsModal: React.FC = () => {
               >
                 <Cloud className="w-4 h-4 text-blue-500" />
                 <span>Google Drive Sync &amp; Backup</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSettingsOpen(false);
+                  setIsPdfExportModalOpen(true);
+                }}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-red-500/40 bg-red-500/10 text-red-700 dark:text-red-300 text-xs font-semibold hover:bg-red-500/20 transition-colors shadow-xs"
+                title="Export all notes to PDF with images (auto-splits at 200 pages for NotebookLM)"
+              >
+                <FileText className="w-4 h-4 text-red-500" />
+                <span>Export to PDF (NotebookLM)</span>
               </button>
               <button
                 type="button"

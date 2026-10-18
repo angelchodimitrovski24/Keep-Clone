@@ -19,6 +19,7 @@ import { ReadingStatsView } from '@/components/ReadingStatsView';
 import { ImportSummaryModal } from '@/components/ImportSummaryModal';
 import { ShareNoteModal } from '@/components/ShareNoteModal';
 import { GoogleDriveModal } from '@/components/GoogleDriveModal';
+import { PdfExportModal } from '@/components/PdfExportModal';
 import { Note, NoteDrawing } from '@/types/note';
 
 interface KeepAppProps {
@@ -243,6 +244,9 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
 
       {/* Google Drive Cloud Backup & Restore Modal */}
       <GoogleDriveModal />
+
+      {/* PDF Export Modal (NotebookLM Ready) */}
+      <PdfExportModal />
 
       {/* Share Note Modal with Short Link */}
       <ShareNoteModal

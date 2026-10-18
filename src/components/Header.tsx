@@ -23,6 +23,7 @@ import {
   Play,
   Pause,
   Cloud,
+  FileText,
 } from 'lucide-react';
 import { useKeep } from '@/context/KeepContext';
 import { NOTE_COLORS } from '@/lib/constants';
@@ -55,6 +56,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
     setIsLocalFolderModalOpen,
     setIsSettingsOpen,
     setIsGoogleDriveModalOpen,
+    setIsPdfExportModalOpen,
     activeStopwatch,
     pauseReadingStopwatch,
     resumeReadingStopwatch,
@@ -347,6 +349,16 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
           title="Google Drive Cloud Backup & Restore (Export & Import)"
         >
           <Cloud className="w-5 h-5" />
+        </button>
+
+        {/* Export Notes to PDF (NotebookLM Ready) */}
+        <button
+          type="button"
+          onClick={() => setIsPdfExportModalOpen(true)}
+          className="p-2.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors text-red-600 dark:text-red-400 hidden sm:flex"
+          title="Export notes to PDF (NotebookLM ready with 200-page auto-splitting)"
+        >
+          <FileText className="w-5 h-5" />
         </button>
 
         {/* Export Backup Bundle (ZIP) */}

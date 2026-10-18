@@ -74,6 +74,7 @@ interface KeepContextType {
   isLocalFolderModalOpen: boolean;
   isSettingsOpen: boolean;
   isGoogleDriveModalOpen: boolean;
+  isPdfExportModalOpen: boolean;
   sharingNote: Note | null;
 
   // Setters
@@ -96,6 +97,7 @@ interface KeepContextType {
   setIsLocalFolderModalOpen: (open: boolean) => void;
   setIsSettingsOpen: (open: boolean) => void;
   setIsGoogleDriveModalOpen: (open: boolean) => void;
+  setIsPdfExportModalOpen: (open: boolean) => void;
 
   // Selection
   toggleSelectNote: (id: string) => void;
@@ -195,6 +197,7 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
   const [isLocalFolderModalOpen, setIsLocalFolderModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isGoogleDriveModalOpen, setIsGoogleDriveModalOpen] = useState(false);
+  const [isPdfExportModalOpen, setIsPdfExportModalOpen] = useState(false);
   const [sharingNote, setSharingNote] = useState<Note | null>(null);
 
   // Initialize data from IndexedDB
@@ -1255,6 +1258,8 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
       setIsSettingsOpen,
       isGoogleDriveModalOpen,
       setIsGoogleDriveModalOpen,
+      isPdfExportModalOpen,
+      setIsPdfExportModalOpen,
       sharingNote,
       setSharingNote,
       setCurrentFilter,
@@ -1348,6 +1353,7 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
       isLocalFolderModalOpen,
       isSettingsOpen,
       isGoogleDriveModalOpen,
+      isPdfExportModalOpen,
       sharingNote,
       setSharingNote,
       setCurrentFilter,
