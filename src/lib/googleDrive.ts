@@ -248,97 +248,176 @@ export async function getDriveUserInfo(accessToken: string): Promise<GoogleDrive
   };
 }
 
+export interface GoogleDriveFolder {
+  id: string;
+  name: string;
+  modifiedTime?: string;
+}
+
 /**
  * Ensures a dedicated "Google Keep Backups" folder exists on the user's Drive.
- * Returns the folder ID.
+ * Returns the folder ID (or 'root' on fallback).
  */
 export async function ensureKeepBackupsFolder(accessToken: string): Promise<string> {
-  // Check if folder already exists
-  const query = encodeURIComponent("mimeType = 'application/vnd.google-apps.folder' and name = 'Google Keep Backups' and trashed = false");
-  const listRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name)&pageSize=1`, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-    },
-  });
+  try {
+    const query = encodeURIComponent("mimeType = 'application/vnd.google-apps.folder' and name = 'Google Keep Backups' and trashed = false");
+    const listRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name)&pageSize=1`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
 
-  if (listRes.ok) {
-    const listData = await listRes.json();
-    if (listData.files && listData.files.length > 0) {
-      return listData.files[0].id;
+    if (listRes.ok) {
+      const listData = await listRes.json();
+      if (listData.files && listData.files.length > 0) {
+        return listData.files[0].id;
+      }
     }
+
+    // Create folder
+    const createRes = await fetch('https://www.googleapis.com/drive/v3/files?fields=id,name', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        name: 'Google Keep Backups',
+        mimeType: 'application/vnd.google-apps.folder',
+        description: 'Backups created by Google Keep Offline clone',
+      }),
+    });
+
+    if (createRes.ok) {
+      const folderData = await createRes.json();
+      return folderData.id;
+    }
+  } catch (err) {
+    console.warn('Could not auto-create or find Google Keep Backups folder:', err);
   }
 
-  // Create folder
-  const createRes = await fetch('https://www.googleapis.com/drive/v3/files?fields=id,name', {
+  return 'root';
+}
+
+/**
+ * Lists subfolders inside a specific parent folder in Google Drive.
+ * parentId = 'root' for top-level My Drive.
+ */
+export async function listGoogleDriveFolders(
+  accessToken: string,
+  parentId = 'root'
+): Promise<GoogleDriveFolder[]> {
+  const query = encodeURIComponent(
+    `mimeType = 'application/vnd.google-apps.folder' and '${parentId}' in parents and trashed = false`
+  );
+  const fields = encodeURIComponent('files(id,name,modifiedTime)');
+
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files?q=${query}&fields=${fields}&orderBy=name%20asc&pageSize=50`,
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    }
+  );
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Failed to list folders: ${errText || res.statusText}`);
+  }
+
+  const data = await res.json();
+  return data.files || [];
+}
+
+/**
+ * Creates a new folder inside a specific parent folder in Google Drive.
+ */
+export async function createGoogleDriveFolder(
+  accessToken: string,
+  folderName: string,
+  parentId = 'root'
+): Promise<GoogleDriveFolder> {
+  const parents = parentId && parentId !== 'root' ? [parentId] : [];
+  const res = await fetch('https://www.googleapis.com/drive/v3/files?fields=id,name,modifiedTime', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${accessToken}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      name: 'Google Keep Backups',
+      name: folderName.trim(),
       mimeType: 'application/vnd.google-apps.folder',
-      description: 'Backups created by Google Keep Offline clone',
+      ...(parents.length > 0 ? { parents } : {}),
     }),
   });
 
-  if (!createRes.ok) {
-    const errText = await createRes.text();
-    throw new Error(`Failed to create Google Keep Backups folder: ${errText}`);
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Failed to create folder: ${errText || res.statusText}`);
   }
 
-  const folderData = await createRes.json();
-  return folderData.id;
+  return await res.json();
 }
 
 /**
- * Uploads a backup Blob to Google Drive inside the "Google Keep Backups" folder.
+ * Uploads a backup Blob to Google Drive inside the chosen folder.
+ * Uses Google Drive Resumable Upload to eliminate CORS preflight multipart issues
+ * and support large ZIP bundles reliably.
  */
 export async function uploadBackupToGoogleDrive(
   accessToken: string,
   blob: Blob,
-  filename: string
+  filename: string,
+  folderId?: string
 ): Promise<GoogleDriveFile> {
-  const folderId = await ensureKeepBackupsFolder(accessToken);
-
-  const boundary = '-------KeepBackupBoundary' + Math.random().toString(36).substring(2);
-  const delimiter = `\r\n--${boundary}\r\n`;
-  const closeDelimiter = `\r\n--${boundary}--`;
+  const targetFolderId = folderId || (await ensureKeepBackupsFolder(accessToken));
+  const parents = targetFolderId && targetFolderId !== 'root' ? [targetFolderId] : [];
 
   const metadata = {
     name: filename,
     mimeType: blob.type || 'application/zip',
-    parents: [folderId],
+    ...(parents.length > 0 ? { parents } : {}),
     description: 'Google Keep Offline Backup ZIP bundle with notes, images, and drawings',
   };
 
-  const metadataPart =
-    delimiter +
-    'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
-    JSON.stringify(metadata) +
-    delimiter +
-    `Content-Type: ${blob.type || 'application/zip'}\r\n\r\n`;
-
-  const preBlob = new Blob([metadataPart], { type: 'text/plain' });
-  const postBlob = new Blob([closeDelimiter], { type: 'text/plain' });
-  const multipartBlob = new Blob([preBlob, blob, postBlob], {
-    type: `multipart/related; boundary=${boundary}`,
-  });
-
-  const uploadRes = await fetch(
-    'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink,size,createdTime,modifiedTime',
+  // Step 1: Initiate resumable upload session
+  const initRes = await fetch(
+    'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable',
     {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json; charset=UTF-8',
+        'X-Upload-Content-Type': blob.type || 'application/zip',
+        'X-Upload-Content-Length': blob.size.toString(),
       },
-      body: multipartBlob,
+      body: JSON.stringify(metadata),
     }
   );
 
+  if (!initRes.ok) {
+    const errText = await initRes.text();
+    throw new Error(`Failed to start Google Drive upload session: ${errText || initRes.statusText}`);
+  }
+
+  const uploadLocation = initRes.headers.get('Location');
+  if (!uploadLocation) {
+    throw new Error('Google Drive did not provide an upload session location.');
+  }
+
+  // Step 2: Upload binary data directly to the resumable session URL
+  const uploadRes = await fetch(uploadLocation, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': blob.type || 'application/zip',
+    },
+    body: blob,
+  });
+
   if (!uploadRes.ok) {
     const errText = await uploadRes.text();
-    throw new Error(`Google Drive upload failed: ${errText}`);
+    throw new Error(`Google Drive upload failed: ${errText || uploadRes.statusText}`);
   }
 
   const uploadedFile: GoogleDriveFile = await uploadRes.json();
@@ -346,21 +425,37 @@ export async function uploadBackupToGoogleDrive(
 }
 
 /**
- * Lists all backup files in the user's Google Drive.
+ * Lists backup files in the user's Google Drive.
+ * Can filter by specific folder or search backups across Drive.
  */
-export async function listGoogleDriveBackups(accessToken: string): Promise<GoogleDriveFile[]> {
-  const query = encodeURIComponent("trashed = false and (name contains 'google-keep-backup' or mimeType = 'application/zip' or mimeType = 'application/json')");
-  const fields = encodeURIComponent('files(id,name,mimeType,size,createdTime,modifiedTime,webViewLink,iconLink)');
+export async function listGoogleDriveBackups(
+  accessToken: string,
+  folderId?: string
+): Promise<GoogleDriveFile[]> {
+  let queryStr = "trashed = false and mimeType != 'application/vnd.google-apps.folder'";
 
-  const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=${fields}&orderBy=modifiedTime%20desc&pageSize=40`, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-    },
-  });
+  if (folderId && folderId !== 'all') {
+    queryStr += ` and '${folderId}' in parents`;
+  } else {
+    // Across all drive: match zip backups or keep backup files
+    queryStr += " and (name contains 'google-keep-backup' or name contains 'keep-backup' or mimeType = 'application/zip' or name contains '.zip')";
+  }
+
+  const query = encodeURIComponent(queryStr);
+  const fields = encodeURIComponent('files(id,name,mimeType,size,createdTime,modifiedTime,webViewLink,iconLink,parents)');
+
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files?q=${query}&fields=${fields}&orderBy=modifiedTime%20desc&pageSize=50`,
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    }
+  );
 
   if (!res.ok) {
     const errText = await res.text();
-    throw new Error(`Failed to list backups from Google Drive: ${errText}`);
+    throw new Error(`Failed to list backups from Google Drive: ${errText || res.statusText}`);
   }
 
   const data = await res.json();
