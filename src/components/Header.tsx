@@ -24,6 +24,7 @@ import {
   Pause,
   Cloud,
   FileText,
+  Smartphone,
 } from 'lucide-react';
 import { useKeep } from '@/context/KeepContext';
 import { NOTE_COLORS } from '@/lib/constants';
@@ -57,6 +58,11 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
     setIsSettingsOpen,
     setIsGoogleDriveModalOpen,
     setIsPdfExportModalOpen,
+    isInstallModalOpen,
+    setIsInstallModalOpen,
+    canInstallPwa,
+    isPwaInstalled,
+    promptInstallPwa,
     activeStopwatch,
     pauseReadingStopwatch,
     resumeReadingStopwatch,
@@ -329,6 +335,26 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
           title={darkMode ? 'Light mode' : 'Dark mode'}
         >
           {darkMode ? <Sun className="w-5 h-5 text-amber-400" /> : <Moon className="w-5 h-5" />}
+        </button>
+
+        {/* Install on Android & Mobile Toggle */}
+        <button
+          type="button"
+          onClick={() => {
+            if (canInstallPwa) {
+              promptInstallPwa();
+            } else {
+              setIsInstallModalOpen(true);
+            }
+          }}
+          className={`p-2.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors ${
+            isPwaInstalled
+              ? 'text-emerald-600 dark:text-emerald-400'
+              : 'text-amber-600 dark:text-amber-400'
+          }`}
+          title={isPwaInstalled ? 'App is installed on your device ✓' : 'Install on Android / Mobile (1-tap offline app)'}
+        >
+          <Smartphone className="w-5 h-5" />
         </button>
 
         {/* Settings Dialog Toggle */}

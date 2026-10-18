@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { Note, NoteVersion, Label, Category, ViewFilter, LayoutViewMode, FontSizeOption, AppThemeMode, ReadingSession, ActiveStopwatch } from '@/types/note';
 import {
   getAllNotesFromDB,
@@ -98,6 +98,13 @@ interface KeepContextType {
   setIsSettingsOpen: (open: boolean) => void;
   setIsGoogleDriveModalOpen: (open: boolean) => void;
   setIsPdfExportModalOpen: (open: boolean) => void;
+
+  // Android & Mobile PWA Installation
+  isInstallModalOpen: boolean;
+  setIsInstallModalOpen: (open: boolean) => void;
+  canInstallPwa: boolean;
+  isPwaInstalled: boolean;
+  promptInstallPwa: () => Promise<boolean>;
 
   // Selection
   toggleSelectNote: (id: string) => void;
@@ -199,6 +206,77 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
   const [isGoogleDriveModalOpen, setIsGoogleDriveModalOpen] = useState(false);
   const [isPdfExportModalOpen, setIsPdfExportModalOpen] = useState(false);
   const [sharingNote, setSharingNote] = useState<Note | null>(null);
+
+  // Android & Mobile PWA Installation states
+  const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
+  const [canInstallPwa, setCanInstallPwa] = useState(false);
+  const [isPwaInstalled, setIsPwaInstalled] = useState(false);
+  const deferredPromptRef = useRef<any>(null);
+
+  // Register service worker and handle Android PWA beforeinstallprompt
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    // Detect if already installed (standalone mode or web-app)
+    const isStandalone =
+      window.matchMedia('(display-mode: standalone)').matches ||
+      (window.navigator as any).standalone === true ||
+      document.referrer.includes('android-app://');
+
+    if (isStandalone) {
+      setIsPwaInstalled(true);
+    }
+
+    // Register service worker for offline support and Android installability
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker
+        .register('/sw.js')
+        .catch((err) => {
+          console.warn('Service Worker registration note:', err);
+        });
+    }
+
+    const handleBeforeInstall = (e: Event) => {
+      e.preventDefault();
+      deferredPromptRef.current = e;
+      setCanInstallPwa(true);
+    };
+
+    const handleAppInstalled = () => {
+      deferredPromptRef.current = null;
+      setCanInstallPwa(false);
+      setIsPwaInstalled(true);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+    window.addEventListener('appinstalled', handleAppInstalled);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+      window.removeEventListener('appinstalled', handleAppInstalled);
+    };
+  }, []);
+
+  const promptInstallPwa = useCallback(async (): Promise<boolean> => {
+    const promptEvent = deferredPromptRef.current;
+    if (promptEvent) {
+      try {
+        await promptEvent.prompt();
+        const choice = await promptEvent.userChoice;
+        if (choice.outcome === 'accepted') {
+          setIsPwaInstalled(true);
+          setCanInstallPwa(false);
+          deferredPromptRef.current = null;
+          return true;
+        }
+      } catch (err) {
+        console.warn('Install prompt error:', err);
+      }
+    }
+    // If native prompt is not available or was dismissed, open the visual Android install guide modal
+    setIsInstallModalOpen(true);
+    return false;
+  }, []);
 
   // Initialize data from IndexedDB
   const loadInitialData = useCallback(async () => {
@@ -1260,6 +1338,11 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
       setIsGoogleDriveModalOpen,
       isPdfExportModalOpen,
       setIsPdfExportModalOpen,
+      isInstallModalOpen,
+      setIsInstallModalOpen,
+      canInstallPwa,
+      isPwaInstalled,
+      promptInstallPwa,
       sharingNote,
       setSharingNote,
       setCurrentFilter,
@@ -1354,6 +1437,10 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
       isSettingsOpen,
       isGoogleDriveModalOpen,
       isPdfExportModalOpen,
+      isInstallModalOpen,
+      canInstallPwa,
+      isPwaInstalled,
+      promptInstallPwa,
       sharingNote,
       setSharingNote,
       setCurrentFilter,

@@ -17,6 +17,7 @@ import {
   Sparkles,
   Cloud,
   FileText,
+  Smartphone,
 } from 'lucide-react';
 import { useKeep, getFontSizeInPx } from '@/context/KeepContext';
 import { FontSizeOption, AppThemeMode } from '@/types/note';
@@ -27,6 +28,11 @@ export const SettingsModal: React.FC = () => {
     setIsSettingsOpen,
     setIsGoogleDriveModalOpen,
     setIsPdfExportModalOpen,
+    isInstallModalOpen,
+    setIsInstallModalOpen,
+    canInstallPwa,
+    isPwaInstalled,
+    promptInstallPwa,
     fontSize,
     setFontSize,
     themeMode,
@@ -361,6 +367,52 @@ export const SettingsModal: React.FC = () => {
                 onChange={handleImport}
                 className="hidden"
               />
+            </div>
+          </div>
+
+          <hr className="border-stone-200 dark:border-stone-800" />
+
+          {/* Section 6: Android & PWA App Installation */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-sm font-semibold text-stone-900 dark:text-stone-100 flex items-center gap-2">
+                <Smartphone className="w-4 h-4 text-amber-500" />
+                <span>Install on Android &amp; Devices</span>
+              </label>
+              {isPwaInstalled ? (
+                <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-0.5 rounded-full">
+                  ✓ Installed (Standalone)
+                </span>
+              ) : canInstallPwa ? (
+                <span className="text-[11px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-500/15 border border-amber-500/30 px-2.5 py-0.5 rounded-full">
+                  ⚡ 1-Tap Install Ready
+                </span>
+              ) : null}
+            </div>
+            <p className="text-xs text-stone-500 dark:text-stone-400 mb-3">
+              Install Keep directly to your Android Home screen and App drawer for instant 1-tap launching, full-screen view, and 100% offline note-taking.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (canInstallPwa) {
+                    promptInstallPwa();
+                  } else {
+                    setIsInstallModalOpen(true);
+                  }
+                }}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-300 text-xs font-semibold hover:bg-amber-500/20 transition-colors shadow-xs"
+              >
+                <Smartphone className="w-4 h-4 text-amber-500" />
+                <span>
+                  {isPwaInstalled
+                    ? 'View App Status & Info'
+                    : canInstallPwa
+                    ? 'Install App on this Device'
+                    : 'Open Android Install Guide'}
+                </span>
+              </button>
             </div>
           </div>
         </div>

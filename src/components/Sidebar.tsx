@@ -14,6 +14,7 @@ import {
   Lock,
   Unlock,
   BarChart2,
+  Smartphone,
 } from 'lucide-react';
 import { useKeep } from '@/context/KeepContext';
 import { ViewFilter } from '@/types/note';
@@ -39,6 +40,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
     unlockedCategoryNames,
     setIsCategoryModalOpen,
     setIsSettingsOpen,
+    setIsInstallModalOpen,
+    promptInstallPwa,
+    canInstallPwa,
+    isPwaInstalled,
   } = useKeep();
 
   const navItems: { id: ViewFilter; label: string; icon: React.ReactNode }[] = [
@@ -226,6 +231,32 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <SettingsIcon className="w-5 h-5 shrink-0 text-stone-400" />
             <span className={`truncate ${isOpen ? 'inline' : 'hidden lg:hidden'}`}>
               Settings
+            </span>
+          </button>
+
+          {/* Install on Android Button */}
+          <button
+            type="button"
+            onClick={() => {
+              if (canInstallPwa) {
+                promptInstallPwa();
+              } else {
+                setIsInstallModalOpen(true);
+              }
+              if (window.innerWidth < 1024) {
+                onCloseMobile?.();
+              }
+            }}
+            className={`flex items-center gap-5 px-4 py-2.5 rounded-r-full text-sm font-medium transition-colors ${
+              isPwaInstalled
+                ? 'text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40'
+                : 'text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/40'
+            }`}
+            title={isPwaInstalled ? 'App is installed on device' : 'Install on Android (PWA)'}
+          >
+            <Smartphone className={`w-5 h-5 shrink-0 ${isPwaInstalled ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-500'}`} />
+            <span className={`truncate ${isOpen ? 'inline' : 'hidden lg:hidden'}`}>
+              {isPwaInstalled ? 'App Installed ✓' : 'Install on Android'}
             </span>
           </button>
         </div>

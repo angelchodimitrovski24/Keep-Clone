@@ -20,6 +20,8 @@ import { ImportSummaryModal } from '@/components/ImportSummaryModal';
 import { ShareNoteModal } from '@/components/ShareNoteModal';
 import { GoogleDriveModal } from '@/components/GoogleDriveModal';
 import { PdfExportModal } from '@/components/PdfExportModal';
+import { InstallAppModal } from '@/components/InstallAppModal';
+import { AndroidInstallBanner } from '@/components/AndroidInstallBanner';
 import { Note, NoteDrawing } from '@/types/note';
 
 interface KeepAppProps {
@@ -254,6 +256,12 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
         isOpen={!!sharingNote}
         onClose={() => setSharingNote(null)}
       />
+
+      {/* Android & Mobile App Installation Modal */}
+      <InstallAppModal />
+
+      {/* Android Floating Quick-Install Banner */}
+      <AndroidInstallBanner />
     </div>
   );
 }

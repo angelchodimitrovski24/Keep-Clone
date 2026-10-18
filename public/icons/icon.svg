@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fbbf24"/>
+      <stop offset="100%" stop-color="#d97706"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#78350f" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+  <!-- Background with rounded corners -->
+  <rect width="512" height="512" rx="112" fill="url(#bgGrad)"/>
+  
+  <!-- Bulb Shadow & Body -->
+  <g filter="url(#shadow)">
+    <!-- Bulb Head -->
+    <path d="M 256 100 C 185 100 128 157 128 228 C 128 274 153 314 190 336 L 190 366 C 190 374 196 380 204 380 L 308 380 C 316 380 322 374 322 366 L 322 336 C 359 314 384 274 384 228 C 384 157 327 100 256 100 Z" fill="#ffffff"/>
+    
+    <!-- Bulb Base screw contacts -->
+    <rect x="214" y="394" width="84" height="14" rx="7" fill="#ffffff" opacity="0.95"/>
+    <rect x="228" y="418" width="56" height="12" rx="6" fill="#ffffff" opacity="0.9"/>
+    
+    <!-- Filament lines inside bulb -->
+    <path d="M 226 240 L 226 210 C 226 193 240 180 256 180 C 272 180 286 193 286 210 L 286 240" fill="none" stroke="#f59e0b" stroke-width="14" stroke-linecap="round"/>
+    <line x1="256" y1="240" x2="256" y2="280" stroke="#f59e0b" stroke-width="12" stroke-linecap="round"/>
+  </g>
+</svg>
