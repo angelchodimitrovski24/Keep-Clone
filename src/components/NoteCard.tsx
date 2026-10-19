@@ -12,6 +12,7 @@ import {
   Link2,
   Timer,
   Paperclip,
+  X,
 } from 'lucide-react';
 import { Note } from '@/types/note';
 import { getNoteColorClasses } from '@/lib/constants';
@@ -344,7 +345,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
                 <div className="flex flex-wrap items-center gap-1.5 mb-2.5 mt-0.5">
                   {note.category && (
                     <span
-                      className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold shadow-2xs transition-all hover:opacity-90"
+                      className="group/cat inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold shadow-2xs transition-all hover:opacity-90"
                       style={{
                         backgroundColor: categoryObj?.color ? `${categoryObj.color}20` : 'rgba(59, 130, 246, 0.15)',
                         color: categoryObj?.color || '#3b82f6',
@@ -353,6 +354,17 @@ export const NoteCard: React.FC<NoteCardProps> = ({
                     >
                       <span className="text-[12px]">{categoryObj?.icon || '📁'}</span>
                       <span>{note.category}</span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          updateNote(note.id, { category: null });
+                        }}
+                        className="hover:opacity-75 ml-0.5 rounded-full p-0.5 hover:bg-black/10 dark:hover:bg-white/10 transition-colors opacity-70 sm:opacity-0 sm:group-hover/cat:opacity-100"
+                        title="Remove category"
+                      >
+                        <X className="w-2.5 h-2.5" />
+                      </button>
                     </span>
                   )}
 

@@ -12,6 +12,7 @@ import {
   getAllReadingSessionsFromDB,
   saveMediaToDB,
   getMediaFromDB,
+  saveSettingToDB,
 } from './db';
 import { extractAllImagesFromNote } from './pdfExport';
 import { resolveLocalMediaUrl } from './formatUtils';
@@ -520,10 +521,15 @@ export async function importBackupSmart(file: File): Promise<ImportResult> {
           local.color === importedNote.color &&
           local.theme === importedNote.theme &&
           local.category === importedNote.category &&
+          JSON.stringify(local.labels || []) === JSON.stringify(importedNote.labels || []) &&
+          local.reminder === importedNote.reminder &&
           local.isPinned === importedNote.isPinned &&
           local.isArchived === importedNote.isArchived &&
           local.isTrash === importedNote.isTrash &&
-          JSON.stringify(local.images || []) === JSON.stringify(importedNote.images || []);
+          JSON.stringify(local.images || []) === JSON.stringify(importedNote.images || []) &&
+          JSON.stringify(local.drawings || []) === JSON.stringify(importedNote.drawings || []) &&
+          JSON.stringify(local.linkedNoteIds || []) === JSON.stringify(importedNote.linkedNoteIds || []) &&
+          local.isEncrypted === importedNote.isEncrypted;
 
         if (isIdentical) {
           // Exactly the same: Skip without modifying
@@ -538,6 +544,8 @@ export async function importBackupSmart(file: File): Promise<ImportResult> {
 
           const mergedNote: Note = {
             ...importedNote,
+            category: importedNote.category !== undefined ? importedNote.category : (local.category || null),
+            labels: Array.from(new Set([...(importedNote.labels || []), ...(local.labels || [])])),
             versions: uniqueVersions,
             totalReadingTime: Math.max(local.totalReadingTime || 0, importedNote.totalReadingTime || 0),
           };
@@ -558,6 +566,13 @@ export async function importBackupSmart(file: File): Promise<ImportResult> {
             needsUpdate = true;
           }
 
+          // If local has no category, but imported has category, preserve imported category
+          let categoryToUse = local.category;
+          if (!categoryToUse && importedNote.category) {
+            categoryToUse = importedNote.category;
+            needsUpdate = true;
+          }
+
           const maxReadingTime = Math.max(local.totalReadingTime || 0, importedNote.totalReadingTime || 0);
           if (maxReadingTime !== (local.totalReadingTime || 0)) {
             needsUpdate = true;
@@ -566,6 +581,7 @@ export async function importBackupSmart(file: File): Promise<ImportResult> {
           if (needsUpdate) {
             await saveNoteToDB({
               ...local,
+              category: categoryToUse || null,
               versions: mergedVersions,
               totalReadingTime: maxReadingTime,
             });
@@ -602,14 +618,17 @@ export async function importBackupSmart(file: File): Promise<ImportResult> {
         existingCategoryNames.set(cat.name.toLowerCase(), cat);
         categoriesAdded++;
       } else {
-        // If local is missing icon or color and imported has it, enrich
-        if ((!localCat.icon && cat.icon) || (!localCat.color && cat.color)) {
-          await saveCategoryToDB({
-            ...localCat,
-            icon: localCat.icon || cat.icon,
-            color: localCat.color || cat.color,
-          });
-        }
+        // Enrich local category with any imported metadata (icon, color, lock settings)
+        const updatedCat: Category = {
+          ...localCat,
+          icon: localCat.icon || cat.icon,
+          color: localCat.color || cat.color,
+          isLocked: localCat.isLocked || cat.isLocked,
+          lockPasswordHash: localCat.lockPasswordHash || cat.lockPasswordHash,
+          lockSalt: localCat.lockSalt || cat.lockSalt,
+          lockHint: localCat.lockHint || cat.lockHint,
+        };
+        await saveCategoryToDB(updatedCat);
       }
     }
   }
@@ -623,6 +642,17 @@ export async function importBackupSmart(file: File): Promise<ImportResult> {
         await saveReadingSessionToDB(session);
         existingSessionIds.add(session.id);
         sessionsAdded++;
+      }
+    }
+  }
+
+  // 7. Intelligent Reconciliation for Settings (e.g. layout, themes, drive folders)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const importedSettings = (parsedData as any)?.settings;
+  if (importedSettings && typeof importedSettings === 'object') {
+    for (const [key, val] of Object.entries(importedSettings)) {
+      if (val !== undefined && val !== null) {
+        await saveSettingToDB(key, val);
       }
     }
   }

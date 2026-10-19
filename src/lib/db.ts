@@ -334,6 +334,7 @@ export async function exportAllData(): Promise<{
   labels: Label[];
   categories: Category[];
   readingSessions?: ReadingSession[];
+  settings?: Record<string, unknown>;
   exportDate: string;
 }> {
   const db = await getKeepDB();
@@ -343,6 +344,7 @@ export async function exportAllData(): Promise<{
       labels: [],
       categories: [],
       readingSessions: [],
+      settings: {},
       exportDate: new Date().toISOString(),
     };
   }
@@ -353,11 +355,21 @@ export async function exportAllData(): Promise<{
   if (db.objectStoreNames.contains('readingSessions')) {
     readingSessions = await db.getAll('readingSessions');
   }
+
+  const settings: Record<string, unknown> = {};
+  if (db.objectStoreNames.contains('settings')) {
+    const keys = await db.getAllKeys('settings');
+    for (const key of keys) {
+      settings[String(key)] = await db.get('settings', key);
+    }
+  }
+
   return {
     notes,
     labels,
     categories,
     readingSessions,
+    settings,
     exportDate: new Date().toISOString(),
   };
 }
@@ -367,12 +379,16 @@ export async function importAllData(data: {
   labels?: Label[];
   categories?: Category[];
   readingSessions?: ReadingSession[];
+  settings?: Record<string, unknown>;
 }): Promise<void> {
   const db = await getKeepDB();
   if (!db) return;
-  const storeNames: Array<'notes' | 'labels' | 'categories' | 'readingSessions'> = ['notes', 'labels', 'categories'];
+  const storeNames: Array<'notes' | 'labels' | 'categories' | 'readingSessions' | 'settings'> = ['notes', 'labels', 'categories'];
   if (db.objectStoreNames.contains('readingSessions')) {
     storeNames.push('readingSessions');
+  }
+  if (data.settings && db.objectStoreNames.contains('settings')) {
+    storeNames.push('settings');
   }
   const tx = db.transaction(storeNames, 'readwrite');
   
@@ -394,6 +410,13 @@ export async function importAllData(data: {
   if (data.readingSessions && Array.isArray(data.readingSessions) && db.objectStoreNames.contains('readingSessions')) {
     for (const session of data.readingSessions) {
       await tx.objectStore('readingSessions').put(session);
+    }
+  }
+  if (data.settings && typeof data.settings === 'object' && db.objectStoreNames.contains('settings')) {
+    for (const [key, val] of Object.entries(data.settings)) {
+      if (val !== undefined && val !== null) {
+        await tx.objectStore('settings').put(val, key);
+      }
     }
   }
   await tx.done;

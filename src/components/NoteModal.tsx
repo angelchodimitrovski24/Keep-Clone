@@ -232,6 +232,10 @@ export const NoteModal: React.FC<NoteModalProps> = ({
     isList: boolean;
     color: NoteColor;
     theme: NoteBackgroundTheme;
+    category?: string | null;
+    labels?: string[];
+    reminder?: string | null;
+    isPinned?: boolean;
     timestamp: number;
   } | null>(null);
 
@@ -286,6 +290,10 @@ export const NoteModal: React.FC<NoteModalProps> = ({
           isList: note.isList || false,
           color: note.color || 'default',
           theme: note.theme || 'none',
+          category: note.category || null,
+          labels: [...(note.labels || [])],
+          reminder: note.reminder || null,
+          isPinned: note.isPinned || false,
           timestamp: note.updatedAt || Date.now(),
         };
       } else {
@@ -353,7 +361,11 @@ export const NoteModal: React.FC<NoteModalProps> = ({
         JSON.stringify(lastSnap.todos) !== JSON.stringify(finalTodos) ||
         lastSnap.isList !== isList ||
         lastSnap.color !== color ||
-        lastSnap.theme !== theme;
+        lastSnap.theme !== theme ||
+        lastSnap.category !== (category || null) ||
+        JSON.stringify(lastSnap.labels || []) !== JSON.stringify(labels || []) ||
+        lastSnap.reminder !== reminder ||
+        lastSnap.isPinned !== isPinned;
 
       if (!hasChanged) return;
 
@@ -402,6 +414,10 @@ export const NoteModal: React.FC<NoteModalProps> = ({
         isList,
         color,
         theme,
+        category: category || null,
+        labels: [...(labels || [])],
+        reminder: reminder || null,
+        isPinned: isPinned || false,
         timestamp: now,
       };
 
@@ -511,7 +527,11 @@ export const NoteModal: React.FC<NoteModalProps> = ({
       JSON.stringify(lastSnap.todos) !== JSON.stringify(todos) ||
       lastSnap.isList !== isList ||
       lastSnap.color !== color ||
-      lastSnap.theme !== theme;
+      lastSnap.theme !== theme ||
+      lastSnap.category !== (category || null) ||
+      JSON.stringify(lastSnap.labels || []) !== JSON.stringify(labels || []) ||
+      lastSnap.reminder !== reminder ||
+      lastSnap.isPinned !== isPinned;
 
     if (!hasChanged) return;
 
@@ -534,7 +554,21 @@ export const NoteModal: React.FC<NoteModalProps> = ({
     return () => {
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     };
-  }, [title, content, todos, isList, color, theme, category, labels, isOpen, note?.id, performAutoSnapshot]);
+  }, [title, content, todos, isList, color, theme, category, labels, reminder, isPinned, isOpen, note?.id, performAutoSnapshot]);
+
+  const handleCategoryChange = useCallback(
+    async (newCat: string | null) => {
+      const val = newCat || null;
+      setCategory(val);
+      if (note) {
+        await updateNote(note.id, { category: val });
+        if (lastSnapshottedRef.current) {
+          lastSnapshottedRef.current.category = val;
+        }
+      }
+    },
+    [note, updateNote]
+  );
 
   if (!isOpen || !note) return null;
 
@@ -544,6 +578,69 @@ export const NoteModal: React.FC<NoteModalProps> = ({
 
     if (activeStopwatch && activeStopwatch.noteId === note.id && activeStopwatch.elapsedSeconds > 0) {
       await stopAndSaveReadingStopwatch();
+    }
+
+    const rawContent = editorRef.current?.getHTML() || content;
+    const latestContent = renderMarkdownTablesInHtml(rawContent);
+    const trimmedTitle = title.trim();
+    const trimmedContent = latestContent.trim();
+    const finalTodos = newTodoInput.trim()
+      ? [...todos, { id: 'todo-' + Date.now(), text: newTodoInput.trim(), completed: false }]
+      : todos;
+
+    // Definitively save all current note changes to the database
+    if (note.isEncrypted) {
+      const sessionPassword = getSessionPassword(note.id);
+      if (sessionPassword) {
+        try {
+          const bundle = await encryptNote(
+            {
+              title: trimmedTitle,
+              content: trimmedContent,
+              todos: finalTodos,
+              images,
+            },
+            sessionPassword,
+            note.encryptedData?.hint
+          );
+          setUnlockedNote(note.id, {
+            title: trimmedTitle,
+            content: trimmedContent,
+            todos: finalTodos,
+            images,
+          });
+          await updateNote(note.id, {
+            isEncrypted: true,
+            encryptedData: bundle,
+            color,
+            theme,
+            category: category || null,
+            labels,
+            isPinned,
+            reminder,
+            drawings,
+            linkedNoteIds,
+          });
+        } catch (err) {
+          console.error('Failed saving encrypted note on close:', err);
+        }
+      }
+    } else {
+      await updateNote(note.id, {
+        title: trimmedTitle,
+        content: trimmedContent,
+        isList,
+        todos: finalTodos,
+        color,
+        theme,
+        category: category || null,
+        labels,
+        isPinned,
+        reminder,
+        images,
+        drawings,
+        linkedNoteIds,
+      });
     }
 
     await performAutoSnapshot('Auto snapshot on close');
@@ -866,7 +963,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
                     <span>{category}</span>
                     <button
                       type="button"
-                      onClick={() => setCategory(null)}
+                      onClick={() => handleCategoryChange(null)}
                       className="hover:opacity-75 ml-0.5 rounded-full p-0.5 hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
                       title="Remove category"
                     >
@@ -1428,7 +1525,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
             note={{ color, theme, isList, labels, reminder, category }}
             onColorChange={setColor}
             onThemeChange={setTheme}
-            onSelectCategory={setCategory}
+            onSelectCategory={handleCategoryChange}
             onAddImage={handleAddImage}
             onArchiveToggle={() => {
               toggleArchiveNote(note.id);

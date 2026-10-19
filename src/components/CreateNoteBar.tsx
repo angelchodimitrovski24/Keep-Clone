@@ -110,7 +110,7 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [isExpanded, title, content, isList, todos, images, drawings, isPinned, color, theme, labels, reminder]);
+  }, [isExpanded, title, content, isList, todos, images, drawings, isPinned, color, theme, labels, reminder, category]);
 
   const resetForm = () => {
     setTitle('');
