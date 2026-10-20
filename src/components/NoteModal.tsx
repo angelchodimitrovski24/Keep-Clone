@@ -512,6 +512,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
   );
 
   // Automatically trigger snapshots while editing note
+  // Track editing state while actively working on note
   useEffect(() => {
     if (!isOpen || !note || activeNoteIdRef.current !== note.id) return;
 
@@ -534,28 +535,40 @@ export const NoteModal: React.FC<NoteModalProps> = ({
       lastSnap.reminder !== reminder ||
       lastSnap.isPinned !== isPinned;
 
-    if (!hasChanged) return;
-
-    setAutoSnapshotStatus('editing');
-
-    // Debounce: 2.5 seconds after editing pauses
-    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
-    debounceTimerRef.current = setTimeout(() => {
-      performAutoSnapshot();
-    }, 2500);
-
-    // Max wait: at least every 30 seconds of active continuous editing
-    if (!maxWaitTimerRef.current) {
-      maxWaitTimerRef.current = setTimeout(() => {
-        performAutoSnapshot('Auto checkpoint (30s editing)');
-        maxWaitTimerRef.current = null;
-      }, 30000);
+    if (hasChanged) {
+      setAutoSnapshotStatus('editing');
     }
+  }, [title, content, todos, isList, color, theme, category, labels, reminder, isPinned, isOpen, note?.id]);
+
+  // Save snapshot and reading stopwatch when closing app, switching tabs, or backgrounding window
+  useEffect(() => {
+    if (!isOpen || !note) return;
+
+    const handleAppClosing = () => {
+      // 1. If reading stopwatch is active on this note, stop and save it
+      if (activeStopwatch && activeStopwatch.noteId === note.id && activeStopwatch.elapsedSeconds > 0) {
+        stopAndSaveReadingStopwatch();
+      }
+      // 2. Perform snapshot on close
+      performAutoSnapshot('Snapshot on app close');
+    };
+
+    window.addEventListener('beforeunload', handleAppClosing);
+    window.addEventListener('pagehide', handleAppClosing);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        handleAppClosing();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
-      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+      window.removeEventListener('beforeunload', handleAppClosing);
+      window.removeEventListener('pagehide', handleAppClosing);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [title, content, todos, isList, color, theme, category, labels, reminder, isPinned, isOpen, note?.id, performAutoSnapshot]);
+  }, [isOpen, note, activeStopwatch, performAutoSnapshot, stopAndSaveReadingStopwatch]);
 
   const handleCategoryChange = useCallback(
     async (newCat: string | null) => {
@@ -1058,22 +1071,22 @@ export const NoteModal: React.FC<NoteModalProps> = ({
                 <button
                   type="button"
                   onClick={handleStopStopwatch}
-                  className="px-2 py-0.5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-semibold transition-colors flex items-center gap-1 shadow-xs"
-                  title="Stop and save reading time"
+                  className="px-2.5 py-0.5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-semibold transition-colors flex items-center gap-1 shadow-xs"
+                  title="Stop reading and save time"
                 >
                   <Square className="w-2.5 h-2.5 fill-current" />
-                  <span>Stop</span>
+                  <span>Stop & Save</span>
                 </button>
               </div>
             ) : (
               <button
                 type="button"
                 onClick={() => startReadingStopwatch(note.id, title, category)}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium text-stone-600 dark:text-stone-300 hover:bg-black/10 dark:hover:bg-white/10 transition-colors border border-stone-200 dark:border-stone-700"
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 transition-all border border-emerald-500/25 shadow-2xs"
                 title={`Start reading stopwatch. Total recorded: ${formatReadingDuration(noteReadingStats.totalSeconds)} (${noteReadingStats.sessionCount} sessions)`}
               >
                 <Timer className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                <span className="hidden sm:inline">Stopwatch</span>
+                <span>Start Reading</span>
                 {noteReadingStats.totalSeconds > 0 && (
                   <span className="text-[10px] text-stone-500 dark:text-stone-400 font-mono">
                     {formatReadingDuration(noteReadingStats.totalSeconds)}

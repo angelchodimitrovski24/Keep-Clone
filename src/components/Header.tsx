@@ -25,6 +25,7 @@ import {
   Cloud,
   FileText,
   Smartphone,
+  BarChart2,
 } from 'lucide-react';
 import { useKeep } from '@/context/KeepContext';
 import { NOTE_COLORS } from '@/lib/constants';
@@ -53,6 +54,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
     exportDataZip,
     importDataSmart,
     currentFilter,
+    setCurrentFilter,
     localMediaFolder,
     setIsLocalFolderModalOpen,
     setIsSettingsOpen,
@@ -335,6 +337,28 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
           title={darkMode ? 'Light mode' : 'Dark mode'}
         >
           {darkMode ? <Sun className="w-5 h-5 text-amber-400" /> : <Moon className="w-5 h-5" />}
+        </button>
+
+        {/* Reading Stats & Graph per Day */}
+        <button
+          type="button"
+          onClick={() => {
+            if (currentFilter === 'stats') {
+              setCurrentFilter('notes');
+              if (typeof window !== 'undefined') window.history.pushState(null, '', '/');
+            } else {
+              setCurrentFilter('stats');
+              if (typeof window !== 'undefined') window.history.pushState(null, '', '/stats');
+            }
+          }}
+          className={`p-1.5 sm:p-2.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors shrink-0 ${
+            currentFilter === 'stats'
+              ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-500/10'
+              : 'text-stone-600 dark:text-stone-300'
+          }`}
+          title="Reading Stats & Daily Graph"
+        >
+          <BarChart2 className="w-5 h-5" />
         </button>
 
         {/* Install on Android & Mobile Toggle */}

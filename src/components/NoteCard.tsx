@@ -56,6 +56,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
     setVersionHistoryNote,
     activeStopwatch,
     startReadingStopwatch,
+    stopAndSaveReadingStopwatch,
     setSharingNote,
   } = useKeep();
 
@@ -465,24 +466,31 @@ export const NoteCard: React.FC<NoteCardProps> = ({
                   </span>
                 )}
 
-                {note.totalReadingTime && note.totalReadingTime > 0 && (
-                  <span
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 border border-emerald-500/20"
-                    title={`Total reading time: ${Math.floor(note.totalReadingTime / 60)}m ${note.totalReadingTime % 60}s`}
+                {((note.totalReadingTime && note.totalReadingTime > 0) || activeStopwatch?.noteId === note.id) && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (activeStopwatch?.noteId === note.id) {
+                        stopAndSaveReadingStopwatch();
+                      } else {
+                        startReadingStopwatch(note.id, activeNote.title, note.category);
+                      }
+                    }}
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold transition-all ${
+                      activeStopwatch?.noteId === note.id
+                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs'
+                        : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border border-emerald-500/25'
+                    }`}
+                    title={activeStopwatch?.noteId === note.id ? 'Stop reading and save time' : `Total reading time: ${Math.floor((note.totalReadingTime || 0) / 60)}m ${(note.totalReadingTime || 0) % 60}s. Click to start reading.`}
                   >
-                    <Timer className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-                    <span>{Math.floor(note.totalReadingTime / 60) > 0 ? `${Math.floor(note.totalReadingTime / 60)}m read` : `${note.totalReadingTime}s read`}</span>
-                  </span>
-                )}
-
-                {activeStopwatch?.noteId === note.id && (
-                  <span
-                    className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/20 text-emerald-800 dark:text-emerald-200 border border-emerald-500/30"
-                    title="Reading stopwatch active"
-                  >
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-                    <span>Reading now</span>
-                  </span>
+                    <Timer className={`w-3 h-3 ${activeStopwatch?.noteId === note.id ? 'animate-spin' : ''}`} />
+                    {activeStopwatch?.noteId === note.id ? (
+                      <span>Stop & Save</span>
+                    ) : (
+                      <span>{Math.floor((note.totalReadingTime || 0) / 60) > 0 ? `${Math.floor((note.totalReadingTime || 0) / 60)}m read` : `${note.totalReadingTime}s read`}</span>
+                    )}
+                  </button>
                 )}
               </div>
             )}

@@ -173,7 +173,13 @@ interface KeepContextType {
 
 const KeepContext = createContext<KeepContextType | null>(null);
 
-export function KeepProvider({ children }: { children: React.ReactNode }) {
+export function KeepProvider({
+  children,
+  initialFilter = 'notes',
+}: {
+  children: React.ReactNode;
+  initialFilter?: ViewFilter;
+}) {
   const [notes, setNotes] = useState<Note[]>([]);
   const [labels, setLabels] = useState<Label[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -182,7 +188,7 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
   const [importSummary, setImportSummary] = useState<ImportResult | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const [currentFilter, setCurrentFilterState] = useState<ViewFilter>('notes');
+  const [currentFilter, setCurrentFilterState] = useState<ViewFilter>(initialFilter);
   const [selectedLabel, setSelectedLabel] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -1144,15 +1150,20 @@ export function KeepProvider({ children }: { children: React.ReactNode }) {
     [categories]
   );
 
-  // Active Stopwatch tick interval
+  // Active Stopwatch tick interval (tracks real timestamps for 100% accuracy in background tabs/screens)
   useEffect(() => {
     if (!activeStopwatch || !activeStopwatch.isRunning) return;
+    let lastTick = Date.now();
     const interval = setInterval(() => {
+      const now = Date.now();
+      const deltaSeconds = Math.max(1, Math.round((now - lastTick) / 1000));
+      lastTick = now;
+
       setActiveStopwatch((prev) => {
         if (!prev || !prev.isRunning) return prev;
         return {
           ...prev,
-          elapsedSeconds: prev.elapsedSeconds + 1,
+          elapsedSeconds: prev.elapsedSeconds + deltaSeconds,
         };
       });
     }, 1000);

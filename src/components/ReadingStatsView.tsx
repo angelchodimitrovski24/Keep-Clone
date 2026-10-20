@@ -61,6 +61,7 @@ export const ReadingStatsView: React.FC = () => {
 
   const [dateRange, setDateRange] = useState<DateRangeFilter>('all');
   const [noteSearchQuery, setNoteSearchQuery] = useState('');
+  const [chartRange, setChartRange] = useState<7 | 14 | 30>(7);
   const [activeTab, setActiveTab] = useState<'overview' | 'perNote' | 'perDay' | 'sessions'>('overview');
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
 
@@ -197,15 +198,15 @@ export const ReadingStatsView: React.FC = () => {
     return Array.from(map.values()).sort((a, b) => b.timestamp - a.timestamp);
   }, [filteredSessions]);
 
-  // Last 7 days chart data
+  // Visual chart data per day (7, 14, or 30 days)
   const chartDays = useMemo(() => {
     const days: { label: string; dateStr: string; seconds: number }[] = [];
     const now = new Date();
 
-    for (let i = 6; i >= 0; i--) {
+    for (let i = chartRange - 1; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
       const dateStr = d.toISOString().split('T')[0];
-      const dayLabel = i === 0 ? 'Today' : d.toLocaleDateString([], { weekday: 'short' });
+      const dayLabel = i === 0 ? 'Today' : chartRange <= 7 ? d.toLocaleDateString([], { weekday: 'short' }) : d.toLocaleDateString([], { month: 'numeric', day: 'numeric' });
       const dayStat = perDayStats.find((p) => p.dateStr === dateStr);
       days.push({
         label: dayLabel,
@@ -215,7 +216,7 @@ export const ReadingStatsView: React.FC = () => {
     }
 
     return days;
-  }, [perDayStats]);
+  }, [perDayStats, chartRange]);
 
   const maxChartSeconds = useMemo(() => {
     const max = Math.max(...chartDays.map((d) => d.seconds), 60);
@@ -434,46 +435,71 @@ export const ReadingStatsView: React.FC = () => {
         </div>
       </div>
 
-      {/* 7-Day Visual Activity Bar Chart */}
-      <div className="bg-white dark:bg-[#202124] p-6 rounded-2xl border border-stone-200 dark:border-stone-800 shadow-sm">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-sm font-bold text-stone-900 dark:text-stone-100 flex items-center gap-2">
+      {/* Visual Activity Bar Chart Per Day */}
+      <div className="bg-white dark:bg-[#202124] p-5 sm:p-6 rounded-2xl border border-stone-200 dark:border-stone-800 shadow-sm">
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+          <div className="flex items-center gap-2">
             <BarChart2 className="w-4 h-4 text-emerald-500" />
-            <span>Last 7 Days Reading Activity</span>
-          </h2>
-          <span className="text-xs text-stone-400">Minutes per day</span>
+            <h2 className="text-sm font-bold text-stone-900 dark:text-stone-100">
+              Daily Reading Activity
+            </h2>
+            <span className="text-xs text-stone-400">({chartRange} Days)</span>
+          </div>
+          <div className="flex items-center bg-stone-100 dark:bg-stone-800 p-0.5 rounded-lg text-xs font-medium">
+            {([7, 14, 30] as const).map((r) => (
+              <button
+                key={r}
+                type="button"
+                onClick={() => setChartRange(r)}
+                className={`px-2.5 py-1 rounded-md transition-colors ${
+                  chartRange === r
+                    ? 'bg-white dark:bg-stone-700 text-stone-900 dark:text-stone-100 shadow-xs font-semibold'
+                    : 'text-stone-500 hover:text-stone-900 dark:hover:text-stone-200'
+                }`}
+              >
+                {r}D
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div className="grid grid-cols-7 gap-2 sm:gap-4 items-end h-40 pt-6 pb-2">
-          {chartDays.map((cd) => {
-            const minutes = Math.round(cd.seconds / 60);
-            const heightPercent = maxChartSeconds > 0 ? Math.min(100, Math.round((cd.seconds / maxChartSeconds) * 100)) : 0;
-            const isToday = cd.label === 'Today';
+        <div className="overflow-x-auto no-scrollbar">
+          <div
+            className="flex items-end h-44 pt-6 pb-2 gap-1.5 sm:gap-3"
+            style={{ minWidth: chartRange > 14 ? '700px' : 'auto' }}
+          >
+            {chartDays.map((cd) => {
+              const minutes = Math.round(cd.seconds / 60);
+              const heightPercent = maxChartSeconds > 0 ? Math.min(100, Math.round((cd.seconds / maxChartSeconds) * 100)) : 0;
+              const isToday = cd.label === 'Today';
 
-            return (
-              <div key={cd.dateStr} className="flex flex-col items-center h-full justify-end group">
-                <div className="text-[10px] sm:text-xs font-semibold text-stone-500 dark:text-stone-400 mb-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                  {minutes}m
+              return (
+                <div key={cd.dateStr} className="flex-1 flex flex-col items-center h-full justify-end group min-w-0">
+                  <div className={`text-[10px] sm:text-xs font-semibold mb-1.5 transition-colors ${
+                    cd.seconds > 0 ? 'text-emerald-700 dark:text-emerald-300 font-bold' : 'text-stone-400'
+                  }`}>
+                    {cd.seconds > 0 ? (minutes > 0 ? `${minutes}m` : `${cd.seconds}s`) : '-'}
+                  </div>
+                  <div className="w-full max-w-[48px] bg-stone-100 dark:bg-stone-800 rounded-t-lg overflow-hidden flex flex-col justify-end h-28">
+                    <div
+                      style={{ height: `${Math.max(heightPercent, cd.seconds > 0 ? 8 : 2)}%` }}
+                      className={`w-full rounded-t-lg transition-all duration-300 ${
+                        isToday
+                          ? 'bg-emerald-500 shadow-xs shadow-emerald-500/20'
+                          : cd.seconds > 0
+                          ? 'bg-emerald-400/80 hover:bg-emerald-400'
+                          : 'bg-stone-200 dark:bg-stone-700/50'
+                      }`}
+                      title={`${cd.label} (${cd.dateStr}): ${formatSecondsToHms(cd.seconds)}`}
+                    />
+                  </div>
+                  <span className={`text-[10px] sm:text-xs mt-2 truncate w-full text-center ${isToday ? 'font-bold text-emerald-600 dark:text-emerald-400' : 'text-stone-500'}`}>
+                    {cd.label}
+                  </span>
                 </div>
-                <div className="w-full max-w-[48px] bg-stone-100 dark:bg-stone-800 rounded-t-lg overflow-hidden flex flex-col justify-end h-28">
-                  <div
-                    style={{ height: `${Math.max(heightPercent, cd.seconds > 0 ? 8 : 2)}%` }}
-                    className={`w-full rounded-t-lg transition-all duration-300 ${
-                      isToday
-                        ? 'bg-emerald-500 shadow-xs shadow-emerald-500/20'
-                        : cd.seconds > 0
-                        ? 'bg-emerald-400/70 hover:bg-emerald-400'
-                        : 'bg-stone-200 dark:bg-stone-700/50'
-                    }`}
-                    title={`${cd.label} (${cd.dateStr}): ${formatSecondsToHms(cd.seconds)}`}
-                  />
-                </div>
-                <span className={`text-[11px] sm:text-xs mt-2 ${isToday ? 'font-bold text-emerald-600 dark:text-emerald-400' : 'text-stone-500'}`}>
-                  {cd.label}
-                </span>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
       </div>
 

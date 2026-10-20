@@ -56,6 +56,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const handleSelectNav = (id: ViewFilter, labelName?: string) => {
     setCurrentFilter(id, labelName);
+    if (typeof window !== 'undefined') {
+      if (id === 'stats') {
+        window.history.pushState(null, '', '/stats');
+      } else if (window.location.pathname === '/stats') {
+        window.history.pushState(null, '', '/');
+      }
+    }
     if (window.innerWidth < 1024) {
       onCloseMobile?.();
     }
