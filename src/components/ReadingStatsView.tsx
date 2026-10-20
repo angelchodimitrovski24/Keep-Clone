@@ -16,9 +16,11 @@ import {
   Search,
   CheckCircle2,
   AlertCircle,
+  Edit2,
 } from 'lucide-react';
 import { useKeep } from '@/context/KeepContext';
 import { ReadingSession, Note } from '@/types/note';
+import { EditReadingTimeModal } from './EditReadingTimeModal';
 
 type DateRangeFilter = 'all' | 'today' | '7days' | '30days' | 'thisMonth';
 
@@ -54,6 +56,9 @@ export const ReadingStatsView: React.FC = () => {
     notes,
     categories,
     deleteReadingSession,
+    updateReadingSession,
+    updateNoteReadingTime,
+    deleteNoteReadingStats,
     clearAllReadingStats,
     setEditingNote,
     startReadingStopwatch,
@@ -64,6 +69,13 @@ export const ReadingStatsView: React.FC = () => {
   const [chartRange, setChartRange] = useState<7 | 14 | 30>(7);
   const [activeTab, setActiveTab] = useState<'overview' | 'perNote' | 'perDay' | 'sessions'>('overview');
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
+  const [editingTimeTarget, setEditingTimeTarget] = useState<{
+    noteId?: string;
+    sessionId?: string;
+    title: string;
+    seconds: number;
+    isSession: boolean;
+  } | null>(null);
 
   // Filter sessions by selected date range
   const filteredSessions = useMemo(() => {
@@ -149,6 +161,28 @@ export const ReadingStatsView: React.FC = () => {
       }
     });
 
+    // In 'all' time view, also include notes that have accumulated reading time but no session logs yet
+    if (dateRange === 'all') {
+      notes.forEach((n) => {
+        if (n.totalReadingTime && n.totalReadingTime > 0) {
+          const existing = map.get(n.id);
+          if (existing) {
+            // Keep the maximum between session sum and note.totalReadingTime
+            existing.totalSeconds = Math.max(existing.totalSeconds, n.totalReadingTime);
+          } else {
+            map.set(n.id, {
+              noteId: n.id,
+              title: n.title || 'Untitled Note',
+              category: n.category || null,
+              totalSeconds: n.totalReadingTime,
+              sessionCount: 0,
+              lastReadAt: n.updatedAt || n.createdAt,
+            });
+          }
+        }
+      });
+    }
+
     const list = Array.from(map.values()).sort((a, b) => b.totalSeconds - a.totalSeconds);
 
     if (noteSearchQuery.trim()) {
@@ -159,7 +193,7 @@ export const ReadingStatsView: React.FC = () => {
     }
 
     return list;
-  }, [filteredSessions, noteSearchQuery]);
+  }, [filteredSessions, notes, dateRange, noteSearchQuery]);
 
   const topReadNote = useMemo(() => (perNoteStats.length > 0 ? perNoteStats[0] : null), [perNoteStats]);
 
@@ -347,16 +381,15 @@ export const ReadingStatsView: React.FC = () => {
             <span className="hidden sm:inline">Export</span>
           </button>
 
-          {readingSessions.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setConfirmClearOpen(true)}
-              className="p-2 text-stone-400 hover:text-red-500 rounded-xl hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
-              title="Clear all reading history"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => setConfirmClearOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-2 bg-red-50 hover:bg-red-100 dark:bg-red-950/30 dark:hover:bg-red-950/50 text-red-600 dark:text-red-400 rounded-xl text-xs font-semibold transition-colors border border-red-200 dark:border-red-900/40"
+            title="Completely reset all time stats and session history"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            <span>Reset All Stats</span>
+          </button>
         </div>
       </div>
 
@@ -748,15 +781,47 @@ export const ReadingStatsView: React.FC = () => {
                         {formatSessionDate(stat.lastReadAt)}
                       </td>
                       <td className="py-3.5 px-4 text-right">
-                        <button
-                          type="button"
-                          onClick={() => handleStartReadingNote(stat.noteId, stat.title, stat.category)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-medium transition-colors"
-                          title="Open note and start stopwatch"
-                        >
-                          <Play className="w-3 h-3 fill-current" />
-                          <span>Read</span>
-                        </button>
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleStartReadingNote(stat.noteId, stat.title, stat.category)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-semibold transition-colors"
+                            title="Open note and start stopwatch"
+                          >
+                            <Play className="w-3 h-3 fill-current" />
+                            <span>Read</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setEditingTimeTarget({
+                                noteId: stat.noteId,
+                                title: stat.title,
+                                seconds: stat.totalSeconds,
+                                isSession: false,
+                              })
+                            }
+                            className="p-1.5 text-stone-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 rounded-lg transition-colors"
+                            title="Edit reading time for this note"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setEditingTimeTarget({
+                                noteId: stat.noteId,
+                                title: stat.title,
+                                seconds: stat.totalSeconds,
+                                isSession: false,
+                              })
+                            }
+                            className="p-1.5 text-stone-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-colors"
+                            title="Delete / reset time stats for this note"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -900,18 +965,36 @@ export const ReadingStatsView: React.FC = () => {
                         {formatSecondsToHms(session.durationSeconds)}
                       </td>
                       <td className="py-3 px-4 text-right">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (confirm('Delete this reading session record?')) {
-                              deleteReadingSession(session.id);
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setEditingTimeTarget({
+                                sessionId: session.id,
+                                noteId: session.noteId,
+                                title: session.noteTitle || 'Reading Session',
+                                seconds: session.durationSeconds,
+                                isSession: true,
+                              })
                             }
-                          }}
-                          className="p-1 text-stone-400 hover:text-red-500 rounded-md transition-colors"
-                          title="Delete session"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                            className="p-1 text-stone-400 hover:text-emerald-600 dark:hover:text-emerald-400 rounded-md transition-colors"
+                            title="Edit session duration"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (confirm('Delete this reading session record?')) {
+                                deleteReadingSession(session.id);
+                              }
+                            }}
+                            className="p-1 text-stone-400 hover:text-red-500 rounded-md transition-colors"
+                            title="Delete session"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -956,6 +1039,32 @@ export const ReadingStatsView: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+      {/* Edit Reading Time Modal */}
+      {editingTimeTarget && (
+        <EditReadingTimeModal
+          isOpen={true}
+          onClose={() => setEditingTimeTarget(null)}
+          title={editingTimeTarget.title}
+          initialSeconds={editingTimeTarget.seconds}
+          isSession={editingTimeTarget.isSession}
+          onSave={async (newSeconds) => {
+            if (editingTimeTarget.isSession && editingTimeTarget.sessionId) {
+              await updateReadingSession(editingTimeTarget.sessionId, newSeconds);
+            } else if (editingTimeTarget.noteId) {
+              await updateNoteReadingTime(editingTimeTarget.noteId, newSeconds);
+            }
+          }}
+          onDeleteStats={
+            !editingTimeTarget.isSession && editingTimeTarget.noteId
+              ? async () => {
+                  if (editingTimeTarget.noteId) {
+                    await deleteNoteReadingStats(editingTimeTarget.noteId);
+                  }
+                }
+              : undefined
+          }
+        />
       )}
     </div>
   );

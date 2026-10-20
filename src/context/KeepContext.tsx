@@ -159,6 +159,9 @@ interface KeepContextType {
   stopAndSaveReadingStopwatch: () => Promise<ReadingSession | null>;
   discardReadingStopwatch: () => void;
   deleteReadingSession: (sessionId: string) => Promise<void>;
+  updateReadingSession: (sessionId: string, newDurationSeconds: number) => Promise<void>;
+  updateNoteReadingTime: (noteId: string, newTotalSeconds: number) => Promise<void>;
+  deleteNoteReadingStats: (noteId: string) => Promise<void>;
   clearAllReadingStats: () => Promise<void>;
   getNoteReadingStats: (noteId: string) => { totalSeconds: number; sessionCount: number; lastReadAt?: number };
 
@@ -1266,9 +1269,129 @@ export function KeepProvider({
     [readingSessions]
   );
 
+  const updateReadingSession = useCallback(
+    async (sessionId: string, newDurationSeconds: number) => {
+      const session = readingSessions.find((s) => s.id === sessionId);
+      if (!session) return;
+      const sanitized = Math.max(0, Math.round(newDurationSeconds));
+      const diff = sanitized - session.durationSeconds;
+      const updatedSession: ReadingSession = {
+        ...session,
+        durationSeconds: sanitized,
+      };
+
+      await saveReadingSessionToDB(updatedSession);
+      setReadingSessions((prev) => prev.map((s) => (s.id === sessionId ? updatedSession : s)));
+
+      if (diff !== 0) {
+        setNotes((prev) =>
+          prev.map((n) => {
+            if (n.id === session.noteId) {
+              const newTotal = Math.max(0, (n.totalReadingTime || 0) + diff);
+              const updated = { ...n, totalReadingTime: newTotal };
+              saveNoteToDB(updated);
+              return updated;
+            }
+            return n;
+          })
+        );
+      }
+    },
+    [readingSessions]
+  );
+
+  const updateNoteReadingTime = useCallback(
+    async (noteId: string, newTotalSeconds: number) => {
+      const sanitizedSeconds = Math.max(0, Math.round(newTotalSeconds));
+
+      // 1. Update Note's totalReadingTime
+      setNotes((prev) =>
+        prev.map((n) => {
+          if (n.id === noteId) {
+            const updated = { ...n, totalReadingTime: sanitizedSeconds };
+            saveNoteToDB(updated);
+            return updated;
+          }
+          return n;
+        })
+      );
+
+      // 2. Synchronize reading sessions to match the new duration
+      const noteSessions = readingSessions.filter((s) => s.noteId === noteId);
+      if (sanitizedSeconds === 0) {
+        for (const s of noteSessions) {
+          await deleteReadingSessionFromDB(s.id);
+        }
+        setReadingSessions((prev) => prev.filter((s) => s.noteId !== noteId));
+      } else if (noteSessions.length === 0) {
+        // Create an initial session representing this reading time
+        const targetNote = notes.find((n) => n.id === noteId);
+        const nowTime = Date.now();
+        const newSession: ReadingSession = {
+          id: `session_manual_${nowTime}_${Math.random().toString(36).slice(2, 7)}`,
+          noteId,
+          noteTitle: targetNote?.title || 'Untitled Note',
+          category: targetNote?.category || null,
+          durationSeconds: sanitizedSeconds,
+          startedAt: nowTime - sanitizedSeconds * 1000,
+          endedAt: nowTime,
+          dateStr: new Date(nowTime).toISOString().split('T')[0],
+        };
+        await saveReadingSessionToDB(newSession);
+        setReadingSessions((prev) => [newSession, ...prev]);
+      } else {
+        const currentSum = noteSessions.reduce((acc, s) => acc + s.durationSeconds, 0);
+        const diff = sanitizedSeconds - currentSum;
+        if (diff !== 0) {
+          // Adjust the latest session
+          const sorted = [...noteSessions].sort((a, b) => b.endedAt - a.endedAt);
+          const mostRecent = sorted[0];
+          const newDuration = Math.max(1, mostRecent.durationSeconds + diff);
+          const updatedSession: ReadingSession = {
+            ...mostRecent,
+            durationSeconds: newDuration,
+          };
+          await saveReadingSessionToDB(updatedSession);
+          setReadingSessions((prev) =>
+            prev.map((s) => (s.id === mostRecent.id ? updatedSession : s))
+          );
+        }
+      }
+    },
+    [readingSessions, notes]
+  );
+
+  const deleteNoteReadingStats = useCallback(
+    async (noteId: string) => {
+      // 1. Delete all reading sessions belonging to this note
+      const sessionsToDelete = readingSessions.filter((s) => s.noteId === noteId);
+      for (const s of sessionsToDelete) {
+        await deleteReadingSessionFromDB(s.id);
+      }
+      setReadingSessions((prev) => prev.filter((s) => s.noteId !== noteId));
+
+      // 2. Clear active stopwatch if running on this note
+      setActiveStopwatch((prev) => (prev && prev.noteId === noteId ? null : prev));
+
+      // 3. Reset note totalReadingTime to 0
+      setNotes((prev) =>
+        prev.map((n) => {
+          if (n.id === noteId) {
+            const updated = { ...n, totalReadingTime: 0 };
+            saveNoteToDB(updated);
+            return updated;
+          }
+          return n;
+        })
+      );
+    },
+    [readingSessions]
+  );
+
   const clearAllReadingStats = useCallback(async () => {
     await clearAllReadingSessionsFromDB();
     setReadingSessions([]);
+    setActiveStopwatch(null);
     setNotes((prev) =>
       prev.map((n) => {
         if (n.totalReadingTime) {
@@ -1284,12 +1407,15 @@ export function KeepProvider({
   const getNoteReadingStats = useCallback(
     (noteId: string) => {
       const noteSessions = readingSessions.filter((s) => s.noteId === noteId);
-      const totalSeconds = noteSessions.reduce((acc, s) => acc + s.durationSeconds, 0);
+      const sessionSeconds = noteSessions.reduce((acc, s) => acc + s.durationSeconds, 0);
+      const targetNote = notes.find((n) => n.id === noteId);
+      const totalSeconds =
+        targetNote?.totalReadingTime !== undefined ? targetNote.totalReadingTime : sessionSeconds;
       const sessionCount = noteSessions.length;
       const lastReadAt = noteSessions.length > 0 ? noteSessions[0].endedAt : undefined;
       return { totalSeconds, sessionCount, lastReadAt };
     },
-    [readingSessions]
+    [readingSessions, notes]
   );
 
   // Backup & Import (ZIP and Intelligent Reconciliation)
@@ -1377,6 +1503,9 @@ export function KeepProvider({
       stopAndSaveReadingStopwatch,
       discardReadingStopwatch,
       deleteReadingSession,
+      updateReadingSession,
+      updateNoteReadingTime,
+      deleteNoteReadingStats,
       clearAllReadingStats,
       getNoteReadingStats,
       setIsDrawingModalOpen,
@@ -1475,6 +1604,9 @@ export function KeepProvider({
       stopAndSaveReadingStopwatch,
       discardReadingStopwatch,
       deleteReadingSession,
+      updateReadingSession,
+      updateNoteReadingTime,
+      deleteNoteReadingStats,
       clearAllReadingStats,
       getNoteReadingStats,
       setIsDrawingModalOpen,
