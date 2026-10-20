@@ -119,7 +119,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
               <li
                 {...props}
                 className={`${liClassName || ''} ${
-                  isTaskList ? 'list-none flex items-start gap-2.5 my-1' : ''
+                  isTaskList ? 'list-none flex items-start gap-2.5 my-1 min-w-0 w-full break-words whitespace-pre-wrap' : ''
                 }`}
               >
                 {children}

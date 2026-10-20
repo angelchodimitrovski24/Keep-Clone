@@ -349,7 +349,7 @@ export const SharedNoteView: React.FC<SharedNoteViewProps> = ({ note, shortId })
                   >
                     <button
                       type="button"
-                      className="mt-0.5 text-stone-500 group-hover:text-amber-600 transition-colors"
+                      className="mt-0.5 text-stone-500 group-hover:text-amber-600 transition-colors shrink-0"
                       title={todo.completed ? 'Mark incomplete' : 'Mark completed'}
                     >
                       {todo.completed ? (
@@ -359,7 +359,7 @@ export const SharedNoteView: React.FC<SharedNoteViewProps> = ({ note, shortId })
                       )}
                     </button>
                     <span
-                      className={`text-base leading-relaxed break-words flex-1 ${
+                      className={`text-base leading-relaxed break-words whitespace-pre-wrap min-w-0 flex-1 ${
                         todo.completed
                           ? 'line-through text-stone-400 dark:text-stone-500'
                           : 'text-stone-800 dark:text-stone-100 font-normal'

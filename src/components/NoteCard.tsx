@@ -387,10 +387,10 @@ export const NoteCard: React.FC<NoteCardProps> = ({
                     <div
                       key={todo.id}
                       onClick={(e) => handleToggleTodo(todo.id, e)}
-                      className="flex items-center gap-2 text-stone-800 dark:text-stone-200 cursor-pointer"
+                      className="flex items-start gap-2.5 text-stone-800 dark:text-stone-200 cursor-pointer group/todo min-w-0"
                     >
-                      <div className="w-4 h-4 rounded border border-stone-400 flex items-center justify-center shrink-0" />
-                      <span className="truncate">{todo.text}</span>
+                      <div className="w-4 h-4 mt-0.5 rounded border border-stone-400 dark:border-stone-500 flex items-center justify-center shrink-0 group-hover/todo:border-stone-600 dark:group-hover/todo:border-stone-300 transition-colors" />
+                      <span className="flex-1 min-w-0 break-words whitespace-pre-wrap leading-snug">{todo.text}</span>
                     </div>
                   ))}
 

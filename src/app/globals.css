@@ -126,6 +126,7 @@ body {
   list-style: none;
   padding: 0;
   margin: 0.25rem 0;
+  max-width: 100%;
 }
 
 .ProseMirror ul[data-type="taskList"] li {
@@ -133,12 +134,16 @@ body {
   align-items: flex-start;
   gap: 0.6rem;
   margin-bottom: 0.35rem;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .ProseMirror ul[data-type="taskList"] li > label {
   flex: 0 0 auto;
   user-select: none;
-  margin-top: 0.15rem;
+  margin-top: 0.2rem;
+  display: flex;
+  align-items: center;
 }
 
 .ProseMirror ul[data-type="taskList"] li > label input[type="checkbox"] {
@@ -147,10 +152,22 @@ body {
   height: 1rem;
   accent-color: #2563eb;
   border-radius: 0.25rem;
+  margin: 0;
 }
 
 .ProseMirror ul[data-type="taskList"] li > div {
-  flex: 1 1 auto;
+  flex: 1 1 0%;
+  min-width: 0;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.ProseMirror ul[data-type="taskList"] li > div > p {
+  margin: 0;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 .ProseMirror ul[data-type="taskList"] li[data-checked="true"] > div {
@@ -267,12 +284,44 @@ body {
 .keep-rendered ul[data-type="taskList"] {
   list-style: none;
   padding: 0;
+  margin: 0.25rem 0;
+  max-width: 100%;
 }
 .keep-rendered ul[data-type="taskList"] li {
   display: flex;
   align-items: flex-start;
   gap: 0.6rem;
   margin-bottom: 0.35rem;
+  min-width: 0;
+  max-width: 100%;
+}
+.keep-rendered ul[data-type="taskList"] li > label {
+  flex: 0 0 auto;
+  user-select: none;
+  margin-top: 0.2rem;
+  display: flex;
+  align-items: center;
+}
+.keep-rendered ul[data-type="taskList"] li > label input[type="checkbox"] {
+  cursor: pointer;
+  width: 1rem;
+  height: 1rem;
+  accent-color: #2563eb;
+  border-radius: 0.25rem;
+  margin: 0;
+}
+.keep-rendered ul[data-type="taskList"] li > div {
+  flex: 1 1 0%;
+  min-width: 0;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.keep-rendered ul[data-type="taskList"] li > div > p {
+  margin: 0;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 .keep-rendered ul[data-type="taskList"] li[data-checked="true"] > div {
   text-decoration: line-through;
@@ -285,6 +334,29 @@ body {
 .keep-rendered ol {
   list-style-type: decimal;
   padding-left: 1.25rem;
+}
+
+.keep-markdown ul {
+  max-width: 100%;
+}
+.keep-markdown li.task-list-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  margin-bottom: 0.35rem;
+  min-width: 0;
+  max-width: 100%;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+.keep-markdown li.task-list-item > input[type="checkbox"] {
+  flex: 0 0 auto;
+  margin-top: 0.2rem;
+}
+.keep-markdown li.task-list-item > * {
+  min-width: 0;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 /* Rendered local media attachments (images & files) in Note Cards */

@@ -41,6 +41,7 @@ import { getBidirectionalLinks } from '@/lib/noteLinks';
 import { encryptNote } from '@/lib/crypto';
 import { getUnlockedNote, setUnlockedNote, getSessionPassword, lockNoteInSession } from '@/lib/encryptionSession';
 import { NoteThemeArtwork } from './NoteThemeArtwork';
+import { ChecklistItemInput } from './ChecklistItemInput';
 
 function formatStopwatchTime(seconds: number): string {
   const h = Math.floor(seconds / 3600);
@@ -1264,24 +1265,27 @@ export const NoteModal: React.FC<NoteModalProps> = ({
               <div className="space-y-2">
                 {/* Active Interactive Checkboxes */}
                 {activeTodos.map((todo) => (
-                  <div key={todo.id} className="flex items-center gap-3 group">
+                  <div
+                    key={todo.id}
+                    className="flex items-start gap-2.5 sm:gap-3 group py-1 min-w-0 w-full rounded-lg transition-colors hover:bg-black/[0.02] dark:hover:bg-white/[0.02]"
+                  >
                     <input
                       type="checkbox"
                       checked={todo.completed}
                       onChange={() => handleToggleTodo(todo.id)}
-                      className="w-4 h-4 rounded text-blue-600 focus:ring-0 cursor-pointer accent-blue-600"
+                      className="w-4 h-4 mt-1 rounded text-blue-600 focus:ring-0 cursor-pointer accent-blue-600 shrink-0"
                     />
-                    <input
-                      type="text"
+                    <ChecklistItemInput
+                      id={`modal-todo-${todo.id}`}
                       value={todo.text}
-                      onChange={(e) => {
-                        const val = e.target.value;
+                      completed={todo.completed}
+                      onChange={(val) => {
                         setTodos((prev) =>
                           prev.map((t) => (t.id === todo.id ? { ...t, text: val } : t))
                         );
                       }}
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
+                        if (e.key === 'Enter' && !e.shiftKey) {
                           e.preventDefault();
                           // Add new empty todo item right below
                           const newId = 'todo-' + Date.now();
@@ -1291,15 +1295,33 @@ export const NoteModal: React.FC<NoteModalProps> = ({
                             updated.splice(index + 1, 0, { id: newId, text: '', completed: false });
                             return updated;
                           });
+                          setTimeout(() => {
+                            document.getElementById(`modal-todo-${newId}`)?.focus();
+                          }, 50);
+                        }
+                        if (e.key === 'Backspace' && todo.text === '') {
+                          e.preventDefault();
+                          const index = todos.findIndex((t) => t.id === todo.id);
+                          const prevTodo = todos[index - 1];
+                          handleRemoveTodo(todo.id);
+                          if (prevTodo) {
+                            setTimeout(() => {
+                              const prevEl = document.getElementById(`modal-todo-${prevTodo.id}`) as HTMLTextAreaElement | null;
+                              if (prevEl) {
+                                prevEl.focus();
+                                prevEl.selectionStart = prevEl.value.length;
+                                prevEl.selectionEnd = prevEl.value.length;
+                              }
+                            }, 50);
+                          }
                         }
                       }}
-                      className="flex-1 bg-transparent outline-none text-stone-800 dark:text-stone-200"
-                      style={{ fontSize: 'var(--note-font-size, 15px)' }}
                     />
                     <button
                       type="button"
                       onClick={() => handleRemoveTodo(todo.id)}
-                      className="opacity-0 group-hover:opacity-100 text-stone-400 hover:text-stone-600 p-1 transition-opacity"
+                      className="opacity-40 sm:opacity-0 sm:group-hover:opacity-100 hover:opacity-100 text-stone-400 hover:text-red-500 dark:hover:text-red-400 p-1 sm:p-1.5 transition-all shrink-0 mt-0.5"
+                      title="Delete item"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -1307,21 +1329,22 @@ export const NoteModal: React.FC<NoteModalProps> = ({
                 ))}
 
                 {/* Add item row */}
-                <div className="flex items-center gap-3 pt-1.5">
-                  <Plus className="w-4 h-4 text-stone-400" />
-                  <input
-                    type="text"
+                <div className="flex items-start gap-2.5 sm:gap-3 pt-2 border-t border-black/5 dark:border-white/5 min-w-0 w-full">
+                  <Plus className="w-4 h-4 mt-1 text-stone-400 shrink-0" />
+                  <ChecklistItemInput
+                    id="modal-todo-new"
                     placeholder="List item"
                     value={newTodoInput}
-                    onChange={(e) => setNewTodoInput(e.target.value)}
+                    onChange={setNewTodoInput}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
+                      if (e.key === 'Enter' && !e.shiftKey) {
                         e.preventDefault();
                         handleAddTodo();
+                        setTimeout(() => {
+                          document.getElementById('modal-todo-new')?.focus();
+                        }, 50);
                       }
                     }}
-                    className="flex-1 bg-transparent outline-none placeholder:text-stone-400 text-stone-800 dark:text-stone-200"
-                    style={{ fontSize: 'var(--note-font-size, 15px)' }}
                   />
                 </div>
 
@@ -1342,31 +1365,39 @@ export const NoteModal: React.FC<NoteModalProps> = ({
                     </button>
 
                     {showCompletedTodos && (
-                      <div className="space-y-2 pl-2">
+                      <div className="space-y-2 pl-1 sm:pl-2">
                         {completedTodos.map((todo) => (
-                          <div key={todo.id} className="flex items-center gap-3 group">
+                          <div
+                            key={todo.id}
+                            className="flex items-start gap-2.5 sm:gap-3 group py-1 min-w-0 w-full rounded-lg transition-colors hover:bg-black/[0.02] dark:hover:bg-white/[0.02]"
+                          >
                             <input
                               type="checkbox"
                               checked={todo.completed}
                               onChange={() => handleToggleTodo(todo.id)}
-                              className="w-4 h-4 rounded text-blue-600 focus:ring-0 cursor-pointer accent-blue-600"
+                              className="w-4 h-4 mt-1 rounded text-blue-600 focus:ring-0 cursor-pointer accent-blue-600 shrink-0"
                             />
-                            <input
-                              type="text"
+                            <ChecklistItemInput
+                              id={`modal-todo-${todo.id}`}
                               value={todo.text}
-                              onChange={(e) => {
-                                const val = e.target.value;
+                              completed={true}
+                              onChange={(val) => {
                                 setTodos((prev) =>
                                   prev.map((t) => (t.id === todo.id ? { ...t, text: val } : t))
                                 );
                               }}
-                              className="flex-1 bg-transparent line-through text-stone-400 dark:text-stone-500 outline-none"
-                              style={{ fontSize: 'var(--note-font-size, 15px)' }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Backspace' && todo.text === '') {
+                                  e.preventDefault();
+                                  handleRemoveTodo(todo.id);
+                                }
+                              }}
                             />
                             <button
                               type="button"
                               onClick={() => handleRemoveTodo(todo.id)}
-                              className="opacity-0 group-hover:opacity-100 text-stone-400 hover:text-stone-600 p-1"
+                              className="opacity-40 sm:opacity-0 sm:group-hover:opacity-100 hover:opacity-100 text-stone-400 hover:text-red-500 dark:hover:text-red-400 p-1 sm:p-1.5 transition-all shrink-0 mt-0.5"
+                              title="Delete item"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
@@ -1520,58 +1551,60 @@ export const NoteModal: React.FC<NoteModalProps> = ({
         )}
 
         {/* Footer toolbar */}
-        <div className="flex items-center justify-between px-3 sm:px-5 py-2 sm:py-3.5 border-t border-black/5 dark:border-white/5 bg-black/2 dark:bg-white/2 shrink-0">
-          <NoteActions
-            note={{ color, theme, isList, labels, reminder, category }}
-            onColorChange={setColor}
-            onThemeChange={setTheme}
-            onSelectCategory={handleCategoryChange}
-            onAddImage={handleAddImage}
-            onArchiveToggle={() => {
-              toggleArchiveNote(note.id);
-              onClose();
-            }}
-            onDelete={() => {
-              trashNote(note.id);
-              onClose();
-            }}
-            onDuplicate={async () => {
-              await handleSaveAndClose();
-              await duplicateNote(note.id);
-            }}
-            onShare={() => {
-              setSharingNote({
-                ...note,
-                title,
-                content,
-                isList,
-                todos,
-                color,
-                theme,
-                labels,
-                category,
-                images,
-                drawings,
-              });
-            }}
-            onToggleChecklist={handleToggleChecklist}
-            onAddReminder={setReminder}
-            onToggleLabel={(lbl) =>
-              setLabels((prev) =>
-                prev.includes(lbl) ? prev.filter((l) => l !== lbl) : [...prev, lbl]
-              )
-            }
-            onEncrypt={() => setShowEncryptModal(true)}
-            onLinkNote={() => setShowLinkModal(true)}
-            showFormattingToggle={!isList}
-            isFormattingOpen={isFormattingOpen}
-            onToggleFormatting={() => setIsFormattingOpen(!isFormattingOpen)}
-          />
+        <div className="flex items-center justify-between px-2.5 sm:px-5 py-2 sm:py-3.5 border-t border-black/5 dark:border-white/5 bg-black/2 dark:bg-white/2 shrink-0 gap-2">
+          <div className="overflow-x-auto no-scrollbar flex-1 min-w-0">
+            <NoteActions
+              note={{ color, theme, isList, labels, reminder, category }}
+              onColorChange={setColor}
+              onThemeChange={setTheme}
+              onSelectCategory={handleCategoryChange}
+              onAddImage={handleAddImage}
+              onArchiveToggle={() => {
+                toggleArchiveNote(note.id);
+                onClose();
+              }}
+              onDelete={() => {
+                trashNote(note.id);
+                onClose();
+              }}
+              onDuplicate={async () => {
+                await handleSaveAndClose();
+                await duplicateNote(note.id);
+              }}
+              onShare={() => {
+                setSharingNote({
+                  ...note,
+                  title,
+                  content,
+                  isList,
+                  todos,
+                  color,
+                  theme,
+                  labels,
+                  category,
+                  images,
+                  drawings,
+                });
+              }}
+              onToggleChecklist={handleToggleChecklist}
+              onAddReminder={setReminder}
+              onToggleLabel={(lbl) =>
+                setLabels((prev) =>
+                  prev.includes(lbl) ? prev.filter((l) => l !== lbl) : [...prev, lbl]
+                )
+              }
+              onEncrypt={() => setShowEncryptModal(true)}
+              onLinkNote={() => setShowLinkModal(true)}
+              showFormattingToggle={!isList}
+              isFormattingOpen={isFormattingOpen}
+              onToggleFormatting={() => setIsFormattingOpen(!isFormattingOpen)}
+            />
+          </div>
 
           <button
             type="button"
             onClick={handleSaveAndClose}
-            className="px-5 py-2 text-sm font-semibold rounded-xl bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 hover:opacity-90 transition-opacity shadow-sm"
+            className="px-4 sm:px-5 py-2 text-xs sm:text-sm font-semibold rounded-xl bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 hover:opacity-90 transition-opacity shadow-sm shrink-0"
           >
             Close
           </button>

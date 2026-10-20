@@ -25,6 +25,7 @@ import { EncryptNoteModal } from './EncryptNoteModal';
 import { encryptNote } from '@/lib/crypto';
 import { setUnlockedNote, setSessionPassword } from '@/lib/encryptionSession';
 import { NoteThemeArtwork } from './NoteThemeArtwork';
+import { ChecklistItemInput } from './ChecklistItemInput';
 
 interface CreateNoteBarProps {
   onOpenDrawingModal?: () => void;
@@ -435,52 +436,84 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
           {isList ? (
             <div className="space-y-2">
               {todos.map((todo) => (
-                <div key={todo.id} className="flex items-center gap-2 group">
+                <div
+                  key={todo.id}
+                  className="flex items-start gap-2.5 sm:gap-3 group py-1 min-w-0 w-full rounded-lg transition-colors hover:bg-black/[0.02] dark:hover:bg-white/[0.02]"
+                >
                   <input
                     type="checkbox"
                     checked={todo.completed}
                     onChange={() => handleToggleTodo(todo.id)}
-                    className="w-4 h-4 rounded text-blue-600 focus:ring-0 cursor-pointer"
+                    className="w-4 h-4 mt-1 rounded text-blue-600 focus:ring-0 cursor-pointer accent-blue-600 shrink-0"
                   />
-                  <input
-                    type="text"
+                  <ChecklistItemInput
+                    id={`create-todo-${todo.id}`}
                     value={todo.text}
-                    onChange={(e) => {
-                      const val = e.target.value;
+                    completed={todo.completed}
+                    onChange={(val) => {
                       setTodos((prev) =>
                         prev.map((t) => (t.id === todo.id ? { ...t, text: val } : t))
                       );
                     }}
-                    style={{ fontSize: 'var(--note-font-size, 15px)' }}
-                    className={`flex-1 bg-transparent outline-none ${
-                      todo.completed ? 'line-through text-stone-400 dark:text-stone-500' : ''
-                    }`}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        const newId = 'todo-' + Date.now();
+                        setTodos((prev) => {
+                          const index = prev.findIndex((t) => t.id === todo.id);
+                          const updated = [...prev];
+                          updated.splice(index + 1, 0, { id: newId, text: '', completed: false });
+                          return updated;
+                        });
+                        setTimeout(() => {
+                          document.getElementById(`create-todo-${newId}`)?.focus();
+                        }, 50);
+                      }
+                      if (e.key === 'Backspace' && todo.text === '') {
+                        e.preventDefault();
+                        const index = todos.findIndex((t) => t.id === todo.id);
+                        const prevTodo = todos[index - 1];
+                        handleRemoveTodo(todo.id);
+                        if (prevTodo) {
+                          setTimeout(() => {
+                            const prevEl = document.getElementById(`create-todo-${prevTodo.id}`) as HTMLTextAreaElement | null;
+                            if (prevEl) {
+                              prevEl.focus();
+                              prevEl.selectionStart = prevEl.value.length;
+                              prevEl.selectionEnd = prevEl.value.length;
+                            }
+                          }, 50);
+                        }
+                      }
+                    }}
                   />
                   <button
                     type="button"
                     onClick={() => handleRemoveTodo(todo.id)}
-                    className="opacity-0 group-hover:opacity-100 text-stone-400 hover:text-stone-600 p-1"
+                    className="opacity-40 sm:opacity-0 sm:group-hover:opacity-100 hover:opacity-100 text-stone-400 hover:text-red-500 dark:hover:text-red-400 p-1 sm:p-1.5 transition-all shrink-0 mt-0.5"
+                    title="Delete item"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
               ))}
 
-              <div className="flex items-center gap-2 pt-1 border-t border-stone-200/50 dark:border-stone-700/50">
-                <Plus className="w-4 h-4 text-stone-400" />
-                <input
-                  type="text"
+              <div className="flex items-start gap-2.5 sm:gap-3 pt-2 border-t border-stone-200/50 dark:border-stone-700/50 min-w-0 w-full">
+                <Plus className="w-4 h-4 mt-1 text-stone-400 shrink-0" />
+                <ChecklistItemInput
+                  id="create-todo-new"
                   placeholder="List item"
                   value={newTodoInput}
-                  onChange={(e) => setNewTodoInput(e.target.value)}
+                  onChange={setNewTodoInput}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
+                    if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault();
                       handleAddTodoItem();
+                      setTimeout(() => {
+                        document.getElementById('create-todo-new')?.focus();
+                      }, 50);
                     }
                   }}
-                  style={{ fontSize: 'var(--note-font-size, 15px)' }}
-                  className="flex-1 bg-transparent outline-none placeholder:text-stone-400"
                 />
               </div>
             </div>
