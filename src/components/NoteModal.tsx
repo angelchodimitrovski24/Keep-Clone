@@ -1581,7 +1581,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
         )}
 
         {/* Footer toolbar */}
-        <div className="flex items-center justify-between px-2.5 sm:px-5 py-2 sm:py-3.5 border-t border-black/5 dark:border-white/5 bg-black/2 dark:bg-white/2 shrink-0 gap-2 relative">
+        <div className="flex items-center justify-between px-2.5 sm:px-5 py-2 sm:py-3.5 pb-[max(0.6rem,env(safe-area-inset-bottom))] border-t border-black/5 dark:border-white/5 bg-black/2 dark:bg-white/2 shrink-0 gap-2 relative">
           <div className="flex-1 min-w-0">
             <NoteActions
               note={{ color, theme, isList, labels, reminder, category }}
