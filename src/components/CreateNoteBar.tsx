@@ -614,7 +614,7 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
         )}
 
         {/* Footer toolbar */}
-        <div className="flex items-center justify-between px-2 sm:px-3 py-2 border-t border-black/5 dark:border-white/5 overflow-x-auto no-scrollbar gap-1">
+        <div className="flex items-center justify-between px-2 sm:px-3 py-2 border-t border-black/5 dark:border-white/5 gap-1 relative">
           <NoteActions
             note={{ color, theme, isList, labels, reminder, category, isEncrypted }}
             onColorChange={setColor}

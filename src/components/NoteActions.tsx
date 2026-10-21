@@ -88,7 +88,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
 
   // Close menus when clicking outside
   useEffect(() => {
-    const handleOutsideClick = (e: MouseEvent) => {
+    const handleOutsideClick = (e: MouseEvent | TouchEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setShowMenu(false);
         setShowColorPicker(false);
@@ -98,7 +98,11 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
       }
     };
     document.addEventListener('mousedown', handleOutsideClick);
-    return () => document.removeEventListener('mousedown', handleOutsideClick);
+    document.addEventListener('touchstart', handleOutsideClick);
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('touchstart', handleOutsideClick);
+    };
   }, []);
 
   // If the note is in Trash, only show Restore and Delete Forever
@@ -339,7 +343,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
             e.stopPropagation();
             onArchiveToggle();
           }}
-          className="p-2 sm:p-1.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
+          className="hidden sm:inline-flex p-2 sm:p-1.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
           title={note.isArchived ? 'Unarchive' : 'Archive'}
         >
           {note.isArchived ? (
@@ -358,7 +362,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
             e.stopPropagation();
             onDelete();
           }}
-          className="p-2 sm:p-1.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10 hover:text-red-600 transition-colors"
+          className="hidden md:inline-flex p-2 sm:p-1.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10 hover:text-red-600 transition-colors"
           title="Delete note"
         >
           <Trash2 className="w-4 h-4" />
@@ -373,7 +377,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
             e.stopPropagation();
             onEncrypt();
           }}
-          className={`p-2 sm:p-1.5 rounded-full transition-colors ${
+          className={`hidden sm:inline-flex p-2 sm:p-1.5 rounded-full transition-colors ${
             note.isEncrypted
               ? 'text-amber-600 dark:text-amber-400 bg-amber-500/15'
               : 'hover:bg-black/10 dark:hover:bg-white/10'
@@ -392,7 +396,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
             e.stopPropagation();
             onLinkNote();
           }}
-          className="p-2 sm:p-1.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
+          className="hidden md:inline-flex p-2 sm:p-1.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
           title="Link to another note"
         >
           <Link2 className="w-4 h-4" />
@@ -407,7 +411,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
             e.stopPropagation();
             onDuplicate();
           }}
-          className="p-2 sm:p-1.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
+          className="hidden md:inline-flex p-2 sm:p-1.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
           title="Clone note (Make a copy)"
         >
           <Copy className="w-4 h-4" />
@@ -422,7 +426,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
             e.stopPropagation();
             onShare();
           }}
-          className="p-2 sm:p-1.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
+          className="hidden sm:inline-flex p-2 sm:p-1.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
           title="Share note (Short link & images)"
         >
           <Share2 className="w-4 h-4" />
@@ -439,8 +443,13 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
             setShowColorPicker(false);
             setShowReminderPicker(false);
             setShowLabelPicker(false);
+            setShowCategoryPicker(false);
           }}
-          className="p-2 sm:p-1.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
+          className={`p-2 sm:p-1.5 rounded-full transition-colors ${
+            showMenu
+              ? 'bg-black/15 dark:bg-white/20 text-stone-900 dark:text-stone-100'
+              : 'hover:bg-black/10 dark:hover:bg-white/10'
+          }`}
           title="More options"
         >
           <MoreVertical className="w-4 h-4" />
@@ -449,8 +458,33 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
         {showMenu && (
           <div
             onClick={(e) => e.stopPropagation()}
-            className="absolute left-0 bottom-full mb-2 w-52 py-1.5 bg-white dark:bg-[#2d2e30] rounded-xl shadow-2xl border border-stone-200 dark:border-stone-700 z-50 text-sm font-medium animate-in fade-in zoom-in-95 duration-100"
+            onMouseDown={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
+            className="absolute right-0 bottom-full mb-2 w-56 max-w-[calc(100vw-2rem)] py-1.5 bg-white dark:bg-[#2d2e30] rounded-xl shadow-2xl border border-stone-200 dark:border-stone-700 z-50 text-sm font-medium animate-in fade-in zoom-in-95 duration-100 max-h-[70vh] overflow-y-auto"
           >
+            {onArchiveToggle && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMenu(false);
+                  onArchiveToggle();
+                }}
+                className="w-full text-left px-3.5 py-2.5 sm:py-2 flex items-center gap-2.5 hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200"
+              >
+                {note.isArchived ? (
+                  <>
+                    <ArchiveRestore className="w-4 h-4 text-amber-500" />
+                    Unarchive note
+                  </>
+                ) : (
+                  <>
+                    <Archive className="w-4 h-4" />
+                    Archive note
+                  </>
+                )}
+              </button>
+            )}
+
             {onShare && (
               <button
                 type="button"
@@ -604,7 +638,9 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
         {showCategoryPicker && (
           <div
             onClick={(e) => e.stopPropagation()}
-            className="absolute left-0 bottom-full mb-2 w-64 max-w-[calc(100vw-2rem)] p-2.5 bg-white dark:bg-[#2d2e30] rounded-xl shadow-2xl border border-stone-200 dark:border-stone-700 z-50 text-sm animate-in fade-in zoom-in-95 duration-100"
+            onMouseDown={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
+            className="absolute right-0 bottom-full mb-2 w-64 max-w-[calc(100vw-2rem)] p-2.5 bg-white dark:bg-[#2d2e30] rounded-xl shadow-2xl border border-stone-200 dark:border-stone-700 z-50 text-sm animate-in fade-in zoom-in-95 duration-100 max-h-[70vh] overflow-y-auto"
           >
             <div className="flex items-center justify-between pb-2 mb-2 border-b border-stone-200 dark:border-stone-700">
               <span className="text-xs font-semibold text-stone-500 uppercase tracking-wider">Select Category</span>
@@ -684,7 +720,9 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
         {showLabelPicker && (
           <div
             onClick={(e) => e.stopPropagation()}
-            className="absolute left-0 bottom-full mb-2 w-64 max-w-[calc(100vw-2rem)] p-2.5 bg-white dark:bg-[#2d2e30] rounded-xl shadow-2xl border border-stone-200 dark:border-stone-700 z-50 text-sm animate-in fade-in zoom-in-95 duration-100"
+            onMouseDown={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
+            className="absolute right-0 bottom-full mb-2 w-64 max-w-[calc(100vw-2rem)] p-2.5 bg-white dark:bg-[#2d2e30] rounded-xl shadow-2xl border border-stone-200 dark:border-stone-700 z-50 text-sm animate-in fade-in zoom-in-95 duration-100 max-h-[70vh] overflow-y-auto"
           >
             <div className="flex items-center justify-between pb-2 mb-2 border-b border-stone-200 dark:border-stone-700">
               <span className="text-xs font-semibold text-stone-500 uppercase tracking-wider">Label note</span>

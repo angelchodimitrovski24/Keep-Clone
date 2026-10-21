@@ -1581,8 +1581,8 @@ export const NoteModal: React.FC<NoteModalProps> = ({
         )}
 
         {/* Footer toolbar */}
-        <div className="flex items-center justify-between px-2.5 sm:px-5 py-2 sm:py-3.5 border-t border-black/5 dark:border-white/5 bg-black/2 dark:bg-white/2 shrink-0 gap-2">
-          <div className="overflow-x-auto no-scrollbar flex-1 min-w-0">
+        <div className="flex items-center justify-between px-2.5 sm:px-5 py-2 sm:py-3.5 border-t border-black/5 dark:border-white/5 bg-black/2 dark:bg-white/2 shrink-0 gap-2 relative">
+          <div className="flex-1 min-w-0">
             <NoteActions
               note={{ color, theme, isList, labels, reminder, category }}
               onColorChange={setColor}
@@ -1625,6 +1625,8 @@ export const NoteModal: React.FC<NoteModalProps> = ({
               }
               onEncrypt={() => setShowEncryptModal(true)}
               onLinkNote={() => setShowLinkModal(true)}
+              onOpenVersions={() => setVersionHistoryNote(note)}
+              onStartReading={() => startReadingStopwatch(note.id, title, category)}
               showFormattingToggle={!isList}
               isFormattingOpen={isFormattingOpen}
               onToggleFormatting={() => setIsFormattingOpen(!isFormattingOpen)}
