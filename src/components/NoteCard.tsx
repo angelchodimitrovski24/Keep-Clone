@@ -169,9 +169,9 @@ export const NoteCard: React.FC<NoteCardProps> = ({
     <>
       <div
         onClick={handleCardClick}
-        className={`group relative flex flex-col justify-between rounded-2xl border transition-all duration-200 cursor-default hover:shadow-lg break-inside-avoid mb-4 ${colorClasses} ${
+        className={`group relative flex flex-col justify-between rounded-2xl border transition-all duration-200 cursor-default hover:keep-elevation-1 break-inside-avoid mb-4 ${colorClasses} ${
           isSelected
-            ? 'ring-2 ring-stone-900 dark:ring-stone-100 shadow-md'
+            ? 'ring-2 ring-stone-900 dark:ring-stone-100 keep-elevation-2'
             : 'hover:border-stone-400/80 dark:hover:border-stone-500'
         }`}
       >

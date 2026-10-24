@@ -821,7 +821,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
             }
           }
         }}
-        className={`w-full h-full sm:h-auto sm:max-w-3xl sm:min-h-[460px] sm:max-h-[92vh] rounded-none sm:rounded-2xl border-0 sm:border shadow-none sm:shadow-2xl flex flex-col transition-all duration-150 relative overflow-hidden ${colorClasses}`}
+        className={`w-full h-full sm:h-auto sm:max-w-3xl sm:min-h-[460px] sm:max-h-[92vh] rounded-none sm:rounded-2xl border-0 sm:border sm:border-stone-200/80 dark:sm:border-stone-700/80 shadow-none sm:keep-elevation-2 flex flex-col transition-all duration-150 relative overflow-hidden ${colorClasses}`}
       >
         {/* Themed Background Illustration */}
         <NoteThemeArtwork theme={theme} isModal={true} />
@@ -1636,7 +1636,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
           <button
             type="button"
             onClick={handleSaveAndClose}
-            className="px-4 sm:px-5 py-2 text-xs sm:text-sm font-semibold rounded-xl bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 hover:opacity-90 transition-opacity shadow-sm shrink-0"
+            className="px-5 py-1.5 text-sm font-medium rounded-lg text-stone-800 dark:text-stone-200 hover:bg-black/5 dark:hover:bg-white/10 active:bg-black/10 dark:active:bg-white/15 transition-colors shrink-0"
           >
             Close
           </button>

@@ -276,7 +276,7 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
       <div className="w-full max-w-2xl mx-auto mb-5 sm:mb-8 px-2.5 sm:px-4">
         <div
           onClick={() => setIsExpanded(true)}
-          className="flex items-center justify-between px-3.5 sm:px-4 py-2.5 sm:py-3 bg-white dark:bg-[#202124] rounded-xl sm:rounded-2xl shadow-md border border-stone-200 dark:border-stone-700/80 cursor-text hover:shadow-lg transition-all text-stone-500 dark:text-stone-400"
+          className="flex items-center justify-between px-3.5 sm:px-4 py-2.5 sm:py-3 bg-white dark:bg-[#202124] rounded-xl sm:rounded-2xl keep-elevation-1 border border-stone-200 dark:border-stone-700/80 cursor-text hover:keep-elevation-2 transition-all text-stone-500 dark:text-stone-400"
         >
           <span className="font-medium text-sm">Take a note…</span>
           <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
@@ -374,7 +374,7 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
             }
           }
         }}
-        className={`rounded-2xl shadow-xl border relative overflow-hidden transition-all ${colorClasses}`}
+        className={`rounded-2xl keep-elevation-2 border relative overflow-hidden transition-all ${colorClasses}`}
       >
         {/* Themed Background Illustration */}
         <NoteThemeArtwork theme={theme} />

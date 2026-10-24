@@ -122,6 +122,11 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
     };
   }, []);
 
+  const iconBtnClass =
+    'w-8 h-8 flex items-center justify-center rounded-full text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-black/[0.06] dark:hover:bg-white/[0.08] active:bg-black/[0.12] dark:active:bg-white/[0.15] transition-all duration-150 shrink-0';
+  const activeIconBtnClass =
+    'w-8 h-8 flex items-center justify-center rounded-full bg-black/[0.1] dark:bg-white/[0.16] text-stone-900 dark:text-stone-100 transition-all duration-150 shrink-0';
+
   // If the note is in Trash, only show Restore and Delete Forever
   if (isTrash) {
     return (
@@ -132,7 +137,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
             e.stopPropagation();
             onDeletePermanently?.();
           }}
-          className="p-2 sm:p-1.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10 text-stone-600 dark:text-stone-300 transition-colors"
+          className={iconBtnClass}
           title="Delete forever"
         >
           <Trash2 className="w-4 h-4" />
@@ -143,7 +148,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
             e.stopPropagation();
             onRestore?.();
           }}
-          className="p-2 sm:p-1.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10 text-stone-600 dark:text-stone-300 transition-colors"
+          className={iconBtnClass}
           title="Restore note"
         >
           <RotateCcw className="w-4 h-4" />
@@ -168,7 +173,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
             setShowMenu(false);
             setShowLabelPicker(false);
           }}
-          className="p-2 sm:p-1.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
+          className={showReminderPicker ? activeIconBtnClass : iconBtnClass}
           title="Remind me"
         >
           <Bell className="w-4 h-4" />
@@ -177,12 +182,12 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
         {!isMobile && showReminderPicker && (
           <div
             onClick={(e) => e.stopPropagation()}
-            className="absolute left-0 bottom-full mb-2 w-64 max-w-[calc(100vw-2rem)] p-2.5 bg-white dark:bg-[#2d2e30] rounded-xl shadow-2xl border border-stone-200 dark:border-stone-700 z-50 text-sm"
+            className="absolute left-0 bottom-full mb-2 w-64 max-w-[calc(100vw-2rem)] p-2.5 bg-white dark:bg-[#202124] rounded-xl keep-elevation-2 border border-black/[0.08] dark:border-stone-700/60 z-50 text-[13.5px] font-normal"
           >
-            <p className="text-xs font-semibold px-2 py-1 text-stone-500 uppercase tracking-wider">
+            <p className="text-xs font-medium px-2.5 py-1 text-stone-500 tracking-wide uppercase">
               Set Reminder
             </p>
-            <div className="flex flex-col gap-1 mt-1">
+            <div className="flex flex-col gap-0.5 mt-1">
               <button
                 type="button"
                 onClick={() => {
@@ -191,7 +196,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                   onAddReminder?.(todayEve.toISOString());
                   setShowReminderPicker(false);
                 }}
-                className="text-left px-2.5 py-2 hover:bg-stone-100 dark:hover:bg-stone-700 rounded-md transition-colors"
+                className="text-left px-2.5 py-2 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] rounded-lg transition-colors text-stone-800 dark:text-stone-200"
               >
                 Later today (8:00 PM)
               </button>
@@ -204,7 +209,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                   onAddReminder?.(tmrw.toISOString());
                   setShowReminderPicker(false);
                 }}
-                className="text-left px-2.5 py-2 hover:bg-stone-100 dark:hover:bg-stone-700 rounded-md transition-colors"
+                className="text-left px-2.5 py-2 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] rounded-lg transition-colors text-stone-800 dark:text-stone-200"
               >
                 Tomorrow (8:00 AM)
               </button>
@@ -217,11 +222,11 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                   onAddReminder?.(nextWeek.toISOString());
                   setShowReminderPicker(false);
                 }}
-                className="text-left px-2.5 py-2 hover:bg-stone-100 dark:hover:bg-stone-700 rounded-md transition-colors"
+                className="text-left px-2.5 py-2 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] rounded-lg transition-colors text-stone-800 dark:text-stone-200"
               >
                 Next week (8:00 AM)
               </button>
-              <div className="pt-2 mt-1 border-t border-stone-200 dark:border-stone-700">
+              <div className="pt-2 mt-1 border-t border-black/[0.06] dark:border-white/[0.08]">
                 <input
                   type="datetime-local"
                   onChange={(e) => {
@@ -230,7 +235,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                       setShowReminderPicker(false);
                     }
                   }}
-                  className="w-full text-xs p-1.5 rounded bg-stone-50 dark:bg-stone-800 border border-stone-300 dark:border-stone-600 outline-none"
+                  className="w-full text-xs p-1.5 rounded-lg bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 outline-none text-stone-800 dark:text-stone-200"
                 />
               </div>
             </div>
@@ -249,7 +254,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
             setShowMenu(false);
             setShowLabelPicker(false);
           }}
-          className="p-2 sm:p-1.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
+          className={showColorPicker ? activeIconBtnClass : iconBtnClass}
           title="Background options"
         >
           <Palette className="w-4 h-4" />
@@ -258,7 +263,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
         {!isMobile && showColorPicker && (
           <div
             onClick={(e) => e.stopPropagation()}
-            className="absolute left-0 bottom-full mb-2 w-72 max-w-[calc(100vw-2rem)] p-3 bg-white dark:bg-[#2d2e30] rounded-2xl shadow-2xl border border-stone-200 dark:border-stone-700 z-50 animate-in fade-in zoom-in-95 duration-100"
+            className="absolute left-0 bottom-full mb-2 w-72 max-w-[calc(100vw-2rem)] p-3 bg-white dark:bg-[#202124] rounded-xl keep-elevation-2 border border-black/[0.08] dark:border-stone-700/60 z-50"
           >
             <p className="text-xs font-medium text-stone-500 mb-2 px-1">Colors</p>
             <div className="grid grid-cols-6 gap-2 mb-3">
@@ -270,8 +275,8 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                   onClick={() => {
                     onColorChange(c.id);
                   }}
-                  className={`w-7 h-7 sm:w-6 sm:h-6 rounded-full border border-stone-300 dark:border-stone-600 transition-transform hover:scale-110 flex items-center justify-center ${
-                    note.color === c.id ? 'ring-2 ring-blue-500 ring-offset-1' : ''
+                  className={`w-7 h-7 sm:w-6 sm:h-6 rounded-full border border-black/15 dark:border-white/20 transition-transform hover:scale-110 flex items-center justify-center ${
+                    note.color === c.id ? 'ring-2 ring-blue-500 ring-offset-1 dark:ring-offset-[#202124]' : ''
                   }`}
                   style={{ backgroundColor: c.swatch }}
                 />
@@ -280,7 +285,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
 
             {onThemeChange && (
               <>
-                <p className="text-xs font-medium text-stone-500 mb-2 px-1 border-t border-stone-200 dark:border-stone-700 pt-2">
+                <p className="text-xs font-medium text-stone-500 mb-2 px-1 border-t border-black/[0.06] dark:border-white/[0.08] pt-2">
                   Themes
                 </p>
                 <div className="grid grid-cols-5 gap-1.5">
@@ -290,7 +295,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                       type="button"
                       title={t.name}
                       onClick={() => onThemeChange(t.id)}
-                      className={`h-9 sm:h-8 flex items-center justify-center text-lg sm:text-base rounded-lg border border-stone-200 dark:border-stone-700 hover:scale-105 transition-all ${
+                      className={`h-9 sm:h-8 flex items-center justify-center text-lg sm:text-base rounded-lg border border-black/[0.08] dark:border-white/[0.1] hover:scale-105 transition-all ${
                         note.theme === t.id ? 'ring-2 ring-blue-500' : ''
                       }`}
                     >
@@ -313,7 +318,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
               e.stopPropagation();
               fileInputRef.current?.click();
             }}
-            className="p-2 sm:p-1.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
+            className={iconBtnClass}
             title="Add image or file attachment"
           >
             <ImageIcon className="w-4 h-4" />
@@ -341,10 +346,10 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
             setShowMenu(false);
             setShowLabelPicker(false);
           }}
-          className={`p-2 sm:p-1.5 rounded-full transition-colors flex items-center justify-center font-bold text-sm leading-none ${
+          className={`w-8 h-8 flex items-center justify-center rounded-full transition-all duration-150 font-bold text-sm leading-none shrink-0 ${
             isFormattingOpen
               ? 'bg-amber-100 text-stone-900 dark:bg-amber-900/60 dark:text-amber-200'
-              : 'hover:bg-black/10 dark:hover:bg-white/10 text-stone-700 dark:text-stone-200'
+              : 'hover:bg-black/[0.06] dark:hover:bg-white/[0.08] active:bg-black/[0.12] dark:active:bg-white/[0.15] text-stone-700 dark:text-stone-200'
           }`}
           title="Toggle text formatting toolbar"
         >
@@ -360,7 +365,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
             e.stopPropagation();
             onArchiveToggle();
           }}
-          className="hidden sm:inline-flex p-2 sm:p-1.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
+          className={`hidden sm:inline-flex ${iconBtnClass}`}
           title={note.isArchived ? 'Unarchive' : 'Archive'}
         >
           {note.isArchived ? (
@@ -379,7 +384,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
             e.stopPropagation();
             onDelete();
           }}
-          className="hidden md:inline-flex p-2 sm:p-1.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10 hover:text-red-600 transition-colors"
+          className={`hidden md:inline-flex ${iconBtnClass} hover:text-red-600 dark:hover:text-red-400`}
           title="Delete note"
         >
           <Trash2 className="w-4 h-4" />
@@ -394,10 +399,10 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
             e.stopPropagation();
             onEncrypt();
           }}
-          className={`hidden sm:inline-flex p-2 sm:p-1.5 rounded-full transition-colors ${
+          className={`hidden sm:inline-flex ${
             note.isEncrypted
-              ? 'text-amber-600 dark:text-amber-400 bg-amber-500/15'
-              : 'hover:bg-black/10 dark:hover:bg-white/10'
+              ? 'w-8 h-8 flex items-center justify-center rounded-full text-amber-600 dark:text-amber-400 bg-amber-500/15 shrink-0'
+              : iconBtnClass
           }`}
           title={note.isEncrypted ? 'Note is encrypted with AES-256 (Settings)' : 'Encrypt note with AES-256 (Password protect)'}
         >
@@ -413,7 +418,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
             e.stopPropagation();
             onLinkNote();
           }}
-          className="hidden md:inline-flex p-2 sm:p-1.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
+          className={`hidden md:inline-flex ${iconBtnClass}`}
           title="Link to another note"
         >
           <Link2 className="w-4 h-4" />
@@ -428,7 +433,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
             e.stopPropagation();
             onDuplicate();
           }}
-          className="hidden md:inline-flex p-2 sm:p-1.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
+          className={`hidden md:inline-flex ${iconBtnClass}`}
           title="Clone note (Make a copy)"
         >
           <Copy className="w-4 h-4" />
@@ -443,7 +448,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
             e.stopPropagation();
             onShare();
           }}
-          className="hidden sm:inline-flex p-2 sm:p-1.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
+          className={`hidden sm:inline-flex ${iconBtnClass}`}
           title="Share note (Short link & images)"
         >
           <Share2 className="w-4 h-4" />
@@ -462,11 +467,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
             setShowLabelPicker(false);
             setShowCategoryPicker(false);
           }}
-          className={`p-2 sm:p-1.5 rounded-full transition-colors ${
-            showMenu
-              ? 'bg-black/15 dark:bg-white/20 text-stone-900 dark:text-stone-100'
-              : 'hover:bg-black/10 dark:hover:bg-white/10'
-          }`}
+          className={showMenu ? activeIconBtnClass : iconBtnClass}
           title="More options"
         >
           <MoreVertical className="w-4 h-4" />
@@ -477,7 +478,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
             onClick={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
             onTouchStart={(e) => e.stopPropagation()}
-            className="absolute right-0 bottom-full mb-2 w-56 max-w-[calc(100vw-2rem)] py-1.5 bg-white dark:bg-[#2d2e30] rounded-xl shadow-2xl border border-stone-200 dark:border-stone-700 z-50 text-sm font-medium animate-in fade-in zoom-in-95 duration-100 max-h-[70vh] overflow-y-auto"
+            className="absolute right-0 bottom-full mb-2 w-56 max-w-[calc(100vw-2rem)] py-1.5 bg-white dark:bg-[#202124] rounded-xl keep-elevation-2 border border-black/[0.08] dark:border-stone-700/60 z-50 text-[13.5px] font-normal max-h-[70vh] overflow-y-auto"
           >
             {onArchiveToggle && (
               <button
@@ -486,7 +487,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                   setShowMenu(false);
                   onArchiveToggle();
                 }}
-                className="w-full text-left px-3.5 py-2.5 sm:py-2 flex items-center gap-2.5 hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200"
+                className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
               >
                 {note.isArchived ? (
                   <>
@@ -509,7 +510,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                   setShowMenu(false);
                   onShare();
                 }}
-                className="w-full text-left px-3.5 py-2.5 sm:py-2 flex items-center gap-2.5 hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200"
+                className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
               >
                 <Share2 className="w-4 h-4 text-amber-500" />
                 Share note (Short link)
@@ -523,7 +524,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                   setShowMenu(false);
                   onDelete();
                 }}
-                className="w-full text-left px-3.5 py-2.5 sm:py-2 flex items-center gap-2.5 hover:bg-stone-100 dark:hover:bg-stone-700 text-red-600 dark:text-red-400"
+                className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-red-600 dark:text-red-400 transition-colors"
               >
                 <Trash2 className="w-4 h-4" />
                 Delete note
@@ -537,7 +538,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                   setShowMenu(false);
                   onEncrypt();
                 }}
-                className="w-full text-left px-3.5 py-2.5 sm:py-2 flex items-center gap-2.5 hover:bg-stone-100 dark:hover:bg-stone-700"
+                className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
               >
                 <Lock className="w-4 h-4 text-amber-500" />
                 {note.isEncrypted ? 'Encryption Settings (AES-256)' : 'Encrypt Note (AES-256)'}
@@ -551,7 +552,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                   setShowMenu(false);
                   onLinkNote();
                 }}
-                className="w-full text-left px-3.5 py-2.5 sm:py-2 flex items-center gap-2.5 hover:bg-stone-100 dark:hover:bg-stone-700"
+                className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
               >
                 <Link2 className="w-4 h-4" />
                 Link to note
@@ -565,7 +566,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                   setShowMenu(false);
                   setShowCategoryPicker(true);
                 }}
-                className="w-full text-left px-3.5 py-2.5 sm:py-2 flex items-center gap-2.5 hover:bg-stone-100 dark:hover:bg-stone-700"
+                className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
               >
                 <Folder className="w-4 h-4" />
                 Change category
@@ -579,7 +580,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                   setShowMenu(false);
                   setShowLabelPicker(true);
                 }}
-                className="w-full text-left px-3.5 py-2.5 sm:py-2 flex items-center gap-2.5 hover:bg-stone-100 dark:hover:bg-stone-700"
+                className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
               >
                 <Tag className="w-4 h-4" />
                 Change labels
@@ -593,7 +594,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                   setShowMenu(false);
                   onDuplicate();
                 }}
-                className="w-full text-left px-3.5 py-2.5 sm:py-2 flex items-center gap-2.5 hover:bg-stone-100 dark:hover:bg-stone-700"
+                className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
               >
                 <Copy className="w-4 h-4" />
                 Clone note (Make a copy)
@@ -607,9 +608,9 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                   setShowMenu(false);
                   onOpenVersions();
                 }}
-                className="w-full text-left px-3.5 py-2.5 sm:py-2 flex items-center justify-between hover:bg-stone-100 dark:hover:bg-stone-700"
+                className="w-full text-left px-3.5 py-2 flex items-center justify-between hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
               >
-                <div className="flex items-center gap-2.5">
+                <div className="flex items-center gap-3">
                   <History className="w-4 h-4 text-amber-500" />
                   <span>Version history</span>
                 </div>
@@ -628,7 +629,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                   setShowMenu(false);
                   onStartReading();
                 }}
-                className="w-full text-left px-3.5 py-2.5 sm:py-2 flex items-center gap-2.5 hover:bg-stone-100 dark:hover:bg-stone-700 text-emerald-600 dark:text-emerald-400"
+                className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-emerald-600 dark:text-emerald-400 transition-colors"
               >
                 <Timer className="w-4 h-4" />
                 <span>Start reading stopwatch</span>
@@ -642,7 +643,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                   setShowMenu(false);
                   onToggleChecklist();
                 }}
-                className="w-full text-left px-3.5 py-2.5 sm:py-2 flex items-center gap-2.5 hover:bg-stone-100 dark:hover:bg-stone-700"
+                className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
               >
                 <CheckSquare className="w-4 h-4" />
                 {note.isList ? 'Show plain text' : 'Show checkboxes'}
@@ -657,10 +658,10 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
             onClick={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
             onTouchStart={(e) => e.stopPropagation()}
-            className="absolute right-0 bottom-full mb-2 w-64 max-w-[calc(100vw-2rem)] p-2.5 bg-white dark:bg-[#2d2e30] rounded-xl shadow-2xl border border-stone-200 dark:border-stone-700 z-50 text-sm animate-in fade-in zoom-in-95 duration-100 max-h-[70vh] overflow-y-auto"
+            className="absolute right-0 bottom-full mb-2 w-64 max-w-[calc(100vw-2rem)] p-2.5 bg-white dark:bg-[#202124] rounded-xl keep-elevation-2 border border-black/[0.08] dark:border-stone-700/60 z-50 text-[13.5px] max-h-[70vh] overflow-y-auto"
           >
-            <div className="flex items-center justify-between pb-2 mb-2 border-b border-stone-200 dark:border-stone-700">
-              <span className="text-xs font-semibold text-stone-500 uppercase tracking-wider">Select Category</span>
+            <div className="flex items-center justify-between pb-2 mb-2 border-b border-black/[0.06] dark:border-white/[0.08]">
+              <span className="text-xs font-medium text-stone-500 uppercase tracking-wider">Select Category</span>
               <button
                 type="button"
                 onClick={() => setShowCategoryPicker(false)}
@@ -670,7 +671,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
               </button>
             </div>
 
-            <div className="max-h-56 overflow-y-auto space-y-1 mb-2">
+            <div className="max-h-56 overflow-y-auto space-y-0.5 mb-2">
               {/* None Option */}
               <button
                 type="button"
@@ -678,10 +679,10 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                   onSelectCategory?.(null);
                   setShowCategoryPicker(false);
                 }}
-                className={`w-full text-left flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-colors ${
+                className={`w-full text-left flex items-center justify-between px-2.5 py-2 rounded-lg text-xs transition-colors ${
                   !note.category
                     ? 'bg-amber-100/70 text-stone-900 dark:bg-amber-950/70 dark:text-amber-200 font-semibold'
-                    : 'hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-600 dark:text-stone-400'
+                    : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-600 dark:text-stone-400'
                 }`}
               >
                 <span>None (No category)</span>
@@ -698,10 +699,10 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                       onSelectCategory?.(cat.name);
                       setShowCategoryPicker(false);
                     }}
-                    className={`w-full text-left flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-colors ${
+                    className={`w-full text-left flex items-center justify-between px-2.5 py-2 rounded-lg text-xs transition-colors ${
                       isSelected
                         ? 'bg-amber-100/70 text-stone-900 dark:bg-amber-950/70 dark:text-amber-200 font-semibold'
-                        : 'hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200'
+                        : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200'
                     }`}
                   >
                     <div className="flex items-center gap-2">
@@ -718,7 +719,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
               })}
             </div>
 
-            <div className="pt-2 border-t border-stone-200 dark:border-stone-700">
+            <div className="pt-2 border-t border-black/[0.06] dark:border-white/[0.08]">
               <button
                 type="button"
                 onClick={() => {
@@ -739,10 +740,10 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
             onClick={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
             onTouchStart={(e) => e.stopPropagation()}
-            className="absolute right-0 bottom-full mb-2 w-64 max-w-[calc(100vw-2rem)] p-2.5 bg-white dark:bg-[#2d2e30] rounded-xl shadow-2xl border border-stone-200 dark:border-stone-700 z-50 text-sm animate-in fade-in zoom-in-95 duration-100 max-h-[70vh] overflow-y-auto"
+            className="absolute right-0 bottom-full mb-2 w-64 max-w-[calc(100vw-2rem)] p-2.5 bg-white dark:bg-[#202124] rounded-xl keep-elevation-2 border border-black/[0.08] dark:border-stone-700/60 z-50 text-[13.5px] max-h-[70vh] overflow-y-auto"
           >
-            <div className="flex items-center justify-between pb-2 mb-2 border-b border-stone-200 dark:border-stone-700">
-              <span className="text-xs font-semibold text-stone-500 uppercase tracking-wider">Label note</span>
+            <div className="flex items-center justify-between pb-2 mb-2 border-b border-black/[0.06] dark:border-white/[0.08]">
+              <span className="text-xs font-medium text-stone-500 uppercase tracking-wider">Label note</span>
               <button
                 type="button"
                 onClick={() => setShowLabelPicker(false)}
@@ -752,13 +753,13 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
               </button>
             </div>
 
-            <div className="max-h-48 overflow-y-auto space-y-1 mb-2">
+            <div className="max-h-48 overflow-y-auto space-y-0.5 mb-2">
               {labels.map((lbl) => {
                 const isSelected = note.labels?.includes(lbl.name);
                 return (
                   <label
                     key={lbl.id}
-                    className="flex items-center gap-2.5 px-2 py-1.5 hover:bg-stone-100 dark:hover:bg-stone-700 rounded-lg cursor-pointer"
+                    className="flex items-center gap-2.5 px-2.5 py-1.5 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] rounded-lg cursor-pointer transition-colors text-stone-800 dark:text-stone-200"
                   >
                     <input
                       type="checkbox"
@@ -772,7 +773,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
               })}
             </div>
 
-            <div className="flex items-center gap-1.5 pt-2 border-t border-stone-200 dark:border-stone-700">
+            <div className="flex items-center gap-1.5 pt-2 border-t border-black/[0.06] dark:border-white/[0.08]">
               <input
                 type="text"
                 placeholder="Create label..."
@@ -800,7 +801,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
         (showMenu || showCategoryPicker || showLabelPicker || showColorPicker || showReminderPicker) &&
         createPortal(
           <div
-            className="fixed inset-0 z-[1000] bg-black/60 backdrop-blur-xs flex flex-col justify-end animate-in fade-in duration-200"
+            className="keep-backdrop-anim fixed inset-0 z-[1000] bg-black/50 backdrop-blur-[2px] flex flex-col justify-end"
             onClick={() => {
               setShowMenu(false);
               setShowCategoryPicker(false);
@@ -810,31 +811,31 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
             }}
           >
             <div
-              className="w-full max-h-[85vh] bg-white dark:bg-[#202124] rounded-t-3xl shadow-2xl border-t border-stone-200/80 dark:border-stone-800 flex flex-col overflow-hidden animate-in slide-in-from-bottom duration-200 pb-[max(1.5rem,env(safe-area-inset-bottom))]"
+              className="keep-sheet-anim keep-sheet-shadow w-full max-h-[85vh] bg-white dark:bg-[#202124] rounded-t-[28px] border-t border-black/[0.06] dark:border-white/[0.08] flex flex-col overflow-hidden pb-[max(1.25rem,env(safe-area-inset-bottom))]"
               onClick={(e) => e.stopPropagation()}
             >
               {/* Drag handle pill */}
-              <div className="w-10 h-1 bg-stone-300 dark:bg-stone-600 rounded-full mx-auto mt-3 mb-1 shrink-0" />
+              <div className="w-8 h-1 bg-stone-300 dark:bg-stone-600 rounded-full mx-auto mt-2.5 mb-1.5 shrink-0" />
 
               {/* 1. Mobile 3-Dots Menu */}
               {showMenu && (
                 <>
-                  <div className="px-5 py-3 flex items-center justify-between border-b border-stone-100 dark:border-stone-800/80 shrink-0">
-                    <span className="font-bold text-base text-stone-900 dark:text-stone-100">
+                  <div className="px-6 py-3.5 flex items-center justify-between border-b border-black/[0.06] dark:border-white/[0.08] shrink-0">
+                    <span className="text-[15px] font-medium text-stone-900 dark:text-stone-100 tracking-[0.1px]">
                       Note Options
                     </span>
                     <button
                       type="button"
                       onClick={() => setShowMenu(false)}
-                      className="p-1.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 transition-colors"
+                      className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-black/[0.06] dark:hover:bg-white/[0.08] text-stone-500 hover:text-stone-800 dark:hover:text-stone-200 transition-colors"
                       title="Close"
                     >
-                      <X className="w-5 h-5" />
+                      <X className="w-4 h-4" />
                     </button>
                   </div>
 
-                  <div className="overflow-y-auto px-3 py-2 space-y-1 divide-y divide-stone-100/60 dark:divide-stone-800/40">
-                    <div className="space-y-1 pb-1">
+                  <div className="overflow-y-auto py-1.5">
+                    <div>
                       {onArchiveToggle && (
                         <button
                           type="button"
@@ -842,7 +843,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                             setShowMenu(false);
                             onArchiveToggle();
                           }}
-                          className="w-full text-left px-4 py-3 rounded-2xl flex items-center gap-3.5 hover:bg-stone-100 dark:hover:bg-stone-800 active:bg-stone-200 dark:active:bg-stone-700 text-stone-800 dark:text-stone-200 font-medium text-sm transition-colors"
+                          className="w-full text-left px-6 py-3.5 flex items-center gap-4 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] active:bg-black/[0.08] dark:active:bg-white/[0.1] text-stone-800 dark:text-stone-200 text-[14.5px] font-normal tracking-[0.15px] transition-colors"
                         >
                           {note.isArchived ? (
                             <>
@@ -865,7 +866,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                             setShowMenu(false);
                             onShare();
                           }}
-                          className="w-full text-left px-4 py-3 rounded-2xl flex items-center gap-3.5 hover:bg-stone-100 dark:hover:bg-stone-800 active:bg-stone-200 dark:active:bg-stone-700 text-stone-800 dark:text-stone-200 font-medium text-sm transition-colors"
+                          className="w-full text-left px-6 py-3.5 flex items-center gap-4 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] active:bg-black/[0.08] dark:active:bg-white/[0.1] text-stone-800 dark:text-stone-200 text-[14.5px] font-normal tracking-[0.15px] transition-colors"
                         >
                           <Share2 className="w-5 h-5 text-amber-500 shrink-0" />
                           <span>Share note (Short link & images)</span>
@@ -879,7 +880,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                             setShowMenu(false);
                             onDuplicate();
                           }}
-                          className="w-full text-left px-4 py-3 rounded-2xl flex items-center gap-3.5 hover:bg-stone-100 dark:hover:bg-stone-800 active:bg-stone-200 dark:active:bg-stone-700 text-stone-800 dark:text-stone-200 font-medium text-sm transition-colors"
+                          className="w-full text-left px-6 py-3.5 flex items-center gap-4 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] active:bg-black/[0.08] dark:active:bg-white/[0.1] text-stone-800 dark:text-stone-200 text-[14.5px] font-normal tracking-[0.15px] transition-colors"
                         >
                           <Copy className="w-5 h-5 text-stone-500 shrink-0" />
                           <span>Make a copy</span>
@@ -887,7 +888,9 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                       )}
                     </div>
 
-                    <div className="space-y-1 py-1">
+                    <div className="my-1 border-t border-black/[0.06] dark:border-white/[0.08]" />
+
+                    <div>
                       {onSelectCategory && (
                         <button
                           type="button"
@@ -895,9 +898,9 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                             setShowMenu(false);
                             setShowCategoryPicker(true);
                           }}
-                          className="w-full text-left px-4 py-3 rounded-2xl flex items-center justify-between hover:bg-stone-100 dark:hover:bg-stone-800 active:bg-stone-200 dark:active:bg-stone-700 text-stone-800 dark:text-stone-200 font-medium text-sm transition-colors"
+                          className="w-full text-left px-6 py-3.5 flex items-center justify-between hover:bg-black/[0.04] dark:hover:bg-white/[0.06] active:bg-black/[0.08] dark:active:bg-white/[0.1] text-stone-800 dark:text-stone-200 text-[14.5px] font-normal tracking-[0.15px] transition-colors"
                         >
-                          <div className="flex items-center gap-3.5 min-w-0">
+                          <div className="flex items-center gap-4 min-w-0">
                             <Folder className="w-5 h-5 text-blue-500 shrink-0" />
                             <span className="truncate">
                               {note.category ? `Category: ${note.category}` : 'Change category'}
@@ -914,9 +917,9 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                             setShowMenu(false);
                             setShowLabelPicker(true);
                           }}
-                          className="w-full text-left px-4 py-3 rounded-2xl flex items-center justify-between hover:bg-stone-100 dark:hover:bg-stone-800 active:bg-stone-200 dark:active:bg-stone-700 text-stone-800 dark:text-stone-200 font-medium text-sm transition-colors"
+                          className="w-full text-left px-6 py-3.5 flex items-center justify-between hover:bg-black/[0.04] dark:hover:bg-white/[0.06] active:bg-black/[0.08] dark:active:bg-white/[0.1] text-stone-800 dark:text-stone-200 text-[14.5px] font-normal tracking-[0.15px] transition-colors"
                         >
-                          <div className="flex items-center gap-3.5 min-w-0">
+                          <div className="flex items-center gap-4 min-w-0">
                             <Tag className="w-5 h-5 text-emerald-500 shrink-0" />
                             <span className="truncate">
                               {note.labels && note.labels.length > 0
@@ -935,7 +938,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                             setShowMenu(false);
                             onToggleChecklist();
                           }}
-                          className="w-full text-left px-4 py-3 rounded-2xl flex items-center gap-3.5 hover:bg-stone-100 dark:hover:bg-stone-800 active:bg-stone-200 dark:active:bg-stone-700 text-stone-800 dark:text-stone-200 font-medium text-sm transition-colors"
+                          className="w-full text-left px-6 py-3.5 flex items-center gap-4 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] active:bg-black/[0.08] dark:active:bg-white/[0.1] text-stone-800 dark:text-stone-200 text-[14.5px] font-normal tracking-[0.15px] transition-colors"
                         >
                           <CheckSquare className="w-5 h-5 text-stone-500 shrink-0" />
                           <span>{note.isList ? 'Show plain text' : 'Show checkboxes'}</span>
@@ -949,7 +952,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                             setShowMenu(false);
                             onLinkNote();
                           }}
-                          className="w-full text-left px-4 py-3 rounded-2xl flex items-center gap-3.5 hover:bg-stone-100 dark:hover:bg-stone-800 active:bg-stone-200 dark:active:bg-stone-700 text-stone-800 dark:text-stone-200 font-medium text-sm transition-colors"
+                          className="w-full text-left px-6 py-3.5 flex items-center gap-4 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] active:bg-black/[0.08] dark:active:bg-white/[0.1] text-stone-800 dark:text-stone-200 text-[14.5px] font-normal tracking-[0.15px] transition-colors"
                         >
                           <Link2 className="w-5 h-5 text-purple-500 shrink-0" />
                           <span>Link to note</span>
@@ -957,7 +960,9 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                       )}
                     </div>
 
-                    <div className="space-y-1 py-1">
+                    <div className="my-1 border-t border-black/[0.06] dark:border-white/[0.08]" />
+
+                    <div>
                       {onEncrypt && (
                         <button
                           type="button"
@@ -965,7 +970,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                             setShowMenu(false);
                             onEncrypt();
                           }}
-                          className="w-full text-left px-4 py-3 rounded-2xl flex items-center gap-3.5 hover:bg-stone-100 dark:hover:bg-stone-800 active:bg-stone-200 dark:active:bg-stone-700 text-stone-800 dark:text-stone-200 font-medium text-sm transition-colors"
+                          className="w-full text-left px-6 py-3.5 flex items-center gap-4 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] active:bg-black/[0.08] dark:active:bg-white/[0.1] text-stone-800 dark:text-stone-200 text-[14.5px] font-normal tracking-[0.15px] transition-colors"
                         >
                           <Lock className="w-5 h-5 text-amber-500 shrink-0" />
                           <span>
@@ -983,9 +988,9 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                             setShowMenu(false);
                             onOpenVersions();
                           }}
-                          className="w-full text-left px-4 py-3 rounded-2xl flex items-center justify-between hover:bg-stone-100 dark:hover:bg-stone-800 active:bg-stone-200 dark:active:bg-stone-700 text-stone-800 dark:text-stone-200 font-medium text-sm transition-colors"
+                          className="w-full text-left px-6 py-3.5 flex items-center justify-between hover:bg-black/[0.04] dark:hover:bg-white/[0.06] active:bg-black/[0.08] dark:active:bg-white/[0.1] text-stone-800 dark:text-stone-200 text-[14.5px] font-normal tracking-[0.15px] transition-colors"
                         >
-                          <div className="flex items-center gap-3.5">
+                          <div className="flex items-center gap-4">
                             <History className="w-5 h-5 text-amber-500 shrink-0" />
                             <span>Version history</span>
                           </div>
@@ -1004,7 +1009,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                             setShowMenu(false);
                             onStartReading();
                           }}
-                          className="w-full text-left px-4 py-3 rounded-2xl flex items-center gap-3.5 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 active:bg-emerald-100 text-emerald-700 dark:text-emerald-300 font-medium text-sm transition-colors"
+                          className="w-full text-left px-6 py-3.5 flex items-center gap-4 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] active:bg-black/[0.08] dark:active:bg-white/[0.1] text-emerald-600 dark:text-emerald-400 text-[14.5px] font-normal tracking-[0.15px] transition-colors"
                         >
                           <Timer className="w-5 h-5 shrink-0" />
                           <span>Start reading stopwatch</span>
@@ -1013,19 +1018,20 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                     </div>
 
                     {onDelete && (
-                      <div className="pt-1">
+                      <>
+                        <div className="my-1 border-t border-black/[0.06] dark:border-white/[0.08]" />
                         <button
                           type="button"
                           onClick={() => {
                             setShowMenu(false);
                             onDelete();
                           }}
-                          className="w-full text-left px-4 py-3 rounded-2xl flex items-center gap-3.5 hover:bg-red-50 dark:hover:bg-red-950/40 active:bg-red-100 text-red-600 dark:text-red-400 font-medium text-sm transition-colors"
+                          className="w-full text-left px-6 py-3.5 flex items-center gap-4 hover:bg-red-500/10 active:bg-red-500/15 text-red-600 dark:text-red-400 text-[14.5px] font-normal tracking-[0.15px] transition-colors"
                         >
                           <Trash2 className="w-5 h-5 shrink-0" />
                           <span>Delete note</span>
                         </button>
-                      </div>
+                      </>
                     )}
                   </div>
                 </>
@@ -1034,41 +1040,41 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
               {/* 2. Mobile Category Picker */}
               {showCategoryPicker && (
                 <>
-                  <div className="px-4 py-3 flex items-center justify-between border-b border-stone-100 dark:border-stone-800/80 shrink-0">
+                  <div className="px-4 py-3 flex items-center justify-between border-b border-black/[0.06] dark:border-white/[0.08] shrink-0">
                     <button
                       type="button"
                       onClick={() => {
                         setShowCategoryPicker(false);
                         setShowMenu(true);
                       }}
-                      className="inline-flex items-center gap-1 text-xs font-semibold text-stone-600 dark:text-stone-300 hover:text-stone-900 py-1 px-2 rounded-lg"
+                      className="inline-flex items-center gap-1 text-xs font-medium text-stone-600 dark:text-stone-300 hover:text-stone-900 py-1.5 px-2.5 rounded-full hover:bg-black/[0.05] dark:hover:bg-white/[0.08] transition-colors"
                     >
                       <ChevronLeft className="w-4 h-4" />
                       <span>Back</span>
                     </button>
-                    <span className="font-bold text-sm text-stone-900 dark:text-stone-100">
+                    <span className="text-[15px] font-medium text-stone-900 dark:text-stone-100 tracking-[0.1px]">
                       Select Category
                     </span>
                     <button
                       type="button"
                       onClick={() => setShowCategoryPicker(false)}
-                      className="text-xs font-bold text-blue-600 dark:text-blue-400 px-3 py-1 rounded-lg"
+                      className="text-xs font-medium text-blue-600 dark:text-blue-400 px-3 py-1.5 rounded-full hover:bg-blue-50 dark:hover:bg-blue-950/40 transition-colors"
                     >
                       Done
                     </button>
                   </div>
 
-                  <div className="overflow-y-auto px-3 py-2 space-y-1">
+                  <div className="overflow-y-auto py-1">
                     <button
                       type="button"
                       onClick={() => {
                         onSelectCategory?.(null);
                         setShowCategoryPicker(false);
                       }}
-                      className={`w-full text-left flex items-center justify-between px-4 py-3.5 rounded-2xl text-sm font-medium transition-colors ${
+                      className={`w-full text-left flex items-center justify-between px-6 py-3.5 text-[14.5px] font-normal tracking-[0.15px] transition-colors ${
                         !note.category
-                          ? 'bg-amber-100/70 text-stone-900 dark:bg-amber-950/70 dark:text-amber-200 font-semibold'
-                          : 'hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-700 dark:text-stone-300'
+                          ? 'bg-amber-100/70 text-stone-900 dark:bg-amber-950/70 dark:text-amber-200 font-medium'
+                          : 'hover:bg-black/[0.04] dark:hover:bg-white/[0.06] text-stone-800 dark:text-stone-200'
                       }`}
                     >
                       <span>None (No category)</span>
@@ -1085,10 +1091,10 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                             onSelectCategory?.(cat.name);
                             setShowCategoryPicker(false);
                           }}
-                          className={`w-full text-left flex items-center justify-between px-4 py-3.5 rounded-2xl text-sm font-medium transition-colors ${
+                          className={`w-full text-left flex items-center justify-between px-6 py-3.5 text-[14.5px] font-normal tracking-[0.15px] transition-colors ${
                             isSelected
-                              ? 'bg-amber-100/70 text-stone-900 dark:bg-amber-950/70 dark:text-amber-200 font-semibold'
-                              : 'hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-700 dark:text-stone-300'
+                              ? 'bg-amber-100/70 text-stone-900 dark:bg-amber-950/70 dark:text-amber-200 font-medium'
+                              : 'hover:bg-black/[0.04] dark:hover:bg-white/[0.06] text-stone-800 dark:text-stone-200'
                           }`}
                         >
                           <div className="flex items-center gap-3">
@@ -1105,14 +1111,14 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                     })}
                   </div>
 
-                  <div className="p-3 border-t border-stone-100 dark:border-stone-800 shrink-0">
+                  <div className="p-4 border-t border-black/[0.06] dark:border-white/[0.08] shrink-0">
                     <button
                       type="button"
                       onClick={() => {
                         setShowCategoryPicker(false);
                         setIsCategoryModalOpen(true);
                       }}
-                      className="w-full py-2.5 text-center text-xs font-semibold text-amber-600 dark:text-amber-400 bg-amber-500/10 hover:bg-amber-500/20 rounded-xl transition-colors"
+                      className="w-full py-2.5 text-center text-xs font-medium text-amber-700 dark:text-amber-400 bg-amber-500/10 hover:bg-amber-500/20 rounded-full transition-colors"
                     >
                       + Manage Categories
                     </button>
@@ -1123,31 +1129,31 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
               {/* 3. Mobile Labels Picker */}
               {showLabelPicker && (
                 <>
-                  <div className="px-4 py-3 flex items-center justify-between border-b border-stone-100 dark:border-stone-800/80 shrink-0">
+                  <div className="px-4 py-3 flex items-center justify-between border-b border-black/[0.06] dark:border-white/[0.08] shrink-0">
                     <button
                       type="button"
                       onClick={() => {
                         setShowLabelPicker(false);
                         setShowMenu(true);
                       }}
-                      className="inline-flex items-center gap-1 text-xs font-semibold text-stone-600 dark:text-stone-300 hover:text-stone-900 py-1 px-2 rounded-lg"
+                      className="inline-flex items-center gap-1 text-xs font-medium text-stone-600 dark:text-stone-300 hover:text-stone-900 py-1.5 px-2.5 rounded-full hover:bg-black/[0.05] dark:hover:bg-white/[0.08] transition-colors"
                     >
                       <ChevronLeft className="w-4 h-4" />
                       <span>Back</span>
                     </button>
-                    <span className="font-bold text-sm text-stone-900 dark:text-stone-100">
+                    <span className="text-[15px] font-medium text-stone-900 dark:text-stone-100 tracking-[0.1px]">
                       Label Note
                     </span>
                     <button
                       type="button"
                       onClick={() => setShowLabelPicker(false)}
-                      className="text-xs font-bold text-blue-600 dark:text-blue-400 px-3 py-1 rounded-lg"
+                      className="text-xs font-medium text-blue-600 dark:text-blue-400 px-3 py-1.5 rounded-full hover:bg-blue-50 dark:hover:bg-blue-950/40 transition-colors"
                     >
                       Done
                     </button>
                   </div>
 
-                  <div className="p-3 border-b border-stone-100 dark:border-stone-800 shrink-0">
+                  <div className="p-3 border-b border-black/[0.06] dark:border-white/[0.08] shrink-0">
                     <div className="flex items-center gap-2">
                       <input
                         type="text"
@@ -1162,7 +1168,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                             setNewLabelText('');
                           }
                         }}
-                        className="flex-1 text-xs px-3 py-2.5 rounded-xl bg-stone-100 dark:bg-stone-800 border-none outline-none"
+                        className="flex-1 text-xs px-3.5 py-2.5 rounded-full bg-stone-100 dark:bg-stone-800 border-none outline-none text-stone-800 dark:text-stone-200"
                       />
                       <button
                         type="button"
@@ -1174,14 +1180,14 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                           }
                         }}
                         disabled={!newLabelText.trim()}
-                        className="px-3.5 py-2.5 bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 text-xs font-semibold rounded-xl disabled:opacity-40"
+                        className="px-4 py-2.5 bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 text-xs font-medium rounded-full disabled:opacity-40 transition-colors"
                       >
                         + Add
                       </button>
                     </div>
                   </div>
 
-                  <div className="overflow-y-auto px-3 py-2 space-y-1">
+                  <div className="overflow-y-auto py-1">
                     {labels.length === 0 ? (
                       <div className="text-center py-6 text-stone-400 text-xs">
                         No labels created yet.
@@ -1192,11 +1198,11 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                         return (
                           <label
                             key={lbl.id}
-                            className="flex items-center justify-between px-4 py-3.5 rounded-2xl hover:bg-stone-100 dark:hover:bg-stone-800 active:bg-stone-200 dark:active:bg-stone-700 cursor-pointer transition-colors"
+                            className="flex items-center justify-between px-6 py-3.5 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] active:bg-black/[0.08] dark:active:bg-white/[0.1] cursor-pointer transition-colors"
                           >
                             <div className="flex items-center gap-3">
-                              <span className="text-stone-400 font-semibold">#</span>
-                              <span className="text-sm font-medium text-stone-800 dark:text-stone-200">
+                              <span className="text-stone-400 font-medium">#</span>
+                              <span className="text-[14.5px] font-normal text-stone-800 dark:text-stone-200 tracking-[0.15px]">
                                 {lbl.name}
                               </span>
                             </div>
@@ -1217,22 +1223,22 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
               {/* 4. Mobile Color & Theme Picker */}
               {showColorPicker && (
                 <>
-                  <div className="px-5 py-3 flex items-center justify-between border-b border-stone-100 dark:border-stone-800/80 shrink-0">
-                    <span className="font-bold text-base text-stone-900 dark:text-stone-100">
+                  <div className="px-6 py-3.5 flex items-center justify-between border-b border-black/[0.06] dark:border-white/[0.08] shrink-0">
+                    <span className="text-[15px] font-medium text-stone-900 dark:text-stone-100 tracking-[0.1px]">
                       Background & Themes
                     </span>
                     <button
                       type="button"
                       onClick={() => setShowColorPicker(false)}
-                      className="text-xs font-bold text-blue-600 dark:text-blue-400 px-3 py-1 rounded-lg"
+                      className="text-xs font-medium text-blue-600 dark:text-blue-400 px-3 py-1.5 rounded-full hover:bg-blue-50 dark:hover:bg-blue-950/40 transition-colors"
                     >
                       Done
                     </button>
                   </div>
 
-                  <div className="overflow-y-auto px-4 py-3 space-y-4">
+                  <div className="overflow-y-auto px-6 py-4 space-y-4">
                     <div>
-                      <p className="text-xs font-semibold text-stone-400 uppercase tracking-wider mb-2.5">
+                      <p className="text-xs font-medium text-stone-500 uppercase tracking-wider mb-3">
                         Colors
                       </p>
                       <div className="grid grid-cols-6 gap-3">
@@ -1242,8 +1248,8 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                             type="button"
                             title={c.name}
                             onClick={() => onColorChange(c.id)}
-                            className={`w-10 h-10 rounded-full border border-stone-300 dark:border-stone-600 transition-transform active:scale-90 flex items-center justify-center mx-auto ${
-                              note.color === c.id ? 'ring-2 ring-blue-500 ring-offset-2' : ''
+                            className={`w-10 h-10 rounded-full border border-black/15 dark:border-white/20 transition-transform active:scale-90 flex items-center justify-center mx-auto ${
+                              note.color === c.id ? 'ring-2 ring-blue-500 ring-offset-2 dark:ring-offset-[#202124]' : ''
                             }`}
                             style={{ backgroundColor: c.swatch }}
                           >
@@ -1256,8 +1262,8 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                     </div>
 
                     {onThemeChange && (
-                      <div className="pt-2 border-t border-stone-100 dark:border-stone-800">
-                        <p className="text-xs font-semibold text-stone-400 uppercase tracking-wider mb-2.5">
+                      <div className="pt-3 border-t border-black/[0.06] dark:border-white/[0.08]">
+                        <p className="text-xs font-medium text-stone-500 uppercase tracking-wider mb-3">
                           Themes
                         </p>
                         <div className="grid grid-cols-5 gap-2">
@@ -1267,10 +1273,10 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                               type="button"
                               title={t.name}
                               onClick={() => onThemeChange(t.id)}
-                              className={`h-12 flex flex-col items-center justify-center text-xl rounded-xl border border-stone-200 dark:border-stone-700 active:scale-95 transition-all ${
+                              className={`h-12 flex flex-col items-center justify-center text-xl rounded-xl border border-black/[0.08] dark:border-white/[0.1] active:scale-95 transition-all ${
                                 note.theme === t.id
                                   ? 'ring-2 ring-blue-500 bg-blue-50 dark:bg-blue-950/40'
-                                  : 'hover:bg-stone-50 dark:hover:bg-stone-800'
+                                  : 'hover:bg-black/[0.03] dark:hover:bg-white/[0.05]'
                               }`}
                             >
                               <span>{t.icon}</span>
@@ -1286,20 +1292,20 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
               {/* 5. Mobile Reminder Picker */}
               {showReminderPicker && (
                 <>
-                  <div className="px-5 py-3 flex items-center justify-between border-b border-stone-100 dark:border-stone-800/80 shrink-0">
-                    <span className="font-bold text-base text-stone-900 dark:text-stone-100">
+                  <div className="px-6 py-3.5 flex items-center justify-between border-b border-black/[0.06] dark:border-white/[0.08] shrink-0">
+                    <span className="text-[15px] font-medium text-stone-900 dark:text-stone-100 tracking-[0.1px]">
                       Set Reminder
                     </span>
                     <button
                       type="button"
                       onClick={() => setShowReminderPicker(false)}
-                      className="text-xs font-bold text-blue-600 dark:text-blue-400 px-3 py-1 rounded-lg"
+                      className="text-xs font-medium text-blue-600 dark:text-blue-400 px-3 py-1.5 rounded-full hover:bg-blue-50 dark:hover:bg-blue-950/40 transition-colors"
                     >
                       Done
                     </button>
                   </div>
 
-                  <div className="overflow-y-auto px-3 py-2 space-y-1">
+                  <div className="overflow-y-auto py-1">
                     <button
                       type="button"
                       onClick={() => {
@@ -1308,7 +1314,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                         onAddReminder?.(todayEve.toISOString());
                         setShowReminderPicker(false);
                       }}
-                      className="w-full text-left px-4 py-3.5 rounded-2xl flex items-center justify-between hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-800 dark:text-stone-200 text-sm font-medium transition-colors"
+                      className="w-full text-left px-6 py-3.5 flex items-center justify-between hover:bg-black/[0.04] dark:hover:bg-white/[0.06] text-stone-800 dark:text-stone-200 text-[14.5px] font-normal tracking-[0.15px] transition-colors"
                     >
                       <span>Later today</span>
                       <span className="text-xs text-stone-400">8:00 PM</span>
@@ -1323,7 +1329,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                         onAddReminder?.(tmrw.toISOString());
                         setShowReminderPicker(false);
                       }}
-                      className="w-full text-left px-4 py-3.5 rounded-2xl flex items-center justify-between hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-800 dark:text-stone-200 text-sm font-medium transition-colors"
+                      className="w-full text-left px-6 py-3.5 flex items-center justify-between hover:bg-black/[0.04] dark:hover:bg-white/[0.06] text-stone-800 dark:text-stone-200 text-[14.5px] font-normal tracking-[0.15px] transition-colors"
                     >
                       <span>Tomorrow</span>
                       <span className="text-xs text-stone-400">8:00 AM</span>
@@ -1338,14 +1344,14 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                         onAddReminder?.(nextWeek.toISOString());
                         setShowReminderPicker(false);
                       }}
-                      className="w-full text-left px-4 py-3.5 rounded-2xl flex items-center justify-between hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-800 dark:text-stone-200 text-sm font-medium transition-colors"
+                      className="w-full text-left px-6 py-3.5 flex items-center justify-between hover:bg-black/[0.04] dark:hover:bg-white/[0.06] text-stone-800 dark:text-stone-200 text-[14.5px] font-normal tracking-[0.15px] transition-colors"
                     >
                       <span>Next week</span>
                       <span className="text-xs text-stone-400">8:00 AM</span>
                     </button>
 
-                    <div className="pt-3 pb-2 px-2 border-t border-stone-100 dark:border-stone-800">
-                      <span className="text-xs font-semibold text-stone-400 uppercase tracking-wider block mb-1.5">
+                    <div className="pt-3 pb-2 px-6 border-t border-black/[0.06] dark:border-white/[0.08]">
+                      <span className="text-xs font-medium text-stone-500 uppercase tracking-wider block mb-2">
                         Pick date & time
                       </span>
                       <input
@@ -1356,7 +1362,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                             setShowReminderPicker(false);
                           }
                         }}
-                        className="w-full text-sm p-3 rounded-xl bg-stone-100 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 outline-none"
+                        className="w-full text-sm p-3 rounded-xl bg-stone-100 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 outline-none text-stone-800 dark:text-stone-200"
                       />
                     </div>
                   </div>
