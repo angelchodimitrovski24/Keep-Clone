@@ -101,12 +101,18 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
   }, []);
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const sheetRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Close menus when clicking outside
   useEffect(() => {
     const handleOutsideClick = (e: MouseEvent | TouchEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      // If click/touch is inside the mobile bottom sheet portal, ignore
+      if (sheetRef.current && sheetRef.current.contains(target)) {
+        return;
+      }
+      if (containerRef.current && !containerRef.current.contains(target)) {
         setShowMenu(false);
         setShowColorPicker(false);
         setShowReminderPicker(false);
@@ -811,8 +817,11 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
             }}
           >
             <div
+              ref={sheetRef}
               className="keep-sheet-anim keep-sheet-shadow w-full max-h-[85vh] bg-white dark:bg-[#202124] rounded-t-[28px] border-t border-black/[0.06] dark:border-white/[0.08] flex flex-col overflow-hidden pb-[max(1.25rem,env(safe-area-inset-bottom))]"
               onClick={(e) => e.stopPropagation()}
+              onTouchStart={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
             >
               {/* Drag handle pill */}
               <div className="w-8 h-1 bg-stone-300 dark:bg-stone-600 rounded-full mx-auto mt-2.5 mb-1.5 shrink-0" />
@@ -894,7 +903,8 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                       {onSelectCategory && (
                         <button
                           type="button"
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.stopPropagation();
                             setShowMenu(false);
                             setShowCategoryPicker(true);
                           }}
@@ -913,7 +923,8 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                       {onToggleLabel && (
                         <button
                           type="button"
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.stopPropagation();
                             setShowMenu(false);
                             setShowLabelPicker(true);
                           }}
@@ -1043,7 +1054,8 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                   <div className="px-4 py-3 flex items-center justify-between border-b border-black/[0.06] dark:border-white/[0.08] shrink-0">
                     <button
                       type="button"
-                      onClick={() => {
+                      onClick={(e) => {
+                        e.stopPropagation();
                         setShowCategoryPicker(false);
                         setShowMenu(true);
                       }}
@@ -1057,7 +1069,10 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                     </span>
                     <button
                       type="button"
-                      onClick={() => setShowCategoryPicker(false)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowCategoryPicker(false);
+                      }}
                       className="text-xs font-medium text-blue-600 dark:text-blue-400 px-3 py-1.5 rounded-full hover:bg-blue-50 dark:hover:bg-blue-950/40 transition-colors"
                     >
                       Done
@@ -1067,7 +1082,8 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                   <div className="overflow-y-auto py-1">
                     <button
                       type="button"
-                      onClick={() => {
+                      onClick={(e) => {
+                        e.stopPropagation();
                         onSelectCategory?.(null);
                         setShowCategoryPicker(false);
                       }}
@@ -1087,7 +1103,8 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                         <button
                           key={cat.id}
                           type="button"
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.stopPropagation();
                             onSelectCategory?.(cat.name);
                             setShowCategoryPicker(false);
                           }}
@@ -1114,7 +1131,8 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                   <div className="p-4 border-t border-black/[0.06] dark:border-white/[0.08] shrink-0">
                     <button
                       type="button"
-                      onClick={() => {
+                      onClick={(e) => {
+                        e.stopPropagation();
                         setShowCategoryPicker(false);
                         setIsCategoryModalOpen(true);
                       }}
@@ -1132,7 +1150,8 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                   <div className="px-4 py-3 flex items-center justify-between border-b border-black/[0.06] dark:border-white/[0.08] shrink-0">
                     <button
                       type="button"
-                      onClick={() => {
+                      onClick={(e) => {
+                        e.stopPropagation();
                         setShowLabelPicker(false);
                         setShowMenu(true);
                       }}
@@ -1146,7 +1165,10 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                     </span>
                     <button
                       type="button"
-                      onClick={() => setShowLabelPicker(false)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowLabelPicker(false);
+                      }}
                       className="text-xs font-medium text-blue-600 dark:text-blue-400 px-3 py-1.5 rounded-full hover:bg-blue-50 dark:hover:bg-blue-950/40 transition-colors"
                     >
                       Done
@@ -1172,7 +1194,8 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                       />
                       <button
                         type="button"
-                        onClick={async () => {
+                        onClick={async (e) => {
+                          e.stopPropagation();
                           if (newLabelText.trim()) {
                             await createLabel(newLabelText.trim());
                             onToggleLabel?.(newLabelText.trim());
@@ -1196,9 +1219,13 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                       labels.map((lbl) => {
                         const isSelected = note.labels?.includes(lbl.name);
                         return (
-                          <label
+                          <div
                             key={lbl.id}
-                            className="flex items-center justify-between px-6 py-3.5 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] active:bg-black/[0.08] dark:active:bg-white/[0.1] cursor-pointer transition-colors"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onToggleLabel?.(lbl.name);
+                            }}
+                            className="flex items-center justify-between px-6 py-3.5 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] active:bg-black/[0.08] dark:active:bg-white/[0.1] cursor-pointer transition-colors select-none"
                           >
                             <div className="flex items-center gap-3">
                               <span className="text-stone-400 font-medium">#</span>
@@ -1209,10 +1236,10 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                             <input
                               type="checkbox"
                               checked={isSelected}
-                              onChange={() => onToggleLabel?.(lbl.name)}
-                              className="w-4 h-4 rounded text-blue-600 focus:ring-0 cursor-pointer accent-blue-600"
+                              readOnly
+                              className="w-4 h-4 rounded text-blue-600 focus:ring-0 pointer-events-none accent-blue-600"
                             />
-                          </label>
+                          </div>
                         );
                       })
                     )}

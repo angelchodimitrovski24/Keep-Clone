@@ -589,6 +589,21 @@ export const NoteModal: React.FC<NoteModalProps> = ({
     [note, updateNote]
   );
 
+  const handleToggleLabel = useCallback(
+    async (labelName: string) => {
+      setLabels((prev) => {
+        const next = prev.includes(labelName)
+          ? prev.filter((l) => l !== labelName)
+          : [...prev, labelName];
+        if (note) {
+          updateNote(note.id, { labels: next });
+        }
+        return next;
+      });
+    },
+    [note, updateNote]
+  );
+
   if (!isOpen || !note) return null;
 
   const handleSaveAndClose = async () => {
@@ -1001,7 +1016,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
                   <span>{lbl}</span>
                   <button
                     type="button"
-                    onClick={() => setLabels((prev) => prev.filter((l) => l !== lbl))}
+                    onClick={() => handleToggleLabel(lbl)}
                     className="hover:text-red-500 ml-0.5 rounded-full p-0.5 hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
                     title="Remove label"
                   >
@@ -1618,11 +1633,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
               }}
               onToggleChecklist={handleToggleChecklist}
               onAddReminder={setReminder}
-              onToggleLabel={(lbl) =>
-                setLabels((prev) =>
-                  prev.includes(lbl) ? prev.filter((l) => l !== lbl) : [...prev, lbl]
-                )
-              }
+              onToggleLabel={handleToggleLabel}
               onEncrypt={() => setShowEncryptModal(true)}
               onLinkNote={() => setShowLinkModal(true)}
               onOpenVersions={() => setVersionHistoryNote(note)}

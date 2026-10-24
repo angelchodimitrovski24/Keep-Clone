@@ -12,6 +12,7 @@ import {
   Clock,
   Sparkles,
   FileText,
+  ChevronLeft,
 } from 'lucide-react';
 import { useKeep } from '@/context/KeepContext';
 import { NoteVersion } from '@/types/note';
@@ -31,6 +32,7 @@ export const NoteVersionModal: React.FC = () => {
   const [snapshotSummary, setSnapshotSummary] = useState('');
   const [isCreatingSnapshot, setIsCreatingSnapshot] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [mobileTab, setMobileTab] = useState<'timeline' | 'preview'>('timeline');
 
   const versions: NoteVersion[] = useMemo(() => {
     if (!versionHistoryNote?.versions) return [];
@@ -105,57 +107,58 @@ export const NoteVersionModal: React.FC = () => {
   return (
     <div
       onClick={() => setVersionHistoryNote(null)}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-3 sm:p-6 animate-in fade-in duration-150 overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-2 sm:p-6 animate-in fade-in duration-150 overflow-y-auto"
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-4xl bg-white dark:bg-[#202124] rounded-2xl shadow-2xl border border-stone-200 dark:border-stone-700 flex flex-col overflow-hidden max-h-[90vh] h-[780px]"
+        className="w-full max-w-4xl bg-white dark:bg-[#202124] rounded-2xl shadow-2xl border border-stone-200 dark:border-stone-700 flex flex-col overflow-hidden h-[92vh] sm:h-[780px] max-h-[96vh] sm:max-h-[90vh]"
       >
         {/* Modal Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-stone-200 dark:border-stone-800 bg-stone-50/50 dark:bg-stone-900/40">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-9 h-9 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
-              <History className="w-5 h-5" />
+        <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-stone-200 dark:border-stone-800 bg-stone-50/50 dark:bg-stone-900/40 shrink-0">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+              <History className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
             <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <h3 className="font-semibold text-lg text-stone-900 dark:text-stone-100 truncate">
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <h3 className="font-semibold text-base sm:text-lg text-stone-900 dark:text-stone-100 truncate">
                   Version History
                 </h3>
-                <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-700 dark:text-amber-300 font-medium">
-                  {versions.length} {versions.length === 1 ? 'version' : 'versions'}
+                <span className="text-[10px] sm:text-xs px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-700 dark:text-amber-300 font-medium shrink-0">
+                  {versions.length}
                 </span>
               </div>
-              <p className="text-xs text-stone-500 dark:text-stone-400 truncate max-w-md">
+              <p className="text-xs text-stone-500 dark:text-stone-400 truncate max-w-[160px] sm:max-w-md">
                 {versionHistoryNote.title || 'Untitled note'}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             {!isCreatingSnapshot ? (
               <button
                 type="button"
                 onClick={() => setIsCreatingSnapshot(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-amber-500 hover:bg-amber-600 text-white shadow-xs transition-colors"
+                className="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-semibold bg-amber-500 hover:bg-amber-600 text-white shadow-xs transition-colors shrink-0"
                 title="Create a named checkpoint of the current note state"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>Save Snapshot</span>
+                <span className="hidden sm:inline">Save Snapshot</span>
+                <span className="sm:hidden">Snapshot</span>
               </button>
             ) : (
-              <form onSubmit={handleCreateManualSnapshot} className="flex items-center gap-2">
+              <form onSubmit={handleCreateManualSnapshot} className="flex items-center gap-1.5">
                 <input
                   type="text"
                   autoFocus
-                  placeholder="Snapshot name (e.g. Before edit)…"
+                  placeholder="Snapshot name…"
                   value={snapshotSummary}
                   onChange={(e) => setSnapshotSummary(e.target.value)}
-                  className="px-3 py-1 text-xs rounded-lg border border-amber-400 bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100 outline-none w-48"
+                  className="px-2.5 py-1 text-xs rounded-lg border border-amber-400 bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100 outline-none w-28 sm:w-48"
                 />
                 <button
                   type="submit"
-                  className="px-2.5 py-1 text-xs rounded-lg bg-amber-500 text-white font-medium hover:bg-amber-600"
+                  className="px-2 py-1 text-xs rounded-lg bg-amber-500 text-white font-medium hover:bg-amber-600"
                 >
                   Save
                 </button>
@@ -172,15 +175,43 @@ export const NoteVersionModal: React.FC = () => {
             <button
               type="button"
               onClick={() => setVersionHistoryNote(null)}
-              className="p-2 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-500 hover:text-stone-800 dark:hover:text-stone-200 transition-colors"
+              className="p-1.5 sm:p-2 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-500 hover:text-stone-800 dark:hover:text-stone-200 transition-colors"
+              title="Close version history"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
         </div>
 
+        {/* Mobile Tab Switcher */}
+        <div className="flex sm:hidden border-b border-black/[0.06] dark:border-white/[0.08] bg-stone-100/70 dark:bg-stone-900/60 p-1.5 gap-1.5 shrink-0">
+          <button
+            type="button"
+            onClick={() => setMobileTab('timeline')}
+            className={`flex-1 py-1.5 px-3 rounded-xl text-xs transition-all ${
+              mobileTab === 'timeline'
+                ? 'bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100 shadow-xs font-semibold'
+                : 'text-stone-600 dark:text-stone-400 hover:text-stone-900'
+            }`}
+          >
+            Revisions ({versions.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setMobileTab('preview')}
+            disabled={!activeVersion}
+            className={`flex-1 py-1.5 px-3 rounded-xl text-xs transition-all ${
+              mobileTab === 'preview'
+                ? 'bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100 shadow-xs font-semibold'
+                : 'text-stone-600 dark:text-stone-400 hover:text-stone-900'
+            }`}
+          >
+            Preview & Restore
+          </button>
+        </div>
+
         {actionMessage && (
-          <div className="px-6 py-2 bg-emerald-500/10 border-b border-emerald-500/20 text-emerald-800 dark:text-emerald-300 text-xs flex items-center gap-2 animate-in fade-in">
+          <div className="px-4 sm:px-6 py-2 bg-emerald-500/10 border-b border-emerald-500/20 text-emerald-800 dark:text-emerald-300 text-xs flex items-center gap-2 animate-in fade-in shrink-0">
             <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
             <span>{actionMessage}</span>
           </div>
@@ -189,8 +220,12 @@ export const NoteVersionModal: React.FC = () => {
         {/* Modal Main Content: Split View */}
         <div className="flex-1 flex overflow-hidden">
           {/* Left Panel: Versions Timeline */}
-          <div className="w-72 sm:w-80 border-r border-stone-200 dark:border-stone-800 flex flex-col bg-stone-50/30 dark:bg-stone-900/20">
-            <div className="p-3 border-b border-stone-200 dark:border-stone-800 text-xs font-semibold text-stone-500 dark:text-stone-400 uppercase tracking-wider flex items-center justify-between">
+          <div
+            className={`${
+              mobileTab === 'timeline' ? 'flex' : 'hidden'
+            } sm:flex w-full sm:w-80 border-r border-stone-200 dark:border-stone-800 flex-col bg-stone-50/30 dark:bg-stone-900/20 shrink-0`}
+          >
+            <div className="p-3 border-b border-stone-200 dark:border-stone-800 text-xs font-semibold text-stone-500 dark:text-stone-400 uppercase tracking-wider flex items-center justify-between shrink-0">
               <span>Saved Versions</span>
               <span className="font-mono text-[11px]">{versions.length} total</span>
             </div>
@@ -209,7 +244,10 @@ export const NoteVersionModal: React.FC = () => {
                   return (
                     <div
                       key={ver.id}
-                      onClick={() => setSelectedVersionId(ver.id)}
+                      onClick={() => {
+                        setSelectedVersionId(ver.id);
+                        setMobileTab('preview');
+                      }}
                       className={`group relative p-3 rounded-xl border transition-all cursor-pointer ${
                         isSelected
                           ? 'border-amber-500 bg-amber-500/10 shadow-xs ring-1 ring-amber-500/80 text-stone-900 dark:text-stone-100'
@@ -247,10 +285,10 @@ export const NoteVersionModal: React.FC = () => {
                           <button
                             type="button"
                             onClick={(e) => handleDelete(ver.id, e)}
-                            className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-rose-500/10 text-stone-400 hover:text-rose-600 transition-opacity"
+                            className="opacity-90 sm:opacity-0 sm:group-hover:opacity-100 p-1.5 rounded hover:bg-rose-500/10 text-stone-400 hover:text-rose-600 transition-opacity"
                             title="Delete this historical version"
                           >
-                            <Trash2 className="w-3 h-3" />
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         )}
                       </div>
@@ -262,27 +300,41 @@ export const NoteVersionModal: React.FC = () => {
           </div>
 
           {/* Right Panel: Selected Version Preview & Restore Button */}
-          <div className="flex-1 flex flex-col overflow-hidden bg-white dark:bg-[#202124]">
+          <div
+            className={`${
+              mobileTab === 'preview' ? 'flex' : 'hidden'
+            } sm:flex flex-1 flex-col overflow-hidden bg-white dark:bg-[#202124]`}
+          >
             {activeVersion ? (
               <>
                 {/* Version Preview Bar */}
-                <div className="flex items-center justify-between px-6 py-3 border-b border-stone-200 dark:border-stone-800 bg-stone-50/30 dark:bg-stone-900/20">
-                  <div className="flex items-center gap-2">
-                    <Clock className="w-4 h-4 text-amber-500" />
-                    <div>
-                      <span className="text-xs font-semibold text-stone-850 dark:text-stone-100">
-                        {formatTimestamp(activeVersion.timestamp)}
-                      </span>
-                      <span className="text-[11px] text-stone-500 dark:text-stone-400 ml-2">
-                        • {activeVersion.changeSummary || 'Snapshot'}
-                      </span>
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 px-4 sm:px-6 py-2.5 sm:py-3 border-b border-stone-200 dark:border-stone-800 bg-stone-50/30 dark:bg-stone-900/20 shrink-0">
+                  <div className="flex items-center justify-between sm:justify-start gap-2 min-w-0">
+                    <button
+                      type="button"
+                      onClick={() => setMobileTab('timeline')}
+                      className="sm:hidden inline-flex items-center gap-1 text-xs font-medium text-stone-600 dark:text-stone-300 py-1 px-2.5 rounded-lg bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 shrink-0"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                      <span>Revisions</span>
+                    </button>
+                    <div className="flex items-center gap-2 min-w-0 truncate">
+                      <Clock className="w-4 h-4 text-amber-500 shrink-0" />
+                      <div className="truncate">
+                        <span className="text-xs font-semibold text-stone-850 dark:text-stone-100">
+                          {formatTimestamp(activeVersion.timestamp)}
+                        </span>
+                        <span className="text-[11px] text-stone-500 dark:text-stone-400 ml-1.5 hidden sm:inline">
+                          • {activeVersion.changeSummary || 'Snapshot'}
+                        </span>
+                      </div>
                     </div>
                   </div>
 
                   <button
                     type="button"
                     onClick={() => handleRestore(activeVersion)}
-                    className="flex items-center gap-2 px-4 py-1.5 rounded-xl font-semibold text-xs bg-amber-500 hover:bg-amber-600 text-white shadow-xs transition-all active:scale-95"
+                    className="flex items-center justify-center gap-2 px-4 py-2 sm:py-1.5 rounded-xl font-semibold text-xs bg-amber-500 hover:bg-amber-600 text-white shadow-xs transition-all active:scale-95 w-full sm:w-auto shrink-0"
                   >
                     <RotateCcw className="w-3.5 h-3.5" />
                     <span>Restore this Version</span>
@@ -290,9 +342,9 @@ export const NoteVersionModal: React.FC = () => {
                 </div>
 
                 {/* Visual Note Preview Container */}
-                <div className="flex-1 p-6 overflow-y-auto">
+                <div className="flex-1 p-3 sm:p-6 overflow-y-auto">
                   <div
-                    className={`rounded-2xl p-6 border shadow-xs transition-all min-h-[350px] ${previewColorClasses}`}
+                    className={`rounded-2xl p-4 sm:p-6 border shadow-xs transition-all min-h-[250px] sm:min-h-[350px] ${previewColorClasses}`}
                   >
                     {activeVersion.title && (
                       <h2
@@ -312,7 +364,7 @@ export const NoteVersionModal: React.FC = () => {
                                 type="checkbox"
                                 readOnly
                                 checked={todo.completed}
-                                className="w-4 h-4 mt-0.5 rounded text-blue-600 accent-blue-600 shrink-0"
+                                className="w-4 h-4 mt-0.5 rounded text-blue-600 accent-blue-600 shrink-0 pointer-events-none"
                               />
                               <span
                                 className={`flex-1 min-w-0 break-words whitespace-pre-wrap ${

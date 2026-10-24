@@ -120,7 +120,7 @@ export const LabelManagerModal: React.FC<LabelManagerModalProps> = ({ isOpen, on
                       <Tag className="w-3.5 h-3.5 text-stone-400 shrink-0" />
                       <span className="truncate">{lbl.name}</span>
                     </div>
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="flex items-center gap-1 opacity-90 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                       <button
                         type="button"
                         onClick={() => handleStartEdit(lbl.id, lbl.name)}
