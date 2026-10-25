@@ -15,6 +15,7 @@ import {
   Unlock,
   BarChart2,
   Smartphone,
+  CalendarRange,
 } from 'lucide-react';
 import { useKeep } from '@/context/KeepContext';
 import { ViewFilter } from '@/types/note';
@@ -44,6 +45,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     promptInstallPwa,
     canInstallPwa,
     isPwaInstalled,
+    setIsDateCompileModalOpen,
   } = useKeep();
 
   const navItems: { id: ViewFilter; label: string; icon: React.ReactNode }[] = [
@@ -110,6 +112,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </button>
             );
           })}
+
+          {/* Create Note from Date Range */}
+          <button
+            type="button"
+            onClick={() => {
+              setIsDateCompileModalOpen(true);
+              if (window.innerWidth < 1024) {
+                onCloseMobile?.();
+              }
+            }}
+            className="flex items-center gap-5 px-4 py-3 rounded-r-full text-sm font-medium text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
+            title="Create note from date range (today, 7d, 14d, 30d...)"
+          >
+            <CalendarRange className="w-5 h-5 shrink-0 text-blue-500" />
+            <span className={`truncate ${isOpen ? 'inline' : 'hidden lg:hidden'}`}>
+              Notes by Date Range
+            </span>
+          </button>
 
           <div className="my-2 border-t border-stone-200 dark:border-stone-800" />
 

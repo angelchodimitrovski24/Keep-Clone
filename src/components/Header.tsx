@@ -26,6 +26,7 @@ import {
   FileText,
   Smartphone,
   BarChart2,
+  CalendarRange,
 } from 'lucide-react';
 import { useKeep } from '@/context/KeepContext';
 import { NOTE_COLORS } from '@/lib/constants';
@@ -60,6 +61,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
     setIsSettingsOpen,
     setIsGoogleDriveModalOpen,
     setIsPdfExportModalOpen,
+    setIsDateCompileModalOpen,
     isInstallModalOpen,
     setIsInstallModalOpen,
     canInstallPwa,
@@ -379,6 +381,16 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
           title={isPwaInstalled ? 'App is installed on your device ✓' : 'Install on Android / Mobile (1-tap offline app)'}
         >
           <Smartphone className="w-5 h-5" />
+        </button>
+
+        {/* Create Note from Date Range */}
+        <button
+          type="button"
+          onClick={() => setIsDateCompileModalOpen(true)}
+          className="p-1.5 sm:p-2.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors text-blue-600 dark:text-blue-400 shrink-0"
+          title="Create note from date range (Today, 7d, 14d, 30d, 60d, 90d, 6m, 1y)"
+        >
+          <CalendarRange className="w-5 h-5" />
         </button>
 
         {/* Settings Dialog Toggle */}

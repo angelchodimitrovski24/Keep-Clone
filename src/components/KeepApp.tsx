@@ -23,6 +23,7 @@ import { PdfExportModal } from '@/components/PdfExportModal';
 import { InstallAppModal } from '@/components/InstallAppModal';
 import { AndroidInstallBanner } from '@/components/AndroidInstallBanner';
 import { ActiveStopwatchDock } from '@/components/ActiveStopwatchDock';
+import { CreateNoteByDateModal } from '@/components/CreateNoteByDateModal';
 import { Note, NoteDrawing } from '@/types/note';
 
 interface KeepAppProps {
@@ -266,6 +267,9 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
 
       {/* Floating Active Stopwatch Dock (measures reading time across entire app) */}
       <ActiveStopwatchDock />
+
+      {/* Create Note from Date Range Modal (Today, 7d, 14d, 30d, 60d, 90d, 6m, 1y) */}
+      <CreateNoteByDateModal />
     </div>
   );
 }

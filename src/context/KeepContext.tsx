@@ -98,6 +98,8 @@ interface KeepContextType {
   setIsSettingsOpen: (open: boolean) => void;
   setIsGoogleDriveModalOpen: (open: boolean) => void;
   setIsPdfExportModalOpen: (open: boolean) => void;
+  isDateCompileModalOpen: boolean;
+  setIsDateCompileModalOpen: (open: boolean) => void;
 
   // Android & Mobile PWA Installation
   isInstallModalOpen: boolean;
@@ -214,6 +216,7 @@ export function KeepProvider({
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isGoogleDriveModalOpen, setIsGoogleDriveModalOpen] = useState(false);
   const [isPdfExportModalOpen, setIsPdfExportModalOpen] = useState(false);
+  const [isDateCompileModalOpen, setIsDateCompileModalOpen] = useState(false);
   const [sharingNote, setSharingNote] = useState<Note | null>(null);
 
   // Android & Mobile PWA Installation states
@@ -1479,6 +1482,8 @@ export function KeepProvider({
       setIsGoogleDriveModalOpen,
       isPdfExportModalOpen,
       setIsPdfExportModalOpen,
+      isDateCompileModalOpen,
+      setIsDateCompileModalOpen,
       isInstallModalOpen,
       setIsInstallModalOpen,
       canInstallPwa,

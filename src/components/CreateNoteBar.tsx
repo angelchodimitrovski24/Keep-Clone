@@ -10,6 +10,7 @@ import {
   Plus,
   Trash2,
   Lock,
+  CalendarRange,
 } from 'lucide-react';
 import { useKeep } from '@/context/KeepContext';
 import { NoteActions } from './NoteActions';
@@ -32,7 +33,15 @@ interface CreateNoteBarProps {
 }
 
 export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal }) => {
-  const { notes, addNote, selectedLabel, selectedCategory, categories, editingNote } = useKeep();
+  const {
+    notes,
+    addNote,
+    selectedLabel,
+    selectedCategory,
+    categories,
+    editingNote,
+    setIsDateCompileModalOpen,
+  } = useKeep();
   const [isExpanded, setIsExpanded] = useState(false);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
@@ -318,6 +327,14 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
                 }}
               />
             </label>
+            <button
+              type="button"
+              onClick={() => setIsDateCompileModalOpen(true)}
+              className="p-2 rounded-full hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-600 dark:text-stone-300 transition-colors"
+              title="Create note from date range (Today, 7d, 14d, 30d...)"
+            >
+              <CalendarRange className="w-5 h-5" />
+            </button>
           </div>
         </div>
       </div>
@@ -631,13 +648,23 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
             onToggleFormatting={() => setIsFormattingOpen(!isFormattingOpen)}
           />
 
-          <button
-            type="button"
-            onClick={handleSaveAndClose}
-            className="px-4 py-1.5 text-sm font-medium rounded-lg hover:bg-black/10 dark:hover:bg-white/10 text-stone-800 dark:text-stone-200 transition-colors"
-          >
-            Close
-          </button>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={() => setIsDateCompileModalOpen(true)}
+              className="p-1.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10 text-stone-600 dark:text-stone-300 transition-colors"
+              title="Create note from date range (Today, 7d, 14d, 30d...)"
+            >
+              <CalendarRange className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={handleSaveAndClose}
+              className="px-4 py-1.5 text-sm font-medium rounded-lg hover:bg-black/10 dark:hover:bg-white/10 text-stone-800 dark:text-stone-200 transition-colors"
+            >
+              Close
+            </button>
+          </div>
         </div>
       </div>
 
