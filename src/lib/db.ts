@@ -120,8 +120,8 @@ export async function getAllNotesFromDB(): Promise<Note[]> {
   const db = await getKeepDB();
   if (!db) return [];
   const notes = await db.getAll('notes');
-  // Sort primarily by pinned status then updated/order
-  return notes.sort((a, b) => (b.order ?? b.updatedAt) - (a.order ?? a.updatedAt));
+  // Sort by updated at descending (most recently updated first)
+  return notes.sort((a, b) => (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0));
 }
 
 export async function getNoteByIdFromDB(id: string): Promise<Note | undefined> {
@@ -348,7 +348,8 @@ export async function exportAllData(): Promise<{
       exportDate: new Date().toISOString(),
     };
   }
-  const notes = await db.getAll('notes');
+  const rawNotes = await db.getAll('notes');
+  const notes = rawNotes.sort((a, b) => (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0));
   const labels = await db.getAll('labels');
   const categories = await db.getAll('categories');
   let readingSessions: ReadingSession[] = [];

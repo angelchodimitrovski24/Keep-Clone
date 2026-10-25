@@ -28,43 +28,45 @@ export const NotesGrid: React.FC<NotesGridProps> = ({
     setUnlockCategoryModalTarget,
   } = useKeep();
 
-  // Filter notes based on current view & search query
+  // Filter notes based on current view & search query, and sort by updatedAt descending
   const filteredNotes = useMemo(() => {
-    return notes.filter((note) => {
-      // 1. Trash filter check
-      if (currentFilter === 'trash') {
-        if (!note.isTrash) return false;
-      } else {
-        if (note.isTrash) return false;
-      }
+    return notes
+      .filter((note) => {
+        // 1. Trash filter check
+        if (currentFilter === 'trash') {
+          if (!note.isTrash) return false;
+        } else {
+          if (note.isTrash) return false;
+        }
 
-      // 2. View specific check
-      if (currentFilter === 'notes') {
-        if (note.isArchived) return false;
-      } else if (currentFilter === 'reminders') {
-        if (!note.reminder || note.isArchived) return false;
-      } else if (currentFilter === 'archive') {
-        if (!note.isArchived) return false;
-      } else if (currentFilter === 'label') {
-        if (!selectedLabel || !note.labels?.includes(selectedLabel)) return false;
-      } else if (currentFilter === 'category') {
-        if (!selectedCategory || note.category !== selectedCategory) return false;
-        if (note.isArchived) return false;
-      }
+        // 2. View specific check
+        if (currentFilter === 'notes') {
+          if (note.isArchived) return false;
+        } else if (currentFilter === 'reminders') {
+          if (!note.reminder || note.isArchived) return false;
+        } else if (currentFilter === 'archive') {
+          if (!note.isArchived) return false;
+        } else if (currentFilter === 'label') {
+          if (!selectedLabel || !note.labels?.includes(selectedLabel)) return false;
+        } else if (currentFilter === 'category') {
+          if (!selectedCategory || note.category !== selectedCategory) return false;
+          if (note.isArchived) return false;
+        }
 
-      // 3. Search query check
-      if (searchQuery.trim()) {
-        const query = searchQuery.toLowerCase();
-        const matchesTitle = note.title?.toLowerCase().includes(query);
-        const matchesContent = note.content?.toLowerCase().includes(query);
-        const matchesTodos = note.todos?.some((t) => t.text.toLowerCase().includes(query));
-        const matchesLabels = note.labels?.some((l) => l.toLowerCase().includes(query));
-        const matchesCategory = note.category?.toLowerCase().includes(query);
-        return matchesTitle || matchesContent || matchesTodos || matchesLabels || matchesCategory;
-      }
+        // 3. Search query check
+        if (searchQuery.trim()) {
+          const query = searchQuery.toLowerCase();
+          const matchesTitle = note.title?.toLowerCase().includes(query);
+          const matchesContent = note.content?.toLowerCase().includes(query);
+          const matchesTodos = note.todos?.some((t) => t.text.toLowerCase().includes(query));
+          const matchesLabels = note.labels?.some((l) => l.toLowerCase().includes(query));
+          const matchesCategory = note.category?.toLowerCase().includes(query);
+          return matchesTitle || matchesContent || matchesTodos || matchesLabels || matchesCategory;
+        }
 
-      return true;
-    });
+        return true;
+      })
+      .sort((a, b) => (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0));
   }, [notes, currentFilter, selectedLabel, selectedCategory, searchQuery]);
 
   const activeCategory = useMemo(

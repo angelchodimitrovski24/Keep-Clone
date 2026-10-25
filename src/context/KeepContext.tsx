@@ -373,8 +373,8 @@ export function KeepProvider({
             isArchived: false,
             isTrash: false,
             images: [],
-            createdAt: now - 3600000,
-            updatedAt: now - 3600000,
+            createdAt: now,
+            updatedAt: now,
             order: 1,
           },
           {
@@ -396,8 +396,8 @@ export function KeepProvider({
             isArchived: false,
             isTrash: false,
             images: [],
-            createdAt: now - 1800000,
-            updatedAt: now - 1800000,
+            createdAt: now - 60000,
+            updatedAt: now - 60000,
             order: 2,
           },
           {
@@ -414,8 +414,8 @@ export function KeepProvider({
             isArchived: false,
             isTrash: false,
             images: [],
-            createdAt: now - 900000,
-            updatedAt: now - 900000,
+            createdAt: now - 120000,
+            updatedAt: now - 120000,
             order: 3,
           },
         ];
@@ -692,7 +692,8 @@ export function KeepProvider({
         updatedAt: Date.now(),
       };
       saveNoteToDB(updated);
-      return prev.map((n) => (n.id === id ? updated : n));
+      const remaining = prev.filter((n) => n.id !== id);
+      return [updated, ...remaining];
     });
 
     setEditingNote((prev) => {

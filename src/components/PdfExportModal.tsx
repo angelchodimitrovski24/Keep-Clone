@@ -56,13 +56,15 @@ export const PdfExportModal: React.FC = () => {
     [notes]
   );
 
-  // Filter notes to be exported based on choices
+  // Filter notes to be exported based on choices, sorted by updatedAt descending
   const candidateNotes = useMemo(() => {
-    return notes.filter((note) => {
-      if (note.isTrash) return includeTrash;
-      if (note.isArchived) return includeArchived;
-      return includeActive;
-    });
+    return notes
+      .filter((note) => {
+        if (note.isTrash) return includeTrash;
+        if (note.isArchived) return includeArchived;
+        return includeActive;
+      })
+      .sort((a, b) => (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0));
   }, [notes, includeActive, includeArchived, includeTrash]);
 
   const handleClose = () => {
