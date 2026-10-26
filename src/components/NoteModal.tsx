@@ -25,6 +25,7 @@ import {
   Sparkles,
   ArrowLeft,
   Edit2,
+  Printer,
 } from 'lucide-react';
 import { Note, NoteColor, NoteBackgroundTheme, TodoItem, NoteDrawing, NoteVersion } from '@/types/note';
 import { getNoteColorClasses } from '@/lib/constants';
@@ -682,6 +683,27 @@ export const NoteModal: React.FC<NoteModalProps> = ({
     onClose();
   };
 
+  const handlePrint = useCallback(() => {
+    if (!note) return;
+    const rawContent = editorRef.current?.getHTML() || content;
+    printNote(
+      {
+        ...note,
+        title,
+        content: rawContent,
+        isList,
+        todos,
+        color,
+        theme,
+        labels,
+        category,
+        images,
+        drawings,
+      },
+      categories
+    );
+  }, [note, title, content, isList, todos, color, theme, labels, category, images, drawings, categories]);
+
   const handleAddTodo = () => {
     if (newTodoInput.trim()) {
       setTodos((prev) => [
@@ -1243,6 +1265,16 @@ export const NoteModal: React.FC<NoteModalProps> = ({
               <Share2 className="w-5 h-5" />
             </button>
 
+            {/* Print Note Button */}
+            <button
+              type="button"
+              onClick={handlePrint}
+              className="p-2 rounded-full text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-black/10 transition-colors"
+              title="Print note"
+            >
+              <Printer className="w-5 h-5" />
+            </button>
+
             {/* Pin Note Button */}
             <button
               type="button"
@@ -1632,21 +1664,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
                   drawings,
                 });
               }}
-              onPrint={() => {
-                printNote({
-                  ...note,
-                  title,
-                  content,
-                  isList,
-                  todos,
-                  color,
-                  theme,
-                  labels,
-                  category,
-                  images,
-                  drawings,
-                }, categories);
-              }}
+              onPrint={handlePrint}
               onToggleChecklist={handleToggleChecklist}
               onAddReminder={setReminder}
               onToggleLabel={handleToggleLabel}
@@ -1662,13 +1680,24 @@ export const NoteModal: React.FC<NoteModalProps> = ({
             />
           </div>
 
-          <button
-            type="button"
-            onClick={handleSaveAndClose}
-            className="px-5 py-1.5 text-sm font-medium rounded-lg text-stone-800 dark:text-stone-200 hover:bg-black/5 dark:hover:bg-white/10 active:bg-black/10 dark:active:bg-white/15 transition-colors shrink-0"
-          >
-            Close
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={handlePrint}
+              className="px-3.5 py-1.5 text-sm font-medium rounded-lg text-stone-700 dark:text-stone-300 hover:bg-black/5 dark:hover:bg-white/10 active:bg-black/10 dark:active:bg-white/15 flex items-center gap-1.5 transition-colors"
+              title="Print note"
+            >
+              <Printer className="w-4 h-4" />
+              <span>Print</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleSaveAndClose}
+              className="px-5 py-1.5 text-sm font-medium rounded-lg text-stone-800 dark:text-stone-200 hover:bg-black/5 dark:hover:bg-white/10 active:bg-black/10 dark:active:bg-white/15 transition-colors shrink-0"
+            >
+              Close
+            </button>
+          </div>
         </div>
       </>
     )}

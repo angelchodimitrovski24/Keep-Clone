@@ -501,6 +501,21 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
         </button>
       )}
 
+      {/* Print Note action directly on toolbar */}
+      {onPrint && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onPrint();
+          }}
+          className={compact ? `hidden sm:inline-flex ${iconBtnClass}` : iconBtnClass}
+          title="Print note"
+        >
+          <Printer className="w-4 h-4" />
+        </button>
+      )}
+
       {/* More Options dropdown (...) */}
       <div className="relative">
         <button
