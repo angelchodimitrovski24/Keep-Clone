@@ -53,6 +53,9 @@ interface NoteActionsProps {
   onToggleFormatting?: () => void;
   isTrash?: boolean;
   className?: string;
+  compact?: boolean;
+  menuPlacement?: 'top' | 'bottom' | 'auto';
+  menuAlign?: 'left' | 'right';
 }
 
 export const NoteActions: React.FC<NoteActionsProps> = ({
@@ -79,6 +82,9 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
   onToggleFormatting,
   isTrash = false,
   className = '',
+  compact = false,
+  menuPlacement = 'auto',
+  menuAlign = 'right',
 }) => {
   const { labels, categories, createLabel, setIsCategoryModalOpen } = useKeep();
   const [showColorPicker, setShowColorPicker] = useState(false);
@@ -89,6 +95,34 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
   const [newLabelText, setNewLabelText] = useState('');
   const [mounted, setMounted] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [dropdownPosition, setDropdownPosition] = useState<'top' | 'bottom'>(
+    menuPlacement === 'bottom' ? 'bottom' : 'top'
+  );
+
+  const updateDropdownPlacement = (btnElement?: HTMLElement | null) => {
+    if (menuPlacement === 'bottom') {
+      setDropdownPosition('bottom');
+      return;
+    }
+    if (menuPlacement === 'top') {
+      setDropdownPosition('top');
+      return;
+    }
+    // 'auto' placement: measure space above and below the button
+    const rect = btnElement?.getBoundingClientRect();
+    if (rect) {
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const spaceAbove = rect.top;
+      if (spaceBelow < 280 && spaceAbove > spaceBelow) {
+        setDropdownPosition('top');
+      } else {
+        setDropdownPosition('bottom');
+      }
+    }
+  };
+
+  const verticalPositionClass = dropdownPosition === 'bottom' ? 'top-full mt-1.5' : 'bottom-full mb-2';
+  const alignClass = menuAlign === 'left' ? 'left-0' : 'right-0';
 
   useEffect(() => {
     setMounted(true);
@@ -101,6 +135,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
   }, []);
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const moreBtnRef = useRef<HTMLButtonElement>(null);
   const sheetRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -174,6 +209,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
           type="button"
           onClick={(e) => {
             e.stopPropagation();
+            updateDropdownPlacement(e.currentTarget);
             setShowReminderPicker(!showReminderPicker);
             setShowColorPicker(false);
             setShowMenu(false);
@@ -188,7 +224,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
         {!isMobile && showReminderPicker && (
           <div
             onClick={(e) => e.stopPropagation()}
-            className="absolute left-0 bottom-full mb-2 w-64 max-w-[calc(100vw-2rem)] p-2.5 bg-white dark:bg-[#202124] rounded-xl keep-elevation-2 border border-black/[0.08] dark:border-stone-700/60 z-50 text-[13.5px] font-normal"
+            className={`absolute left-0 ${verticalPositionClass} w-64 max-w-[calc(100vw-2rem)] p-2.5 bg-white dark:bg-[#202124] rounded-xl keep-elevation-2 border border-black/[0.08] dark:border-stone-700/60 z-50 text-[13.5px] font-normal shadow-xl`}
           >
             <p className="text-xs font-medium px-2.5 py-1 text-stone-500 tracking-wide uppercase">
               Set Reminder
@@ -255,6 +291,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
           type="button"
           onClick={(e) => {
             e.stopPropagation();
+            updateDropdownPlacement(e.currentTarget);
             setShowColorPicker(!showColorPicker);
             setShowReminderPicker(false);
             setShowMenu(false);
@@ -269,7 +306,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
         {!isMobile && showColorPicker && (
           <div
             onClick={(e) => e.stopPropagation()}
-            className="absolute left-0 bottom-full mb-2 w-72 max-w-[calc(100vw-2rem)] p-3 bg-white dark:bg-[#202124] rounded-xl keep-elevation-2 border border-black/[0.08] dark:border-stone-700/60 z-50"
+            className={`absolute left-0 ${verticalPositionClass} w-72 max-w-[calc(100vw-2rem)] p-3 bg-white dark:bg-[#202124] rounded-xl keep-elevation-2 border border-black/[0.08] dark:border-stone-700/60 z-50 shadow-xl`}
           >
             <p className="text-xs font-medium text-stone-500 mb-2 px-1">Colors</p>
             <div className="grid grid-cols-6 gap-2 mb-3">
@@ -371,7 +408,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
             e.stopPropagation();
             onArchiveToggle();
           }}
-          className={`hidden sm:inline-flex ${iconBtnClass}`}
+          className={compact ? iconBtnClass : `hidden sm:inline-flex ${iconBtnClass}`}
           title={note.isArchived ? 'Unarchive' : 'Archive'}
         >
           {note.isArchived ? (
@@ -383,7 +420,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
       )}
 
       {/* Delete / Trash note directly */}
-      {onDelete && (
+      {!compact && onDelete && (
         <button
           type="button"
           onClick={(e) => {
@@ -398,7 +435,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
       )}
 
       {/* Encrypt / Lock action */}
-      {onEncrypt && (
+      {!compact && onEncrypt && (
         <button
           type="button"
           onClick={(e) => {
@@ -417,7 +454,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
       )}
 
       {/* Link Note action */}
-      {onLinkNote && (
+      {!compact && onLinkNote && (
         <button
           type="button"
           onClick={(e) => {
@@ -432,7 +469,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
       )}
 
       {/* Clone Note action */}
-      {onDuplicate && (
+      {!compact && onDuplicate && (
         <button
           type="button"
           onClick={(e) => {
@@ -447,7 +484,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
       )}
 
       {/* Share Note action */}
-      {onShare && (
+      {!compact && onShare && (
         <button
           type="button"
           onClick={(e) => {
@@ -464,9 +501,11 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
       {/* More Options dropdown (...) */}
       <div className="relative">
         <button
+          ref={moreBtnRef}
           type="button"
           onClick={(e) => {
             e.stopPropagation();
+            updateDropdownPlacement(e.currentTarget);
             setShowMenu(!showMenu);
             setShowColorPicker(false);
             setShowReminderPicker(false);
@@ -484,8 +523,133 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
             onClick={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
             onTouchStart={(e) => e.stopPropagation()}
-            className="absolute right-0 bottom-full mb-2 w-56 max-w-[calc(100vw-2rem)] py-1.5 bg-white dark:bg-[#202124] rounded-xl keep-elevation-2 border border-black/[0.08] dark:border-stone-700/60 z-50 text-[13.5px] font-normal max-h-[70vh] overflow-y-auto"
+            className={`absolute ${alignClass} ${verticalPositionClass} w-56 max-w-[calc(100vw-2rem)] py-1.5 bg-white dark:bg-[#202124] rounded-xl keep-elevation-2 border border-black/[0.08] dark:border-stone-700/60 z-50 text-[13.5px] font-normal max-h-[70vh] overflow-y-auto shadow-xl`}
           >
+            {onSelectCategory && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMenu(false);
+                  setShowCategoryPicker(true);
+                }}
+                className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
+              >
+                <Folder className="w-4 h-4 text-blue-500" />
+                Change category
+              </button>
+            )}
+
+            {onToggleLabel && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMenu(false);
+                  setShowLabelPicker(true);
+                }}
+                className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
+              >
+                <Tag className="w-4 h-4 text-emerald-500" />
+                Change labels
+              </button>
+            )}
+
+            {onToggleChecklist && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMenu(false);
+                  onToggleChecklist();
+                }}
+                className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
+              >
+                <CheckSquare className="w-4 h-4" />
+                {note.isList ? 'Show plain text' : 'Show checkboxes'}
+              </button>
+            )}
+
+            <div className="my-1 border-t border-black/[0.06] dark:border-white/[0.08]" />
+
+            {onEncrypt && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMenu(false);
+                  onEncrypt();
+                }}
+                className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
+              >
+                <Lock className="w-4 h-4 text-amber-500" />
+                {note.isEncrypted ? 'Encryption Settings (AES-256)' : 'Encrypt Note (AES-256)'}
+              </button>
+            )}
+
+            {onLinkNote && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMenu(false);
+                  onLinkNote();
+                }}
+                className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
+              >
+                <Link2 className="w-4 h-4 text-purple-500" />
+                Link to note
+              </button>
+            )}
+
+            {onOpenVersions && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMenu(false);
+                  onOpenVersions();
+                }}
+                className="w-full text-left px-3.5 py-2 flex items-center justify-between hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <History className="w-4 h-4 text-amber-500" />
+                  <span>Version history</span>
+                </div>
+                {note.versions && note.versions.length > 1 && (
+                  <span className="text-[10px] bg-amber-500/15 text-amber-700 dark:text-amber-300 font-semibold px-1.5 py-0.5 rounded-full">
+                    {note.versions.length}
+                  </span>
+                )}
+              </button>
+            )}
+
+            {onStartReading && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMenu(false);
+                  onStartReading();
+                }}
+                className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-emerald-600 dark:text-emerald-400 transition-colors"
+              >
+                <Timer className="w-4 h-4" />
+                <span>Start reading stopwatch</span>
+              </button>
+            )}
+
+            {(onDuplicate || onArchiveToggle || onShare || onDelete) && (
+              <div className="my-1 border-t border-black/[0.06] dark:border-white/[0.08]" />
+            )}
+
+            {onDuplicate && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMenu(false);
+                  onDuplicate();
+                }}
+                className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
+              >
+                <Copy className="w-4 h-4" />
+                Clone note (Make a copy)
+              </button>
+            )}
+
             {onArchiveToggle && (
               <button
                 type="button"
@@ -536,125 +700,6 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                 Delete note
               </button>
             )}
-
-            {onEncrypt && (
-              <button
-                type="button"
-                onClick={() => {
-                  setShowMenu(false);
-                  onEncrypt();
-                }}
-                className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
-              >
-                <Lock className="w-4 h-4 text-amber-500" />
-                {note.isEncrypted ? 'Encryption Settings (AES-256)' : 'Encrypt Note (AES-256)'}
-              </button>
-            )}
-
-            {onLinkNote && (
-              <button
-                type="button"
-                onClick={() => {
-                  setShowMenu(false);
-                  onLinkNote();
-                }}
-                className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
-              >
-                <Link2 className="w-4 h-4" />
-                Link to note
-              </button>
-            )}
-
-            {onSelectCategory && (
-              <button
-                type="button"
-                onClick={() => {
-                  setShowMenu(false);
-                  setShowCategoryPicker(true);
-                }}
-                className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
-              >
-                <Folder className="w-4 h-4" />
-                Change category
-              </button>
-            )}
-
-            {onToggleLabel && (
-              <button
-                type="button"
-                onClick={() => {
-                  setShowMenu(false);
-                  setShowLabelPicker(true);
-                }}
-                className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
-              >
-                <Tag className="w-4 h-4" />
-                Change labels
-              </button>
-            )}
-
-            {onDuplicate && (
-              <button
-                type="button"
-                onClick={() => {
-                  setShowMenu(false);
-                  onDuplicate();
-                }}
-                className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
-              >
-                <Copy className="w-4 h-4" />
-                Clone note (Make a copy)
-              </button>
-            )}
-
-            {onOpenVersions && (
-              <button
-                type="button"
-                onClick={() => {
-                  setShowMenu(false);
-                  onOpenVersions();
-                }}
-                className="w-full text-left px-3.5 py-2 flex items-center justify-between hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  <History className="w-4 h-4 text-amber-500" />
-                  <span>Version history</span>
-                </div>
-                {note.versions && note.versions.length > 1 && (
-                  <span className="text-[10px] bg-amber-500/15 text-amber-700 dark:text-amber-300 font-semibold px-1.5 py-0.5 rounded-full">
-                    {note.versions.length}
-                  </span>
-                )}
-              </button>
-            )}
-
-            {onStartReading && (
-              <button
-                type="button"
-                onClick={() => {
-                  setShowMenu(false);
-                  onStartReading();
-                }}
-                className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-emerald-600 dark:text-emerald-400 transition-colors"
-              >
-                <Timer className="w-4 h-4" />
-                <span>Start reading stopwatch</span>
-              </button>
-            )}
-
-            {onToggleChecklist && (
-              <button
-                type="button"
-                onClick={() => {
-                  setShowMenu(false);
-                  onToggleChecklist();
-                }}
-                className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
-              >
-                <CheckSquare className="w-4 h-4" />
-                {note.isList ? 'Show plain text' : 'Show checkboxes'}
-              </button>
-            )}
           </div>
         )}
 
@@ -664,10 +709,23 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
             onClick={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
             onTouchStart={(e) => e.stopPropagation()}
-            className="absolute right-0 bottom-full mb-2 w-64 max-w-[calc(100vw-2rem)] p-2.5 bg-white dark:bg-[#202124] rounded-xl keep-elevation-2 border border-black/[0.08] dark:border-stone-700/60 z-50 text-[13.5px] max-h-[70vh] overflow-y-auto"
+            className={`absolute ${alignClass} ${verticalPositionClass} w-64 max-w-[calc(100vw-2rem)] p-2.5 bg-white dark:bg-[#202124] rounded-xl keep-elevation-2 border border-black/[0.08] dark:border-stone-700/60 z-50 text-[13.5px] max-h-[70vh] overflow-y-auto shadow-xl`}
           >
             <div className="flex items-center justify-between pb-2 mb-2 border-b border-black/[0.06] dark:border-white/[0.08]">
-              <span className="text-xs font-medium text-stone-500 uppercase tracking-wider">Select Category</span>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowCategoryPicker(false);
+                    setShowMenu(true);
+                  }}
+                  className="p-1 -ml-1 text-stone-500 hover:text-stone-800 dark:hover:text-stone-200 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+                  title="Back to options"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <span className="text-xs font-medium text-stone-500 uppercase tracking-wider">Select Category</span>
+              </div>
               <button
                 type="button"
                 onClick={() => setShowCategoryPicker(false)}
@@ -746,10 +804,23 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
             onClick={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
             onTouchStart={(e) => e.stopPropagation()}
-            className="absolute right-0 bottom-full mb-2 w-64 max-w-[calc(100vw-2rem)] p-2.5 bg-white dark:bg-[#202124] rounded-xl keep-elevation-2 border border-black/[0.08] dark:border-stone-700/60 z-50 text-[13.5px] max-h-[70vh] overflow-y-auto"
+            className={`absolute ${alignClass} ${verticalPositionClass} w-64 max-w-[calc(100vw-2rem)] p-2.5 bg-white dark:bg-[#202124] rounded-xl keep-elevation-2 border border-black/[0.08] dark:border-stone-700/60 z-50 text-[13.5px] max-h-[70vh] overflow-y-auto shadow-xl`}
           >
             <div className="flex items-center justify-between pb-2 mb-2 border-b border-black/[0.06] dark:border-white/[0.08]">
-              <span className="text-xs font-medium text-stone-500 uppercase tracking-wider">Label note</span>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowLabelPicker(false);
+                    setShowMenu(true);
+                  }}
+                  className="p-1 -ml-1 text-stone-500 hover:text-stone-800 dark:hover:text-stone-200 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+                  title="Back to options"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <span className="text-xs font-medium text-stone-500 uppercase tracking-wider">Label note</span>
+              </div>
               <button
                 type="button"
                 onClick={() => setShowLabelPicker(false)}
@@ -807,6 +878,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
         (showMenu || showCategoryPicker || showLabelPicker || showColorPicker || showReminderPicker) &&
         createPortal(
           <div
+            data-portal="true"
             className="keep-backdrop-anim fixed inset-0 z-[1000] bg-black/50 backdrop-blur-[2px] flex flex-col justify-end"
             onClick={() => {
               setShowMenu(false);
@@ -818,6 +890,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
           >
             <div
               ref={sheetRef}
+              data-portal="true"
               className="keep-sheet-anim keep-sheet-shadow w-full max-h-[85vh] bg-white dark:bg-[#202124] rounded-t-[28px] border-t border-black/[0.06] dark:border-white/[0.08] flex flex-col overflow-hidden pb-[max(1.25rem,env(safe-area-inset-bottom))]"
               onClick={(e) => e.stopPropagation()}
               onTouchStart={(e) => e.stopPropagation()}

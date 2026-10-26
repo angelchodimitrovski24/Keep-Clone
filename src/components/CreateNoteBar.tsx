@@ -111,7 +111,21 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
     if (!isExpanded) return;
 
     const handleClickOutside = (event: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+
+      // Ignore clicks inside portaled mobile bottom sheet, modals, or dialogs
+      if (
+        target.closest('.keep-backdrop-anim') ||
+        target.closest('.keep-sheet-anim') ||
+        target.closest('[role="dialog"]') ||
+        target.closest('.keep-modal') ||
+        target.closest('[data-portal="true"]')
+      ) {
+        return;
+      }
+
+      if (containerRef.current && !containerRef.current.contains(target as Node)) {
         handleSaveAndClose();
       }
     };
@@ -391,13 +405,13 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
             }
           }
         }}
-        className={`rounded-2xl keep-elevation-2 border relative overflow-hidden transition-all ${colorClasses}`}
+        className={`rounded-2xl keep-elevation-2 border relative transition-all ${colorClasses}`}
       >
         {/* Themed Background Illustration */}
         <NoteThemeArtwork theme={theme} />
         {/* Attached Images */}
         {images.length > 0 && (
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-1 p-2 bg-black/5">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-1 p-2 bg-black/5 rounded-t-2xl overflow-hidden">
             {images.map((img, idx) => (
               <div key={idx} className="relative group rounded-lg overflow-hidden max-h-48">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -631,7 +645,7 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
         )}
 
         {/* Footer toolbar */}
-        <div className="flex items-center justify-between px-2 sm:px-3 py-2 border-t border-black/5 dark:border-white/5 gap-1 relative">
+        <div className="flex items-center justify-between px-2 sm:px-3 py-2 border-t border-black/5 dark:border-white/5 gap-1 relative z-20">
           <NoteActions
             note={{ color, theme, isList, labels, reminder, category, isEncrypted }}
             onColorChange={setColor}
@@ -646,6 +660,8 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
             showFormattingToggle={!isList}
             isFormattingOpen={isFormattingOpen}
             onToggleFormatting={() => setIsFormattingOpen(!isFormattingOpen)}
+            menuPlacement="bottom"
+            menuAlign="left"
           />
 
           <div className="flex items-center gap-1.5 shrink-0">

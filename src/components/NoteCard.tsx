@@ -176,17 +176,17 @@ export const NoteCard: React.FC<NoteCardProps> = ({
         }`}
       >
         {/* Top action: Select Checkmark & Pin */}
-        <div className={`absolute top-2 left-2 z-10 transition-opacity ${isSelected ? 'opacity-100' : 'opacity-0 sm:group-hover:opacity-100'}`}>
+        <div className={`absolute -top-2.5 -left-2.5 z-10 transition-opacity ${isSelected ? 'opacity-100' : 'opacity-0 sm:group-hover:opacity-100'}`}>
           <button
             type="button"
             onClick={(e) => {
               e.stopPropagation();
               toggleSelectNote(note.id);
             }}
-            className={`p-1 rounded-full transition-colors ${
+            className={`p-1 rounded-full shadow-md transition-colors ${
               isSelected
-                ? 'text-stone-900 dark:text-stone-100 bg-white/80 dark:bg-black/80'
-                : 'text-stone-500 bg-white/60 dark:bg-black/60 hover:text-stone-900'
+                ? 'text-stone-900 dark:text-stone-100 bg-white dark:bg-stone-800 ring-2 ring-blue-500'
+                : 'text-stone-500 bg-white dark:bg-stone-800 hover:text-stone-900 dark:hover:text-stone-100 border border-stone-200 dark:border-stone-700'
             }`}
             title="Select note"
           >
@@ -334,7 +334,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
 
               {activeNote.title && (
                 <h3
-                  className="font-semibold text-stone-900 dark:text-stone-100 mb-1.5 tracking-tight break-words whitespace-pre-wrap"
+                  className="font-semibold text-stone-900 dark:text-stone-100 mb-1.5 tracking-tight break-words whitespace-pre-wrap pr-7"
                   style={{ fontSize: 'calc(var(--note-font-size, 15px) * 1.15)' }}
                 >
                   {activeNote.title}
@@ -515,6 +515,10 @@ export const NoteCard: React.FC<NoteCardProps> = ({
             <NoteActions
               note={activeNote}
               isTrash={note.isTrash}
+              compact={true}
+              className="w-full justify-between"
+              menuPlacement="auto"
+              menuAlign="right"
               onColorChange={(color) => updateNote(note.id, { color })}
               onThemeChange={(theme) => updateNote(note.id, { theme })}
               onArchiveToggle={() => toggleArchiveNote(note.id)}

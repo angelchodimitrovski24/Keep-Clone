@@ -1641,6 +1641,8 @@ export const NoteModal: React.FC<NoteModalProps> = ({
               showFormattingToggle={!isList}
               isFormattingOpen={isFormattingOpen}
               onToggleFormatting={() => setIsFormattingOpen(!isFormattingOpen)}
+              menuPlacement="top"
+              menuAlign="left"
             />
           </div>
 
