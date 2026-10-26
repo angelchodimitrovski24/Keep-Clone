@@ -25,6 +25,8 @@ import {
   ChevronRight,
   Check,
   Printer,
+  Search,
+  Plus,
 } from 'lucide-react';
 import { Note, NoteColor, NoteBackgroundTheme } from '@/types/note';
 import { NOTE_COLORS, NOTE_THEMES } from '@/lib/constants';
@@ -98,6 +100,14 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
   const [newLabelText, setNewLabelText] = useState('');
   const [mounted, setMounted] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+
+  const labelQuery = newLabelText.trim().toLowerCase();
+  const filteredLabels = labelQuery
+    ? labels.filter((lbl) => lbl.name.toLowerCase().includes(labelQuery))
+    : labels;
+  const exactMatchExists = labelQuery
+    ? labels.some((lbl) => lbl.name.toLowerCase() === labelQuery)
+    : false;
   const [dropdownPosition, setDropdownPosition] = useState<'top' | 'bottom'>(
     menuPlacement === 'bottom' ? 'bottom' : 'top'
   );
@@ -863,7 +873,13 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
             </div>
 
             <div className="max-h-48 overflow-y-auto space-y-0.5 mb-2">
-              {labels.map((lbl) => {
+              {filteredLabels.length === 0 && labelQuery && (
+                <div className="text-center py-3 text-stone-400 dark:text-stone-500 text-xs">
+                  No matching labels
+                </div>
+              )}
+
+              {filteredLabels.map((lbl) => {
                 const isSelected = note.labels?.includes(lbl.name);
                 return (
                   <label
@@ -874,30 +890,67 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                       type="checkbox"
                       checked={isSelected}
                       onChange={() => onToggleLabel?.(lbl.name)}
-                      className="w-4 h-4 rounded text-blue-600"
+                      className="w-4 h-4 rounded text-blue-600 focus:ring-0 accent-blue-600"
                     />
                     <span className="truncate">{lbl.name}</span>
                   </label>
                 );
               })}
+
+              {!exactMatchExists && labelQuery && (
+                <button
+                  type="button"
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    const trimmed = newLabelText.trim();
+                    await createLabel(trimmed);
+                    onToggleLabel?.(trimmed);
+                    setNewLabelText('');
+                  }}
+                  className="w-full text-left px-2.5 py-1.5 flex items-center gap-2 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-blue-600 dark:text-blue-400 font-medium text-xs rounded-lg transition-colors mt-1"
+                >
+                  <Plus className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate">Create &quot;{newLabelText.trim()}&quot;</span>
+                </button>
+              )}
             </div>
 
-            <div className="flex items-center gap-1.5 pt-2 border-t border-black/[0.06] dark:border-white/[0.08]">
+            <div className="flex items-center gap-1.5 pt-2 border-t border-black/[0.06] dark:border-white/[0.08] relative">
+              <Search className="w-3.5 h-3.5 text-stone-400 absolute left-2.5 pointer-events-none" />
               <input
                 type="text"
-                placeholder="Create label..."
+                placeholder="Enter label name"
                 value={newLabelText}
                 onChange={(e) => setNewLabelText(e.target.value)}
                 onKeyDown={async (e) => {
                   if (e.key === 'Enter' && newLabelText.trim()) {
                     e.preventDefault();
-                    await createLabel(newLabelText.trim());
-                    onToggleLabel?.(newLabelText.trim());
+                    const trimmed = newLabelText.trim();
+                    const exact = labels.find((l) => l.name.toLowerCase() === trimmed.toLowerCase());
+                    if (exact) {
+                      onToggleLabel?.(exact.name);
+                    } else {
+                      await createLabel(trimmed);
+                      onToggleLabel?.(trimmed);
+                    }
                     setNewLabelText('');
                   }
                 }}
-                className="w-full text-xs px-2.5 py-1.5 rounded-lg bg-stone-100 dark:bg-stone-800 border-none outline-none"
+                className="w-full text-xs pl-7 pr-7 py-1.5 rounded-lg bg-stone-100 dark:bg-stone-800 text-stone-800 dark:text-stone-200 border-none outline-none focus:ring-1 focus:ring-blue-500/50"
               />
+              {newLabelText && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setNewLabelText('');
+                  }}
+                  className="absolute right-2 p-0.5 text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 rounded-full"
+                  title="Clear search"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -1295,72 +1348,114 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                   </div>
 
                   <div className="p-3 border-b border-black/[0.06] dark:border-white/[0.08] shrink-0">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 relative">
+                      <Search className="w-4 h-4 text-stone-400 absolute left-3 pointer-events-none" />
                       <input
                         type="text"
-                        placeholder="Create new label..."
+                        placeholder="Enter label name"
                         value={newLabelText}
                         onChange={(e) => setNewLabelText(e.target.value)}
                         onKeyDown={async (e) => {
                           if (e.key === 'Enter' && newLabelText.trim()) {
                             e.preventDefault();
-                            await createLabel(newLabelText.trim());
-                            onToggleLabel?.(newLabelText.trim());
+                            const trimmed = newLabelText.trim();
+                            const exact = labels.find((l) => l.name.toLowerCase() === trimmed.toLowerCase());
+                            if (exact) {
+                              onToggleLabel?.(exact.name);
+                            } else {
+                              await createLabel(trimmed);
+                              onToggleLabel?.(trimmed);
+                            }
                             setNewLabelText('');
                           }
                         }}
-                        className="flex-1 text-xs px-3.5 py-2.5 rounded-full bg-stone-100 dark:bg-stone-800 border-none outline-none text-stone-800 dark:text-stone-200"
+                        className="flex-1 text-xs pl-9 pr-7 py-2.5 rounded-full bg-stone-100 dark:bg-stone-800 border-none outline-none text-stone-800 dark:text-stone-200"
                       />
+                      {newLabelText && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setNewLabelText('');
+                          }}
+                          className="absolute right-24 p-1 text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 rounded-full"
+                          title="Clear search"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={async (e) => {
                           e.stopPropagation();
                           if (newLabelText.trim()) {
-                            await createLabel(newLabelText.trim());
-                            onToggleLabel?.(newLabelText.trim());
+                            const trimmed = newLabelText.trim();
+                            const exact = labels.find((l) => l.name.toLowerCase() === trimmed.toLowerCase());
+                            if (exact) {
+                              onToggleLabel?.(exact.name);
+                            } else {
+                              await createLabel(trimmed);
+                              onToggleLabel?.(trimmed);
+                            }
                             setNewLabelText('');
                           }
                         }}
                         disabled={!newLabelText.trim()}
-                        className="px-4 py-2.5 bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 text-xs font-medium rounded-full disabled:opacity-40 transition-colors"
+                        className="px-4 py-2.5 bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 text-xs font-medium rounded-full disabled:opacity-40 transition-colors shrink-0"
                       >
-                        + Add
+                        {exactMatchExists ? 'Toggle' : '+ Add'}
                       </button>
                     </div>
                   </div>
 
                   <div className="overflow-y-auto py-1">
-                    {labels.length === 0 ? (
+                    {filteredLabels.length === 0 && labelQuery && (
                       <div className="text-center py-6 text-stone-400 text-xs">
-                        No labels created yet.
+                        No matching labels
                       </div>
-                    ) : (
-                      labels.map((lbl) => {
-                        const isSelected = note.labels?.includes(lbl.name);
-                        return (
-                          <div
-                            key={lbl.id}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onToggleLabel?.(lbl.name);
-                            }}
-                            className="flex items-center justify-between px-6 py-3.5 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] active:bg-black/[0.08] dark:active:bg-white/[0.1] cursor-pointer transition-colors select-none"
-                          >
-                            <div className="flex items-center gap-3">
-                              <span className="text-stone-400 font-medium">#</span>
-                              <span className="text-[14.5px] font-normal text-stone-800 dark:text-stone-200 tracking-[0.15px]">
-                                {lbl.name}
-                              </span>
-                            </div>
-                            <input
-                              type="checkbox"
-                              checked={isSelected}
-                              readOnly
-                              className="w-4 h-4 rounded text-blue-600 focus:ring-0 pointer-events-none accent-blue-600"
-                            />
+                    )}
+
+                    {filteredLabels.map((lbl) => {
+                      const isSelected = note.labels?.includes(lbl.name);
+                      return (
+                        <div
+                          key={lbl.id}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onToggleLabel?.(lbl.name);
+                          }}
+                          className="flex items-center justify-between px-6 py-3.5 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] active:bg-black/[0.08] dark:active:bg-white/[0.1] cursor-pointer transition-colors select-none"
+                        >
+                          <div className="flex items-center gap-3">
+                            <span className="text-stone-400 font-medium">#</span>
+                            <span className="text-[14.5px] font-normal text-stone-800 dark:text-stone-200 tracking-[0.15px]">
+                              {lbl.name}
+                            </span>
                           </div>
-                        );
-                      })
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            readOnly
+                            className="w-4 h-4 rounded text-blue-600 focus:ring-0 pointer-events-none accent-blue-600"
+                          />
+                        </div>
+                      );
+                    })}
+
+                    {!exactMatchExists && labelQuery && (
+                      <div
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          const trimmed = newLabelText.trim();
+                          await createLabel(trimmed);
+                          onToggleLabel?.(trimmed);
+                          setNewLabelText('');
+                        }}
+                        className="flex items-center gap-3 px-6 py-3.5 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] active:bg-black/[0.08] dark:active:bg-white/[0.1] cursor-pointer text-blue-600 dark:text-blue-400 font-medium text-[14px] transition-colors"
+                      >
+                        <Plus className="w-4 h-4 shrink-0" />
+                        <span>Create &quot;{newLabelText.trim()}&quot;</span>
+                      </div>
                     )}
                   </div>
                 </>
