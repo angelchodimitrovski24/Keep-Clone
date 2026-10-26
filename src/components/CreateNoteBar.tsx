@@ -27,6 +27,7 @@ import { encryptNote } from '@/lib/crypto';
 import { setUnlockedNote, setSessionPassword } from '@/lib/encryptionSession';
 import { NoteThemeArtwork } from './NoteThemeArtwork';
 import { ChecklistItemInput } from './ChecklistItemInput';
+import { printNote } from '@/lib/printNote';
 
 interface CreateNoteBarProps {
   onOpenDrawingModal?: () => void;
@@ -655,6 +656,24 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
             onToggleChecklist={() => setIsList(!isList)}
             onAddReminder={(r) => setReminder(r)}
             onToggleLabel={handleToggleLabel}
+            onPrint={() => {
+              printNote(
+                {
+                  id: 'draft',
+                  title,
+                  content,
+                  isList,
+                  todos,
+                  color,
+                  theme,
+                  labels,
+                  category,
+                  images,
+                  drawings,
+                } as Note,
+                categories
+              );
+            }}
             onLinkNote={() => setShowLinkModal(true)}
             onEncrypt={() => setShowEncryptModal(true)}
             showFormattingToggle={!isList}

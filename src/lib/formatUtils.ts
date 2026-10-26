@@ -344,7 +344,7 @@ export function convertMarkdownToHtml(content: string): string {
       .replace(/`([^`]+)`/g, '<code>$1</code>')
       .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
       .replace(/\*(.*?)\*/g, '<em>$1</em>')
-      .replace(/_(.*?)_/g, '<u>$1</u>')
+      .replace(/(^|[\s.,;:!?(])_([^_]+)_(?=[.,;:!?)\s]|$)/g, '$1<u>$2</u>')
       .replace(/~~(.*?)~~/g, '<s>$1</s>')
       .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-blue-600 dark:text-blue-400 underline hover:opacity-80">$1</a>');
   };

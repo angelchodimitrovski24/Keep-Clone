@@ -150,14 +150,36 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
           return true;
         }
 
-        // Intercept pasted markdown tables, headings or markdown content
+        const activeEditor = editorInstanceRef.current;
         const plainText = clipboardData?.getData('text/plain');
+
+        // If currently focused inside a code block, insert raw text directly into the code block
+        // to prevent ProseMirror from splitting the code block or inserting separate paragraphs
+        if (activeEditor && activeEditor.isFocused && plainText) {
+          const isInsideCodeBlock =
+            activeEditor.isActive('codeBlock') ||
+            activeEditor.state.selection.$from.parent.type.name === 'codeBlock';
+
+          if (isInsideCodeBlock) {
+            nativeEvt.__keepPasteHandled = true;
+            rawEvent.preventDefault();
+            if ('stopPropagation' in rawEvent) {
+              rawEvent.stopPropagation();
+            }
+            const { from, to } = activeEditor.state.selection;
+            activeEditor.view.dispatch(activeEditor.state.tr.insertText(plainText, from, to));
+            onChangeRef.current(activeEditor.getHTML());
+            return true;
+          }
+        }
+
+        // Intercept pasted markdown code blocks, tables, headings or markdown content
         if (
           plainText &&
-          (/(?:^|\n)\s*#{1,4}\s+/.test(plainText) ||
+          (/(?:^|\n)\s*```/.test(plainText) ||
+            /(?:^|\n)\s*#{1,4}\s+/.test(plainText) ||
             (plainText.includes('|') && /\|?\s*:?-+:?\s*\|/.test(plainText)))
         ) {
-          const activeEditor = editorInstanceRef.current;
           if (activeEditor) {
             nativeEvt.__keepPasteHandled = true;
             rawEvent.preventDefault();
@@ -218,7 +240,27 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
         attributes: {
           class: `w-full ${minHeightClass} outline-none text-stone-800 dark:text-stone-200 leading-relaxed`,
         },
-        handlePaste: (_view, event) => {
+        handleKeyDown: (view, event) => {
+          if (event.key === 'Tab' && view.state.selection.$from.parent.type.name === 'codeBlock') {
+            event.preventDefault();
+            view.dispatch(view.state.tr.insertText('  '));
+            return true;
+          }
+          return false;
+        },
+        handlePaste: (view, event) => {
+          if (view.state.selection.$from.parent.type.name === 'codeBlock') {
+            const text = event.clipboardData?.getData('text/plain');
+            if (text) {
+              event.preventDefault();
+              const { from, to } = view.state.selection;
+              view.dispatch(view.state.tr.insertText(text, from, to));
+              if (editorInstanceRef.current) {
+                onChangeRef.current(editorInstanceRef.current.getHTML());
+              }
+              return true;
+            }
+          }
           return handleClipboardDataTransfer(event.clipboardData, event);
         },
         handleDrop: (_view, event) => {

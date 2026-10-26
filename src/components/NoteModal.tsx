@@ -44,6 +44,7 @@ import { getUnlockedNote, setUnlockedNote, getSessionPassword, lockNoteInSession
 import { NoteThemeArtwork } from './NoteThemeArtwork';
 import { ChecklistItemInput } from './ChecklistItemInput';
 import { EditReadingTimeModal } from './EditReadingTimeModal';
+import { printNote } from '@/lib/printNote';
 
 function formatStopwatchTime(seconds: number): string {
   const h = Math.floor(seconds / 3600);
@@ -1630,6 +1631,21 @@ export const NoteModal: React.FC<NoteModalProps> = ({
                   images,
                   drawings,
                 });
+              }}
+              onPrint={() => {
+                printNote({
+                  ...note,
+                  title,
+                  content,
+                  isList,
+                  todos,
+                  color,
+                  theme,
+                  labels,
+                  category,
+                  images,
+                  drawings,
+                }, categories);
               }}
               onToggleChecklist={handleToggleChecklist}
               onAddReminder={setReminder}

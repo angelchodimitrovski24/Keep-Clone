@@ -27,6 +27,7 @@ import { EncryptNoteModal } from './EncryptNoteModal';
 import { LinkNoteModal } from './LinkNoteModal';
 import { getBidirectionalLinks } from '@/lib/noteLinks';
 import { NoteThemeArtwork } from './NoteThemeArtwork';
+import { printNote } from '@/lib/printNote';
 
 interface NoteCardProps {
   note: Note;
@@ -527,6 +528,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
               onDeletePermanently={() => deleteNotePermanently(note.id)}
               onDuplicate={() => duplicateNote(note.id)}
               onShare={() => setSharingNote(activeNote)}
+              onPrint={() => printNote(activeNote, categories)}
               onAddImage={handleAddImage}
               onEncrypt={() => setShowEncryptModal(true)}
               onLinkNote={() => setShowLinkModal(true)}
