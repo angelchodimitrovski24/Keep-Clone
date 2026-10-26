@@ -683,7 +683,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
     onClose();
   };
 
-  const handlePrint = useCallback(() => {
+  const handlePrint = () => {
     if (!note) return;
     const rawContent = editorRef.current?.getHTML() || content;
     printNote(
@@ -702,7 +702,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
       },
       categories
     );
-  }, [note, title, content, isList, todos, color, theme, labels, category, images, drawings, categories]);
+  };
 
   const handleAddTodo = () => {
     if (newTodoInput.trim()) {
