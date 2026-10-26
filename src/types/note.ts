@@ -126,12 +126,15 @@ export interface Category {
 export type ViewFilter =
   | 'notes'
   | 'reminders'
+  | 'calendar'
   | 'label'
   | 'category'
   | 'archive'
   | 'trash'
   | 'search'
   | 'stats';
+
+export * from './calendar';
 
 export type LayoutViewMode = 'grid' | 'list';
 

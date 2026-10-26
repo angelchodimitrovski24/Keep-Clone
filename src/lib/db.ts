@@ -1,5 +1,5 @@
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
-import { Note, Label, Category, ReadingSession } from '@/types/note';
+import { Note, Label, Category, ReadingSession, CalendarItem } from '@/types/note';
 
 interface KeepDB extends DBSchema {
   notes: {
@@ -35,6 +35,14 @@ interface KeepDB extends DBSchema {
       'by-ended': number;
     };
   };
+  calendarItems: {
+    key: string;
+    value: CalendarItem;
+    indexes: {
+      'by-type': string;
+      'by-updated': number;
+    };
+  };
   settings: {
     key: string;
     value: unknown;
@@ -58,7 +66,7 @@ export interface KeepMediaRecord {
 }
 
 const DB_NAME = 'google-keep-local-db';
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 
 let dbPromise: Promise<IDBPDatabase<KeepDB>> | null = null;
 
@@ -96,6 +104,13 @@ export function getKeepDB() {
           sessionStore.createIndex('by-note', 'noteId');
           sessionStore.createIndex('by-date', 'dateStr');
           sessionStore.createIndex('by-ended', 'endedAt');
+        }
+
+        // Calendar Items Store (Events and Tasks)
+        if (!db.objectStoreNames.contains('calendarItems')) {
+          const calStore = db.createObjectStore('calendarItems', { keyPath: 'id' });
+          calStore.createIndex('by-type', 'type');
+          calStore.createIndex('by-updated', 'updatedAt');
         }
 
         // Settings Store
@@ -334,6 +349,7 @@ export async function exportAllData(): Promise<{
   labels: Label[];
   categories: Category[];
   readingSessions?: ReadingSession[];
+  calendarItems?: CalendarItem[];
   settings?: Record<string, unknown>;
   exportDate: string;
 }> {
@@ -344,6 +360,7 @@ export async function exportAllData(): Promise<{
       labels: [],
       categories: [],
       readingSessions: [],
+      calendarItems: [],
       settings: {},
       exportDate: new Date().toISOString(),
     };
@@ -355,6 +372,10 @@ export async function exportAllData(): Promise<{
   let readingSessions: ReadingSession[] = [];
   if (db.objectStoreNames.contains('readingSessions')) {
     readingSessions = await db.getAll('readingSessions');
+  }
+  let calendarItems: CalendarItem[] = [];
+  if (db.objectStoreNames.contains('calendarItems')) {
+    calendarItems = await db.getAll('calendarItems');
   }
 
   const settings: Record<string, unknown> = {};
@@ -370,6 +391,7 @@ export async function exportAllData(): Promise<{
     labels,
     categories,
     readingSessions,
+    calendarItems,
     settings,
     exportDate: new Date().toISOString(),
   };
@@ -380,13 +402,17 @@ export async function importAllData(data: {
   labels?: Label[];
   categories?: Category[];
   readingSessions?: ReadingSession[];
+  calendarItems?: CalendarItem[];
   settings?: Record<string, unknown>;
 }): Promise<void> {
   const db = await getKeepDB();
   if (!db) return;
-  const storeNames: Array<'notes' | 'labels' | 'categories' | 'readingSessions' | 'settings'> = ['notes', 'labels', 'categories'];
+  const storeNames: Array<'notes' | 'labels' | 'categories' | 'readingSessions' | 'calendarItems' | 'settings'> = ['notes', 'labels', 'categories'];
   if (db.objectStoreNames.contains('readingSessions')) {
     storeNames.push('readingSessions');
+  }
+  if (db.objectStoreNames.contains('calendarItems')) {
+    storeNames.push('calendarItems');
   }
   if (data.settings && db.objectStoreNames.contains('settings')) {
     storeNames.push('settings');
@@ -413,6 +439,11 @@ export async function importAllData(data: {
       await tx.objectStore('readingSessions').put(session);
     }
   }
+  if (data.calendarItems && Array.isArray(data.calendarItems) && db.objectStoreNames.contains('calendarItems')) {
+    for (const item of data.calendarItems) {
+      await tx.objectStore('calendarItems').put(item);
+    }
+  }
   if (data.settings && typeof data.settings === 'object' && db.objectStoreNames.contains('settings')) {
     for (const [key, val] of Object.entries(data.settings)) {
       if (val !== undefined && val !== null) {
@@ -421,6 +452,27 @@ export async function importAllData(data: {
     }
   }
   await tx.done;
+}
+
+// ----------------- CALENDAR REPOSITORY (Events & Tasks) -----------------
+
+export async function getAllCalendarItemsFromDB(): Promise<CalendarItem[]> {
+  const db = await getKeepDB();
+  if (!db || !db.objectStoreNames.contains('calendarItems')) return [];
+  const items = await db.getAll('calendarItems');
+  return items.sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+export async function saveCalendarItemToDB(item: CalendarItem): Promise<void> {
+  const db = await getKeepDB();
+  if (!db || !db.objectStoreNames.contains('calendarItems')) return;
+  await db.put('calendarItems', item);
+}
+
+export async function deleteCalendarItemFromDB(id: string): Promise<void> {
+  const db = await getKeepDB();
+  if (!db || !db.objectStoreNames.contains('calendarItems')) return;
+  await db.delete('calendarItems', id);
 }
 
 // ----------------- MEDIA REPOSITORY (Offline / Client Persistence) -----------------

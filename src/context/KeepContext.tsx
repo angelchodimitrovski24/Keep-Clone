@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import { Note, NoteVersion, Label, Category, ViewFilter, LayoutViewMode, FontSizeOption, AppThemeMode, ReadingSession, ActiveStopwatch } from '@/types/note';
+import { Note, NoteVersion, Label, Category, ViewFilter, LayoutViewMode, FontSizeOption, AppThemeMode, ReadingSession, ActiveStopwatch, CalendarItem, CalendarEvent, CalendarTask, CalendarReminderNotice } from '@/types/note';
 import {
   getAllNotesFromDB,
   getAllLabelsFromDB,
@@ -24,6 +24,9 @@ import {
   saveReadingSessionToDB,
   deleteReadingSessionFromDB,
   clearAllReadingSessionsFromDB,
+  getAllCalendarItemsFromDB,
+  saveCalendarItemToDB,
+  deleteCalendarItemFromDB,
 } from '@/lib/db';
 import { setSyncLocalMediaFolder, initLocalMediaCache } from '@/lib/localPaste';
 import { hashCategoryPassword, verifyCategoryPassword } from '@/lib/crypto';
@@ -167,6 +170,15 @@ interface KeepContextType {
   clearAllReadingStats: () => Promise<void>;
   getNoteReadingStats: (noteId: string) => { totalSeconds: number; sessionCount: number; lastReadAt?: number };
 
+  // Google Calendar (Events, Tasks, Reminders)
+  calendarItems: CalendarItem[];
+  addCalendarItem: (item: Omit<CalendarItem, 'id' | 'createdAt' | 'updatedAt'>) => Promise<CalendarItem>;
+  updateCalendarItem: (id: string, updates: Partial<CalendarItem>) => Promise<void>;
+  deleteCalendarItem: (id: string) => Promise<void>;
+  toggleTaskComplete: (id: string) => Promise<void>;
+  activeReminderNotices: CalendarReminderNotice[];
+  dismissReminderNotice: (id: string) => void;
+
   // Backup / Data (ZIP & Intelligent Reconciliation)
   exportDataZip: () => Promise<void>;
   exportDataJSON: () => Promise<void>;
@@ -189,6 +201,8 @@ export function KeepProvider({
   const [labels, setLabels] = useState<Label[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [readingSessions, setReadingSessions] = useState<ReadingSession[]>([]);
+  const [calendarItems, setCalendarItems] = useState<CalendarItem[]>([]);
+  const [activeReminderNotices, setActiveReminderNotices] = useState<CalendarReminderNotice[]>([]);
   const [activeStopwatch, setActiveStopwatch] = useState<ActiveStopwatch | null>(null);
   const [importSummary, setImportSummary] = useState<ImportResult | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -304,6 +318,7 @@ export function KeepProvider({
         storedThemeMode,
         storedFontSize,
         storedReadingSessions,
+        storedCalendarItems,
       ] = await Promise.all([
         getAllNotesFromDB(),
         getAllLabelsFromDB(),
@@ -314,12 +329,59 @@ export function KeepProvider({
         getSettingFromDB<AppThemeMode>('themeMode', 'system'),
         getSettingFromDB<FontSizeOption>('fontSize', 'medium'),
         getAllReadingSessionsFromDB(),
+        getAllCalendarItemsFromDB(),
       ]);
 
       // Initialize in-memory blob URLs from offline IndexedDB media store
       await initLocalMediaCache().catch(() => {});
 
       setReadingSessions(storedReadingSessions);
+
+      // Seed initial calendar items if empty
+      if (storedCalendarItems.length === 0) {
+        const today = new Date();
+        const yyyy = today.getFullYear();
+        const mm = String(today.getMonth() + 1).padStart(2, '0');
+        const dd = String(today.getDate()).padStart(2, '0');
+        const todayStr = `${yyyy}-${mm}-${dd}`;
+        const defaultItems: CalendarItem[] = [
+          {
+            id: 'cal-sample-1',
+            type: 'event',
+            title: '📅 Google Calendar inside Keep!',
+            description: 'Create and organize your Events and Tasks with reminders right here.',
+            startDate: todayStr,
+            startTime: '10:00',
+            endDate: todayStr,
+            endTime: '11:00',
+            isAllDay: false,
+            color: '#039be5',
+            location: 'Keep App',
+            reminderMinutes: 15,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+          },
+          {
+            id: 'cal-sample-2',
+            type: 'task',
+            title: 'Plan upcoming tasks & review notes',
+            description: 'Mark tasks completed directly on the calendar or reschedule them.',
+            dueDate: todayStr,
+            dueTime: '15:00',
+            isCompleted: false,
+            color: '#0b8043',
+            reminderMinutes: 10,
+            createdAt: Date.now() + 1,
+            updatedAt: Date.now() + 1,
+          },
+        ];
+        for (const item of defaultItems) {
+          await saveCalendarItemToDB(item);
+        }
+        setCalendarItems(defaultItems);
+      } else {
+        setCalendarItems(storedCalendarItems);
+      }
 
       const initialThemeMode = storedThemeMode || 'system';
       const initialFontSize = storedFontSize || 'medium';
@@ -1422,6 +1484,169 @@ export function KeepProvider({
     [readingSessions, notes]
   );
 
+  // Calendar (Google Calendar style Events & Tasks)
+  const addCalendarItem = useCallback(
+    async (itemData: Omit<CalendarItem, 'id' | 'createdAt' | 'updatedAt'>): Promise<CalendarItem> => {
+      const now = Date.now();
+      const id = (itemData.type === 'event' ? 'event-' : 'task-') + now + '-' + Math.random().toString(36).substring(2, 7);
+      const newItem: CalendarItem = {
+        ...itemData,
+        id,
+        createdAt: now,
+        updatedAt: now,
+      } as CalendarItem;
+
+      await saveCalendarItemToDB(newItem);
+      setCalendarItems((prev) => [newItem, ...prev]);
+      return newItem;
+    },
+    []
+  );
+
+  const updateCalendarItem = useCallback(
+    async (id: string, updates: Partial<CalendarItem>) => {
+      setCalendarItems((prev) => {
+        const target = prev.find((i) => i.id === id);
+        if (!target) return prev;
+        const updated = {
+          ...target,
+          ...updates,
+          updatedAt: Date.now(),
+        } as CalendarItem;
+        saveCalendarItemToDB(updated);
+        return prev.map((i) => (i.id === id ? updated : i));
+      });
+    },
+    []
+  );
+
+  const deleteCalendarItem = useCallback(async (id: string) => {
+    await deleteCalendarItemFromDB(id);
+    setCalendarItems((prev) => prev.filter((i) => i.id !== id));
+  }, []);
+
+  const toggleTaskComplete = useCallback(async (id: string) => {
+    setCalendarItems((prev) => {
+      const target = prev.find((i) => i.id === id && i.type === 'task') as CalendarTask | undefined;
+      if (!target) return prev;
+      const nextCompleted = !target.isCompleted;
+      const updated: CalendarTask = {
+        ...target,
+        isCompleted: nextCompleted,
+        completedAt: nextCompleted ? Date.now() : undefined,
+        updatedAt: Date.now(),
+      };
+      saveCalendarItemToDB(updated);
+      return prev.map((i) => (i.id === id ? updated : i));
+    });
+  }, []);
+
+  const dismissReminderNotice = useCallback((id: string) => {
+    setActiveReminderNotices((prev) => prev.filter((n) => n.id !== id));
+  }, []);
+
+  // Reminder Notification Monitoring
+  const notifiedRemindersRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const checkReminders = () => {
+      const now = Date.now();
+      const newNotices: CalendarReminderNotice[] = [];
+
+      // 1. Check Calendar Items (Events & Tasks)
+      for (const item of calendarItems) {
+        if (item.reminderMinutes === undefined || item.reminderMinutes < 0) continue;
+        if (item.type === 'task' && item.isCompleted) continue;
+
+        let targetTimeMs: number | null = null;
+        if (item.type === 'event') {
+          const timePart = item.startTime || (item.isAllDay ? '09:00' : '00:00');
+          const [hours, minutes] = timePart.split(':').map(Number);
+          const [y, m, d] = item.startDate.split('-').map(Number);
+          const eventDate = new Date(y, m - 1, d, hours || 0, minutes || 0, 0);
+          targetTimeMs = eventDate.getTime() - item.reminderMinutes * 60 * 1000;
+        } else {
+          const timePart = item.dueTime || '09:00';
+          const [hours, minutes] = timePart.split(':').map(Number);
+          const [y, m, d] = item.dueDate.split('-').map(Number);
+          const taskDate = new Date(y, m - 1, d, hours || 0, minutes || 0, 0);
+          targetTimeMs = taskDate.getTime() - item.reminderMinutes * 60 * 1000;
+        }
+
+        if (targetTimeMs) {
+          const diffMs = now - targetTimeMs;
+          if (diffMs >= 0 && diffMs <= 180000) {
+            const noticeKey = `${item.id}-${targetTimeMs}`;
+            if (!notifiedRemindersRef.current.has(noticeKey)) {
+              notifiedRemindersRef.current.add(noticeKey);
+              newNotices.push({
+                id: noticeKey,
+                title: item.title,
+                timeStr: new Date(targetTimeMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                itemType: item.type,
+                color: item.color,
+                itemId: item.id,
+              });
+
+              if ('Notification' in window && Notification.permission === 'granted') {
+                try {
+                  new Notification(`⏰ Calendar Reminder: ${item.title}`, {
+                    body: item.description || `${item.type === 'event' ? 'Event' : 'Task'} scheduled now`,
+                    icon: '/favicon.ico',
+                  });
+                } catch {
+                  // ignore
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // 2. Check Note reminders
+      for (const note of notes) {
+        if (!note.reminder || note.isTrash || note.isArchived) continue;
+        const reminderTime = new Date(note.reminder).getTime();
+        const diffMs = now - reminderTime;
+        if (diffMs >= 0 && diffMs <= 180000) {
+          const noticeKey = `note-${note.id}-${reminderTime}`;
+          if (!notifiedRemindersRef.current.has(noticeKey)) {
+            notifiedRemindersRef.current.add(noticeKey);
+            newNotices.push({
+              id: noticeKey,
+              title: note.title || 'Untitled Note',
+              timeStr: new Date(reminderTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              itemType: 'note',
+              color: '#f59e0b',
+              itemId: note.id,
+            });
+
+            if ('Notification' in window && Notification.permission === 'granted') {
+              try {
+                new Notification(`🔔 Note Reminder: ${note.title || 'Untitled Note'}`, {
+                  body: note.content ? note.content.slice(0, 100) : 'Reminder set for this note',
+                  icon: '/favicon.ico',
+                });
+              } catch {
+                // ignore
+              }
+            }
+          }
+        }
+      }
+
+      if (newNotices.length > 0) {
+        setActiveReminderNotices((prev) => [...newNotices, ...prev]);
+      }
+    };
+
+    checkReminders();
+    const interval = setInterval(checkReminders, 25000);
+    return () => clearInterval(interval);
+  }, [calendarItems, notes]);
+
   // Backup & Import (ZIP and Intelligent Reconciliation)
   const exportDataZip = useCallback(async () => {
     await exportBackupZip();
@@ -1458,6 +1683,8 @@ export function KeepProvider({
       labels,
       categories,
       readingSessions,
+      calendarItems,
+      activeReminderNotices,
       activeStopwatch,
       isLoading,
       currentFilter,
@@ -1559,12 +1786,19 @@ export function KeepProvider({
       importDataJSON,
       importSummary,
       setImportSummary,
+      addCalendarItem,
+      updateCalendarItem,
+      deleteCalendarItem,
+      toggleTaskComplete,
+      dismissReminderNotice,
     }),
     [
       notes,
       labels,
       categories,
       readingSessions,
+      calendarItems,
+      activeReminderNotices,
       activeStopwatch,
       isLoading,
       currentFilter,
@@ -1659,6 +1893,11 @@ export function KeepProvider({
       importDataSmart,
       importDataJSON,
       importSummary,
+      addCalendarItem,
+      updateCalendarItem,
+      deleteCalendarItem,
+      toggleTaskComplete,
+      dismissReminderNotice,
     ]
   );
 

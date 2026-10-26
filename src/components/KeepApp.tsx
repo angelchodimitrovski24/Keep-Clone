@@ -16,6 +16,8 @@ import { SettingsModal } from '@/components/SettingsModal';
 import { UnlockCategoryModal } from '@/components/UnlockCategoryModal';
 import { NoteVersionModal } from '@/components/NoteVersionModal';
 import { ReadingStatsView } from '@/components/ReadingStatsView';
+import { CalendarView } from '@/components/CalendarView';
+import { CalendarReminderToast } from '@/components/CalendarReminderToast';
 import { ImportSummaryModal } from '@/components/ImportSummaryModal';
 import { ShareNoteModal } from '@/components/ShareNoteModal';
 import { GoogleDriveModal } from '@/components/GoogleDriveModal';
@@ -52,6 +54,7 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
     setImportSummary,
     sharingNote,
     setSharingNote,
+    setCurrentFilter,
   } = useKeep();
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -60,6 +63,12 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
   // Read URL parameters on mount if no initialNoteId prop was passed
   useEffect(() => {
     if (typeof window === 'undefined') return;
+
+    if (window.location.pathname === '/calendar') {
+      setCurrentFilter('calendar');
+    } else if (window.location.pathname === '/stats') {
+      setCurrentFilter('stats');
+    }
 
     if (!pendingNoteIdRef.current) {
       const match = window.location.pathname.match(/^\/note\/([^/]+)/);
@@ -176,6 +185,8 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
         <main className="flex-1 p-2.5 sm:p-4 md:p-8 overflow-y-auto max-w-[1600px] mx-auto w-full">
           {currentFilter === 'stats' ? (
             <ReadingStatsView />
+          ) : currentFilter === 'calendar' ? (
+            <CalendarView />
           ) : (
             <>
               {/* Category Filter Pills */}
@@ -270,6 +281,9 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
 
       {/* Create Note from Date Range Modal (Today, 7d, 14d, 30d, 60d, 90d, 6m, 1y) */}
       <CreateNoteByDateModal />
+
+      {/* Floating Calendar & Note Reminder Alerts */}
+      <CalendarReminderToast />
     </div>
   );
 }

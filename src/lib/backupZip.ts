@@ -1,11 +1,12 @@
 import JSZip from 'jszip';
-import { Note, Label, Category, ReadingSession } from '@/types/note';
+import { Note, Label, Category, ReadingSession, CalendarItem } from '@/types/note';
 import {
   exportAllData,
   saveNoteToDB,
   saveLabelToDB,
   saveCategoryToDB,
   saveReadingSessionToDB,
+  saveCalendarItemToDB,
   getAllNotesFromDB,
   getAllLabelsFromDB,
   getAllCategoriesFromDB,
@@ -331,6 +332,7 @@ export async function importBackupSmart(file: File): Promise<ImportResult> {
     labels?: Label[];
     categories?: Category[];
     readingSessions?: ReadingSession[];
+    calendarItems?: CalendarItem[];
   } | null = null;
 
   let mediaExtractedCount = 0;
@@ -643,6 +645,14 @@ export async function importBackupSmart(file: File): Promise<ImportResult> {
         existingSessionIds.add(session.id);
         sessionsAdded++;
       }
+    }
+  }
+
+  // 7. Intelligent Reconciliation for Calendar Items (Events & Tasks)
+  if (parsedData.calendarItems && Array.isArray(parsedData.calendarItems)) {
+    for (const item of parsedData.calendarItems) {
+      if (!item || !item.id) continue;
+      await saveCalendarItemToDB(item);
     }
   }
 
