@@ -1,5 +1,5 @@
 import JSZip from 'jszip';
-import { Note, Label, Category, ReadingSession, CalendarItem } from '@/types/note';
+import { Note, Label, Category, ReadingSession, CalendarItem, CalendarEvent, CalendarTask } from '@/types/note';
 import {
   exportAllData,
   saveNoteToDB,
@@ -11,6 +11,7 @@ import {
   getAllLabelsFromDB,
   getAllCategoriesFromDB,
   getAllReadingSessionsFromDB,
+  getAllCalendarItemsFromDB,
   saveMediaToDB,
   getMediaFromDB,
   saveSettingToDB,
@@ -22,6 +23,7 @@ import {
   getMediaBlobUrl,
   getSyncLocalMediaFolder,
 } from './localPaste';
+import { generateIcsContent, parseIcsContent } from './calendarExport';
 
 export interface ImportResult {
   success: boolean;
@@ -31,6 +33,12 @@ export interface ImportResult {
   labelsAdded: number;
   categoriesAdded: number;
   sessionsAdded: number;
+  eventsAdded: number;
+  eventsUpdated: number;
+  eventsSkipped: number;
+  tasksAdded: number;
+  tasksUpdated: number;
+  tasksSkipped: number;
   mediaExtracted: number;
   message: string;
 }
@@ -254,6 +262,40 @@ export async function generateBackupZipBlob(): Promise<{
     }
   }
 
+  // 4. Create calendar folder with standard .ics and human-readable markdowns
+  const calendarFolder = zip.folder('calendar');
+  const calItems = rawData.calendarItems || [];
+  const events = calItems.filter((i) => i.type === 'event') as CalendarEvent[];
+  const tasks = calItems.filter((i) => i.type === 'task') as CalendarTask[];
+
+  if (calendarFolder) {
+    const icsContent = generateIcsContent(calItems);
+    calendarFolder.file('calendar.ics', icsContent);
+
+    let eventsMd = `# Calendar Events\n\nExported on: ${new Date().toLocaleString()}\nTotal Events: ${events.length}\n\n---\n\n`;
+    events.forEach((ev, idx) => {
+      eventsMd += `### ${idx + 1}. ${ev.title}\n`;
+      eventsMd += `- **Date:** ${ev.startDate}${ev.endDate && ev.endDate !== ev.startDate ? ' to ' + ev.endDate : ''}\n`;
+      eventsMd += `- **Time:** ${ev.isAllDay ? 'All day' : `${ev.startTime || ''} – ${ev.endTime || ''}`}\n`;
+      if (ev.location) eventsMd += `- **Location:** ${ev.location}\n`;
+      if (ev.reminderMinutes !== undefined && ev.reminderMinutes >= 0) {
+        eventsMd += `- **Reminder:** ${ev.reminderMinutes === 0 ? 'At start' : ev.reminderMinutes + ' minutes before'}\n`;
+      }
+      if (ev.description) eventsMd += `- **Description:** ${ev.description}\n`;
+      eventsMd += `\n`;
+    });
+    calendarFolder.file('events.md', eventsMd);
+
+    let tasksMd = `# Calendar Tasks\n\nExported on: ${new Date().toLocaleString()}\nTotal Tasks: ${tasks.length}\n\n---\n\n`;
+    tasks.forEach((tsk) => {
+      const checkbox = tsk.isCompleted ? '[x]' : '[ ]';
+      const dueInfo = tsk.dueTime ? `${tsk.dueDate} at ${tsk.dueTime}` : tsk.dueDate;
+      tasksMd += `- ${checkbox} **${tsk.title}** (Due: ${dueInfo})\n`;
+      if (tsk.description) tasksMd += `  - ${tsk.description}\n`;
+    });
+    calendarFolder.file('tasks.md', tasksMd);
+  }
+
   // Include complete structured backup JSON
   const backupJson = {
     ...rawData,
@@ -273,12 +315,17 @@ Total Categories: ${rawData.categories.length}
 Total Labels: ${rawData.labels.length}
 Total Reading Sessions: ${rawData.readingSessions?.length || 0}
 Total Media Files: ${mediaCount}
+Total Calendar Events: ${events.length}
+Total Calendar Tasks: ${tasks.length}
 
 Archive Structure:
 - data.json: Primary application database used for intelligent restore
 - media/images/: Image attachments extracted from your notes
 - media/drawings/: Canvas drawings extracted as standalone PNG files
 - notes/: Individual Markdown (.md) documents readable in any text or markdown editor
+- calendar/calendar.ics: Standard iCalendar file (RFC 5545) importable into Google Calendar, Outlook, and Apple Calendar
+- calendar/events.md: Human-readable Markdown summary of all events
+- calendar/tasks.md: Interactive Markdown checklist of all tasks
 `;
   zip.file('README.txt', readme);
 
@@ -356,6 +403,17 @@ export async function importBackupSmart(file: File): Promise<ImportResult> {
       } else {
         const jsonContent = await dataJsonFile.async('string');
         parsedData = JSON.parse(jsonContent);
+      }
+
+      // Check if ZIP has a calendar.ics file
+      const icsZipFile = zip.file('calendar/calendar.ics') || zip.file(/\.ics$/i)[0];
+      if (icsZipFile && parsedData && (!parsedData.calendarItems || parsedData.calendarItems.length === 0)) {
+        try {
+          const icsText = await icsZipFile.async('string');
+          parsedData.calendarItems = parseIcsContent(icsText);
+        } catch {
+          // Ignore
+        }
       }
 
       // Extract and restore all media files in archive
@@ -445,8 +503,40 @@ export async function importBackupSmart(file: File): Promise<ImportResult> {
         labelsAdded: 0,
         categoriesAdded: 0,
         sessionsAdded: 0,
+        eventsAdded: 0,
+        eventsUpdated: 0,
+        eventsSkipped: 0,
+        tasksAdded: 0,
+        tasksUpdated: 0,
+        tasksSkipped: 0,
         mediaExtracted: 0,
         message: 'Could not read ZIP archive. Please ensure it is a valid backup file.',
+      };
+    }
+  } else if (file.name.toLowerCase().endsWith('.ics') || file.type.includes('calendar')) {
+    // Handle standalone iCalendar (.ics) file
+    try {
+      const text = await file.text();
+      const icsItems = parseIcsContent(text);
+      parsedData = { calendarItems: icsItems };
+    } catch (err) {
+      console.error('Error parsing .ics calendar file:', err);
+      return {
+        success: false,
+        notesAdded: 0,
+        notesUpdated: 0,
+        notesSkipped: 0,
+        labelsAdded: 0,
+        categoriesAdded: 0,
+        sessionsAdded: 0,
+        eventsAdded: 0,
+        eventsUpdated: 0,
+        eventsSkipped: 0,
+        tasksAdded: 0,
+        tasksUpdated: 0,
+        tasksSkipped: 0,
+        mediaExtracted: 0,
+        message: 'Could not parse .ics file. Please ensure it is a valid iCalendar file.',
       };
     }
   } else {
@@ -464,6 +554,12 @@ export async function importBackupSmart(file: File): Promise<ImportResult> {
         labelsAdded: 0,
         categoriesAdded: 0,
         sessionsAdded: 0,
+        eventsAdded: 0,
+        eventsUpdated: 0,
+        eventsSkipped: 0,
+        tasksAdded: 0,
+        tasksUpdated: 0,
+        tasksSkipped: 0,
         mediaExtracted: 0,
         message: 'Invalid JSON file. Please ensure it is a valid Google Keep backup.',
       };
@@ -479,17 +575,24 @@ export async function importBackupSmart(file: File): Promise<ImportResult> {
       labelsAdded: 0,
       categoriesAdded: 0,
       sessionsAdded: 0,
+      eventsAdded: 0,
+      eventsUpdated: 0,
+      eventsSkipped: 0,
+      tasksAdded: 0,
+      tasksUpdated: 0,
+      tasksSkipped: 0,
       mediaExtracted: 0,
       message: 'Invalid backup structure.',
     };
   }
 
   // 2. Fetch existing data from IndexedDB
-  const [existingNotes, existingLabels, existingCategories, existingSessions] = await Promise.all([
+  const [existingNotes, existingLabels, existingCategories, existingSessions, existingCalendarItems] = await Promise.all([
     getAllNotesFromDB(),
     getAllLabelsFromDB(),
     getAllCategoriesFromDB(),
     getAllReadingSessionsFromDB(),
+    getAllCalendarItemsFromDB(),
   ]);
 
   let notesAdded = 0;
@@ -498,6 +601,12 @@ export async function importBackupSmart(file: File): Promise<ImportResult> {
   let labelsAdded = 0;
   let categoriesAdded = 0;
   let sessionsAdded = 0;
+  let eventsAdded = 0;
+  let eventsUpdated = 0;
+  let eventsSkipped = 0;
+  let tasksAdded = 0;
+  let tasksUpdated = 0;
+  let tasksSkipped = 0;
 
   // 3. Intelligent Reconciliation for Notes
   if (parsedData.notes && Array.isArray(parsedData.notes)) {
@@ -652,7 +761,38 @@ export async function importBackupSmart(file: File): Promise<ImportResult> {
   if (parsedData.calendarItems && Array.isArray(parsedData.calendarItems)) {
     for (const item of parsedData.calendarItems) {
       if (!item || !item.id) continue;
-      await saveCalendarItemToDB(item);
+
+      if (item.type === 'event') {
+        const ev = item as CalendarEvent;
+        const local = existingCalendarItems.find(
+          (i) => i.id === ev.id || (i.type === 'event' && i.title.toLowerCase() === ev.title.toLowerCase() && (i as CalendarEvent).startDate === ev.startDate)
+        ) as CalendarEvent | undefined;
+
+        if (!local) {
+          await saveCalendarItemToDB(ev);
+          eventsAdded++;
+        } else if ((ev.updatedAt || 0) > (local.updatedAt || 0)) {
+          await saveCalendarItemToDB(ev);
+          eventsUpdated++;
+        } else {
+          eventsSkipped++;
+        }
+      } else if (item.type === 'task') {
+        const tsk = item as CalendarTask;
+        const local = existingCalendarItems.find(
+          (i) => i.id === tsk.id || (i.type === 'task' && i.title.toLowerCase() === tsk.title.toLowerCase() && (i as CalendarTask).dueDate === tsk.dueDate)
+        ) as CalendarTask | undefined;
+
+        if (!local) {
+          await saveCalendarItemToDB(tsk);
+          tasksAdded++;
+        } else if ((tsk.updatedAt || 0) > (local.updatedAt || 0)) {
+          await saveCalendarItemToDB(tsk);
+          tasksUpdated++;
+        } else {
+          tasksSkipped++;
+        }
+      }
     }
   }
 
@@ -667,7 +807,24 @@ export async function importBackupSmart(file: File): Promise<ImportResult> {
     }
   }
 
-  const summaryMessage = `Import completed: ${notesAdded} new notes added, ${notesUpdated} updated with newer changes, ${notesSkipped} unchanged. ${labelsAdded} labels, ${categoriesAdded} categories, ${sessionsAdded} reading sessions merged, and ${mediaExtractedCount} media files restored.`;
+  const summaryParts: string[] = [];
+  if (notesAdded > 0 || notesUpdated > 0) {
+    summaryParts.push(`${notesAdded} notes added, ${notesUpdated} updated`);
+  }
+  if (eventsAdded > 0 || eventsUpdated > 0) {
+    summaryParts.push(`${eventsAdded} events added, ${eventsUpdated} updated`);
+  }
+  if (tasksAdded > 0 || tasksUpdated > 0) {
+    summaryParts.push(`${tasksAdded} tasks added, ${tasksUpdated} updated`);
+  }
+  if (labelsAdded > 0) summaryParts.push(`${labelsAdded} labels`);
+  if (categoriesAdded > 0) summaryParts.push(`${categoriesAdded} categories`);
+  if (sessionsAdded > 0) summaryParts.push(`${sessionsAdded} reading sessions`);
+  if (mediaExtractedCount > 0) summaryParts.push(`${mediaExtractedCount} media files restored`);
+
+  const summaryMessage = summaryParts.length > 0
+    ? `Import completed: ${summaryParts.join(', ')}.`
+    : `Import completed: No new or updated items found.`;
 
   return {
     success: true,
@@ -677,6 +834,12 @@ export async function importBackupSmart(file: File): Promise<ImportResult> {
     labelsAdded,
     categoriesAdded,
     sessionsAdded,
+    eventsAdded,
+    eventsUpdated,
+    eventsSkipped,
+    tasksAdded,
+    tasksUpdated,
+    tasksSkipped,
     mediaExtracted: mediaExtractedCount,
     message: summaryMessage,
   };

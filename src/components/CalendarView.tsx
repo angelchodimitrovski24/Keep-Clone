@@ -13,6 +13,8 @@ import {
   Menu,
   X,
   Filter,
+  Download,
+  Upload,
 } from 'lucide-react';
 import { useKeep } from '@/context/KeepContext';
 import {
@@ -23,6 +25,7 @@ import {
 } from '@/types/calendar';
 import { CalendarItemModal } from './CalendarItemModal';
 import { Note } from '@/types/note';
+import { exportCalendarToIcs } from '@/lib/calendarExport';
 
 // Helper date utilities
 function formatMonthYear(d: Date): string {
@@ -64,8 +67,10 @@ export const CalendarView: React.FC = () => {
     toggleTaskComplete,
     notes,
     setEditingNote,
+    importDataSmart,
   } = useKeep();
 
+  const calendarFileInputRef = React.useRef<HTMLInputElement>(null);
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
   const [viewMode, setViewMode] = useState<CalendarViewMode>('month');
 
@@ -363,6 +368,39 @@ export const CalendarView: React.FC = () => {
                 {mode}
               </button>
             ))}
+          </div>
+
+          {/* Calendar Export & Import actions */}
+          <div className="flex items-center gap-1 border-l border-stone-200 dark:border-stone-700/60 pl-2">
+            <button
+              type="button"
+              onClick={() => exportCalendarToIcs(calendarItems)}
+              className="p-1.5 text-stone-600 dark:text-stone-300 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-stone-100 dark:hover:bg-stone-800 rounded-full transition-colors"
+              title="Export Calendar (.ics)"
+            >
+              <Download className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => calendarFileInputRef.current?.click()}
+              className="p-1.5 text-stone-600 dark:text-stone-300 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-stone-100 dark:hover:bg-stone-800 rounded-full transition-colors"
+              title="Import Calendar (.ics, .zip, .json)"
+            >
+              <Upload className="w-4 h-4" />
+            </button>
+            <input
+              ref={calendarFileInputRef}
+              type="file"
+              accept=".ics,.zip,.json,text/calendar,application/json,application/zip"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  await importDataSmart(file);
+                  e.target.value = '';
+                }
+              }}
+              className="hidden"
+            />
           </div>
 
           {/* Quick Create Button */}

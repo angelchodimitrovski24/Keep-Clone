@@ -1,7 +1,18 @@
 'use client';
 
 import React from 'react';
-import { CheckCircle2, AlertCircle, FileText, Folder, Tag, Timer, Image as ImageIcon, X } from 'lucide-react';
+import {
+  CheckCircle2,
+  AlertCircle,
+  FileText,
+  Folder,
+  Tag,
+  Timer,
+  Image as ImageIcon,
+  Calendar as CalendarIcon,
+  CheckSquare,
+  X,
+} from 'lucide-react';
 import { ImportResult } from '@/lib/backupZip';
 
 interface ImportSummaryModalProps {
@@ -122,6 +133,30 @@ export const ImportSummaryModal: React.FC<ImportSummaryModalProps> = ({ result, 
                   {result.mediaExtracted}
                 </span>
               </div>
+
+              {(result.eventsAdded > 0 || result.eventsUpdated > 0) && (
+                <div className="p-3 bg-stone-50 dark:bg-stone-800/50 rounded-xl border border-stone-200/80 dark:border-stone-700/60 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 text-stone-700 dark:text-stone-300">
+                    <CalendarIcon className="w-3.5 h-3.5 text-blue-500" />
+                    <span>Calendar Events</span>
+                  </span>
+                  <span className="font-mono font-bold text-blue-600 dark:text-blue-400">
+                    +{result.eventsAdded + (result.eventsUpdated || 0)}
+                  </span>
+                </div>
+              )}
+
+              {(result.tasksAdded > 0 || result.tasksUpdated > 0) && (
+                <div className="p-3 bg-stone-50 dark:bg-stone-800/50 rounded-xl border border-stone-200/80 dark:border-stone-700/60 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 text-stone-700 dark:text-stone-300">
+                    <CheckSquare className="w-3.5 h-3.5 text-emerald-500" />
+                    <span>Calendar Tasks</span>
+                  </span>
+                  <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                    +{result.tasksAdded + (result.tasksUpdated || 0)}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
         )}

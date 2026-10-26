@@ -338,7 +338,7 @@ export function KeepProvider({
       setReadingSessions(storedReadingSessions);
 
       // Seed initial calendar items if empty
-      if (storedCalendarItems.length === 0) {
+      if (storedCalendarItems.length === 0 && storedNotes.length === 0) {
         const today = new Date();
         const yyyy = today.getFullYear();
         const mm = String(today.getMonth() + 1).padStart(2, '0');

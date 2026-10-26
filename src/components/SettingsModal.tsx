@@ -358,12 +358,12 @@ export const SettingsModal: React.FC = () => {
                 title="Intelligently import backup (ZIP or JSON) updating only changed items without duplicates"
               >
                 <Upload className="w-4 h-4 text-emerald-500" />
-                <span>Intelligent Import (ZIP / JSON)</span>
+                <span>Intelligent Import (ZIP / JSON / ICS)</span>
               </button>
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".zip,.json,application/zip,application/x-zip-compressed,application/json"
+                accept=".zip,.json,.ics,application/zip,application/x-zip-compressed,application/json,text/calendar"
                 onChange={handleImport}
                 className="hidden"
               />
