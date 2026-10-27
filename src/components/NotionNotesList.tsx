@@ -42,6 +42,7 @@ export const NotionNotesList: React.FC<NotionNotesListProps> = ({
     currentFilter,
     layoutMode,
     setLayoutMode,
+    setIsNotionTemplateModalOpen,
   } = useKeep();
 
   const [newTitle, setNewTitle] = useState('');
@@ -187,9 +188,20 @@ export const NotionNotesList: React.FC<NotionNotesListProps> = ({
             </button>
           </div>
 
-          <span className="text-xs text-stone-400 dark:text-stone-500 select-none">
-            {notes.length} {notes.length === 1 ? 'note' : 'notes'}
-          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsNotionTemplateModalOpen(true)}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-400 transition-colors"
+              title="Create Notion Template Hub (Today, Days, Keyword)"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+              <span>Use Template</span>
+            </button>
+            <span className="text-xs text-stone-400 dark:text-stone-500 select-none">
+              {notes.length} {notes.length === 1 ? 'note' : 'notes'}
+            </span>
+          </div>
         </div>
       </div>
 

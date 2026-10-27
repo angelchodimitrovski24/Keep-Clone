@@ -27,6 +27,7 @@ import {
   Smartphone,
   BarChart2,
   CalendarRange,
+  Sparkles,
 } from 'lucide-react';
 import { useKeep } from '@/context/KeepContext';
 import { NOTE_COLORS } from '@/lib/constants';
@@ -62,6 +63,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
     setIsGoogleDriveModalOpen,
     setIsPdfExportModalOpen,
     setIsDateCompileModalOpen,
+    setIsNotionTemplateModalOpen,
     isInstallModalOpen,
     setIsInstallModalOpen,
     canInstallPwa,
@@ -404,6 +406,16 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
           title="Create note from date range (Today, 7d, 14d, 30d, 60d, 90d, 6m, 1y)"
         >
           <CalendarRange className="w-5 h-5" />
+        </button>
+
+        {/* Create Notion Template Hub Note */}
+        <button
+          type="button"
+          onClick={() => setIsNotionTemplateModalOpen(true)}
+          className="p-1.5 sm:p-2.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors text-amber-600 dark:text-amber-400 shrink-0"
+          title="Create Notion Template Hub (Today's Notes, Days, Per Keyword)"
+        >
+          <Sparkles className="w-5 h-5" />
         </button>
 
         {/* Settings Dialog Toggle */}

@@ -31,6 +31,7 @@ export const CreateNoteByDateModal: React.FC = () => {
     notes,
     isDateCompileModalOpen,
     setIsDateCompileModalOpen,
+    setIsNotionTemplateModalOpen,
     addNote,
     setEditingNote,
     setSearchQuery,
@@ -168,14 +169,29 @@ export const CreateNoteByDateModal: React.FC = () => {
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setIsDateCompileModalOpen(false)}
-            className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-black/[0.06] dark:hover:bg-white/[0.08] text-stone-500 hover:text-stone-800 dark:hover:text-stone-200 transition-colors shrink-0"
-            title="Close"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setIsDateCompileModalOpen(false);
+                setIsNotionTemplateModalOpen(true);
+              }}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-semibold bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-400 border border-amber-500/20 transition-colors"
+              title="Switch to Notion-style Template Hub"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+              <span className="hidden sm:inline">Notion Hub Template</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsDateCompileModalOpen(false)}
+              className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-black/[0.06] dark:hover:bg-white/[0.08] text-stone-500 hover:text-stone-800 dark:hover:text-stone-200 transition-colors shrink-0"
+              title="Close"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* Modal Body: Scrollable */}

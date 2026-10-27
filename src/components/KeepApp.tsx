@@ -26,6 +26,7 @@ import { InstallAppModal } from '@/components/InstallAppModal';
 import { AndroidInstallBanner } from '@/components/AndroidInstallBanner';
 import { ActiveStopwatchDock } from '@/components/ActiveStopwatchDock';
 import { CreateNoteByDateModal } from '@/components/CreateNoteByDateModal';
+import { NotionTemplateModal } from '@/components/NotionTemplateModal';
 import { Note, NoteDrawing } from '@/types/note';
 
 interface KeepAppProps {
@@ -281,6 +282,9 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
 
       {/* Create Note from Date Range Modal (Today, 7d, 14d, 30d, 60d, 90d, 6m, 1y) */}
       <CreateNoteByDateModal />
+
+      {/* Notion Template Hub Modal (Today's Notes, Days, Per Keyword) */}
+      <NotionTemplateModal />
 
       {/* Floating Calendar & Note Reminder Alerts */}
       <CalendarReminderToast />

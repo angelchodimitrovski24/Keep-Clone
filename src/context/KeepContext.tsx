@@ -103,6 +103,8 @@ interface KeepContextType {
   setIsPdfExportModalOpen: (open: boolean) => void;
   isDateCompileModalOpen: boolean;
   setIsDateCompileModalOpen: (open: boolean) => void;
+  isNotionTemplateModalOpen: boolean;
+  setIsNotionTemplateModalOpen: (open: boolean) => void;
 
   // Android & Mobile PWA Installation
   isInstallModalOpen: boolean;
@@ -231,6 +233,7 @@ export function KeepProvider({
   const [isGoogleDriveModalOpen, setIsGoogleDriveModalOpen] = useState(false);
   const [isPdfExportModalOpen, setIsPdfExportModalOpen] = useState(false);
   const [isDateCompileModalOpen, setIsDateCompileModalOpen] = useState(false);
+  const [isNotionTemplateModalOpen, setIsNotionTemplateModalOpen] = useState(false);
   const [sharingNote, setSharingNote] = useState<Note | null>(null);
 
   // Android & Mobile PWA Installation states
@@ -1721,6 +1724,8 @@ export function KeepProvider({
       setIsPdfExportModalOpen,
       isDateCompileModalOpen,
       setIsDateCompileModalOpen,
+      isNotionTemplateModalOpen,
+      setIsNotionTemplateModalOpen,
       isInstallModalOpen,
       setIsInstallModalOpen,
       canInstallPwa,

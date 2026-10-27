@@ -12,6 +12,7 @@ import {
   Lock,
   CalendarRange,
   FileText,
+  Sparkles,
 } from 'lucide-react';
 import { useKeep } from '@/context/KeepContext';
 import { NoteActions } from './NoteActions';
@@ -45,6 +46,7 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
     editingNote,
     setEditingNote,
     setIsDateCompileModalOpen,
+    setIsNotionTemplateModalOpen,
   } = useKeep();
   const [isExpanded, setIsExpanded] = useState(false);
   const [title, setTitle] = useState('');
@@ -376,6 +378,14 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
               title="Create note from date range (Today, 7d, 14d, 30d...)"
             >
               <CalendarRange className="w-5 h-5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsNotionTemplateModalOpen(true)}
+              className="p-2 rounded-full hover:bg-stone-100 dark:hover:bg-stone-700 text-amber-600 dark:text-amber-400 hover:text-amber-700 transition-colors"
+              title="Notion Template Hub (Today's Notes, Days, Per Keyword)"
+            >
+              <Sparkles className="w-5 h-5" />
             </button>
           </div>
         </div>
@@ -736,6 +746,14 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
               title="Create note from date range (Today, 7d, 14d, 30d...)"
             >
               <CalendarRange className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsNotionTemplateModalOpen(true)}
+              className="p-1.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10 text-amber-600 dark:text-amber-400 hover:text-amber-700 transition-colors"
+              title="Notion Template Hub (Today's Notes, Days, Per Keyword)"
+            >
+              <Sparkles className="w-4 h-4" />
             </button>
             <button
               type="button"
