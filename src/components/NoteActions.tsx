@@ -116,31 +116,59 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
   const [dropdownPosition, setDropdownPosition] = useState<'top' | 'bottom'>(
     menuPlacement === 'bottom' ? 'bottom' : 'top'
   );
+  const [dynamicMaxHeight, setDynamicMaxHeight] = useState<number | undefined>(undefined);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
 
   const updateDropdownPlacement = (btnElement?: HTMLElement | null) => {
+    const el = btnElement || moreBtnRef.current;
+    const rect = el?.getBoundingClientRect();
+
+    if (!rect) {
+      if (menuPlacement === 'bottom') setDropdownPosition('bottom');
+      else setDropdownPosition('top');
+      return;
+    }
+
+    const margin = 16;
+    const spaceBelow = window.innerHeight - rect.bottom - margin;
+    const spaceAbove = rect.top - margin;
+
+    let pos: 'top' | 'bottom' = 'bottom';
     if (menuPlacement === 'bottom') {
-      setDropdownPosition('bottom');
-      return;
-    }
-    if (menuPlacement === 'top') {
-      setDropdownPosition('top');
-      return;
-    }
-    // 'auto' placement: measure space above and below the button
-    const rect = btnElement?.getBoundingClientRect();
-    if (rect) {
-      const spaceBelow = window.innerHeight - rect.bottom;
-      const spaceAbove = rect.top;
-      if (spaceBelow < 280 && spaceAbove > spaceBelow) {
-        setDropdownPosition('top');
+      pos = 'bottom';
+    } else if (menuPlacement === 'top') {
+      if (spaceAbove < 240 && spaceBelow > spaceAbove + 100) {
+        pos = 'bottom';
       } else {
-        setDropdownPosition('bottom');
+        pos = 'top';
       }
+    } else {
+      pos = spaceBelow < 320 && spaceAbove > spaceBelow ? 'top' : 'bottom';
     }
+
+    setDropdownPosition(pos);
+    const availableSpace = pos === 'top'
+      ? Math.max(160, Math.floor(rect.top - 24))
+      : Math.max(160, Math.floor(window.innerHeight - rect.bottom - 22));
+
+    setDynamicMaxHeight(availableSpace);
   };
 
   const verticalPositionClass = dropdownPosition === 'bottom' ? 'top-full mt-1.5' : 'bottom-full mb-2';
   const alignClass = menuAlign === 'left' ? 'left-0' : 'right-0';
+
+  useEffect(() => {
+    if (showMenu) {
+      if (moreBtnRef.current) {
+        updateDropdownPlacement(moreBtnRef.current);
+      }
+      requestAnimationFrame(() => {
+        if (moreMenuRef.current) {
+          moreMenuRef.current.scrollTop = 0;
+        }
+      });
+    }
+  }, [showMenu]);
 
   useEffect(() => {
     setMounted(true);
@@ -242,7 +270,10 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
         {!isMobile && showReminderPicker && (
           <div
             onClick={(e) => e.stopPropagation()}
-            className={`absolute left-0 ${verticalPositionClass} w-64 max-w-[calc(100vw-2rem)] p-2.5 bg-white dark:bg-[#202124] rounded-xl keep-elevation-2 border border-black/[0.08] dark:border-stone-700/60 z-50 text-[13.5px] font-normal shadow-xl`}
+            onMouseDown={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
+            style={{ maxHeight: dynamicMaxHeight ? `${dynamicMaxHeight}px` : undefined }}
+            className={`absolute left-0 ${verticalPositionClass} w-64 max-w-[calc(100vw-2rem)] p-2.5 bg-white dark:bg-[#202124] rounded-xl keep-elevation-2 border border-black/[0.08] dark:border-stone-700/60 z-50 text-[13.5px] font-normal shadow-xl overflow-y-auto overscroll-contain`}
           >
             <p className="text-xs font-medium px-2.5 py-1 text-stone-500 tracking-wide uppercase">
               Set Reminder
@@ -324,7 +355,10 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
         {!isMobile && showColorPicker && (
           <div
             onClick={(e) => e.stopPropagation()}
-            className={`absolute left-0 ${verticalPositionClass} w-72 max-w-[calc(100vw-2rem)] p-3 bg-white dark:bg-[#202124] rounded-xl keep-elevation-2 border border-black/[0.08] dark:border-stone-700/60 z-50 shadow-xl`}
+            onMouseDown={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
+            style={{ maxHeight: dynamicMaxHeight ? `${dynamicMaxHeight}px` : undefined }}
+            className={`absolute left-0 ${verticalPositionClass} w-72 max-w-[calc(100vw-2rem)] p-3 bg-white dark:bg-[#202124] rounded-xl keep-elevation-2 border border-black/[0.08] dark:border-stone-700/60 z-50 shadow-xl overflow-y-auto overscroll-contain`}
           >
             <p className="text-xs font-medium text-stone-500 mb-2 px-1">Colors</p>
             <div className="grid grid-cols-6 gap-2 mb-3">
@@ -553,10 +587,12 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
 
         {!isMobile && showMenu && (
           <div
+            ref={moreMenuRef}
             onClick={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
             onTouchStart={(e) => e.stopPropagation()}
-            className={`absolute ${alignClass} ${verticalPositionClass} w-56 max-w-[calc(100vw-2rem)] py-1.5 bg-white dark:bg-[#202124] rounded-xl keep-elevation-2 border border-black/[0.08] dark:border-stone-700/60 z-50 text-[13.5px] font-normal max-h-[70vh] overflow-y-auto shadow-xl`}
+            style={{ maxHeight: dynamicMaxHeight ? `${dynamicMaxHeight}px` : undefined }}
+            className={`absolute ${alignClass} ${verticalPositionClass} w-56 max-w-[calc(100vw-2rem)] py-1.5 bg-white dark:bg-[#202124] rounded-xl keep-elevation-2 border border-black/[0.08] dark:border-stone-700/60 z-50 text-[13.5px] font-normal overflow-y-auto overscroll-contain shadow-xl`}
           >
             {onSelectCategory && (
               <button
@@ -770,7 +806,8 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
             onClick={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
             onTouchStart={(e) => e.stopPropagation()}
-            className={`absolute ${alignClass} ${verticalPositionClass} w-64 max-w-[calc(100vw-2rem)] p-2.5 bg-white dark:bg-[#202124] rounded-xl keep-elevation-2 border border-black/[0.08] dark:border-stone-700/60 z-50 text-[13.5px] max-h-[70vh] overflow-y-auto shadow-xl`}
+            style={{ maxHeight: dynamicMaxHeight ? `${dynamicMaxHeight}px` : undefined }}
+            className={`absolute ${alignClass} ${verticalPositionClass} w-64 max-w-[calc(100vw-2rem)] p-2.5 bg-white dark:bg-[#202124] rounded-xl keep-elevation-2 border border-black/[0.08] dark:border-stone-700/60 z-50 text-[13.5px] overflow-y-auto overscroll-contain shadow-xl`}
           >
             <div className="flex items-center justify-between pb-2 mb-2 border-b border-black/[0.06] dark:border-white/[0.08]">
               <div className="flex items-center gap-1.5">
@@ -865,7 +902,8 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
             onClick={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
             onTouchStart={(e) => e.stopPropagation()}
-            className={`absolute ${alignClass} ${verticalPositionClass} w-64 max-w-[calc(100vw-2rem)] p-2.5 bg-white dark:bg-[#202124] rounded-xl keep-elevation-2 border border-black/[0.08] dark:border-stone-700/60 z-50 text-[13.5px] max-h-[70vh] overflow-y-auto shadow-xl`}
+            style={{ maxHeight: dynamicMaxHeight ? `${dynamicMaxHeight}px` : undefined }}
+            className={`absolute ${alignClass} ${verticalPositionClass} w-64 max-w-[calc(100vw-2rem)] p-2.5 bg-white dark:bg-[#202124] rounded-xl keep-elevation-2 border border-black/[0.08] dark:border-stone-700/60 z-50 text-[13.5px] overflow-y-auto overscroll-contain shadow-xl`}
           >
             <div className="flex items-center justify-between pb-2 mb-2 border-b border-black/[0.06] dark:border-white/[0.08]">
               <div className="flex items-center gap-1.5">

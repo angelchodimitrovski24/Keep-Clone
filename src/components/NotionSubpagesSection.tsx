@@ -211,26 +211,34 @@ export const NotionSubpagesSection: React.FC<NotionSubpagesSectionProps> = ({
 
   return (
     <div className="w-full my-2 select-none">
-      {/* Notion Database / Sub-pages View Switcher Pill Header */}
+      {/* Notion Database / Sub-pages View Switcher Header */}
       <div className="flex items-center justify-between mb-2.5 pb-1 text-xs">
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1 bg-stone-100 dark:bg-stone-800/60 p-0.5 rounded-lg border border-black/[0.05] dark:border-white/[0.05]">
           <button
             type="button"
-            onClick={() => setViewMode(viewMode === 'list' ? 'gallery' : 'list')}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium text-stone-600 dark:text-stone-300 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] border border-black/[0.08] dark:border-white/[0.1] transition-colors shadow-2xs"
-            title={viewMode === 'list' ? 'Switch to Gallery view' : 'Switch to List view'}
+            onClick={() => setViewMode('list')}
+            className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium transition-colors ${
+              viewMode === 'list'
+                ? 'bg-white dark:bg-[#2c2c2c] text-stone-900 dark:text-stone-100 shadow-2xs font-semibold'
+                : 'text-stone-500 hover:text-stone-800 dark:hover:text-stone-200'
+            }`}
+            title="List view"
           >
-            {viewMode === 'list' ? (
-              <>
-                <Rows className="w-3.5 h-3.5 text-stone-400" />
-                <span>Visualização em galeria</span>
-              </>
-            ) : (
-              <>
-                <LayoutGrid className="w-3.5 h-3.5 text-amber-500" />
-                <span>Visualização em lista</span>
-              </>
-            )}
+            <Rows className="w-3.5 h-3.5" />
+            <span>List</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode('gallery')}
+            className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium transition-colors ${
+              viewMode === 'gallery'
+                ? 'bg-white dark:bg-[#2c2c2c] text-amber-600 dark:text-amber-400 shadow-2xs font-semibold'
+                : 'text-stone-500 hover:text-stone-800 dark:hover:text-stone-200'
+            }`}
+            title="Gallery view"
+          >
+            <LayoutGrid className="w-3.5 h-3.5" />
+            <span>Gallery</span>
           </button>
         </div>
 
