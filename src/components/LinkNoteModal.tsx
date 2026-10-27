@@ -40,8 +40,16 @@ export const LinkNoteModal: React.FC<LinkNoteModalProps> = ({
 
   return (
     <div
-      onClick={onClose}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150"
+      role="dialog"
+      aria-modal="true"
+      data-portal="true"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          e.stopPropagation();
+          onClose();
+        }
+      }}
+      className="keep-modal fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150"
     >
       <div
         onClick={(e) => e.stopPropagation()}
@@ -57,7 +65,10 @@ export const LinkNoteModal: React.FC<LinkNoteModalProps> = ({
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={(e) => {
+              e.stopPropagation();
+              onClose();
+            }}
             className="p-1.5 rounded-full hover:bg-black/5 dark:hover:bg-white/5 text-stone-400 hover:text-stone-600 transition-colors"
           >
             <X className="w-4 h-4" />
@@ -83,7 +94,8 @@ export const LinkNoteModal: React.FC<LinkNoteModalProps> = ({
             candidates.map((n) => (
               <div
                 key={n.id}
-                onClick={() => {
+                onClick={(e) => {
+                  e.stopPropagation();
                   onSelectNote(n);
                   onClose();
                 }}

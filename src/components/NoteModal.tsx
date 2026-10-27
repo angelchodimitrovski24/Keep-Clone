@@ -625,7 +625,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
 
   if (!isOpen || !note) return null;
 
-  const handleSaveAndClose = async () => {
+  const saveCurrentNote = async (snapshotReason?: string) => {
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     if (maxWaitTimerRef.current) clearTimeout(maxWaitTimerRef.current);
 
@@ -677,7 +677,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
             noteType: showSubpages || childNoteIds.length > 0 ? 'notion' : (note.noteType || 'default'),
           });
         } catch (err) {
-          console.error('Failed saving encrypted note on close:', err);
+          console.error('Failed saving encrypted note:', err);
         }
       }
     } else {
@@ -700,7 +700,18 @@ export const NoteModal: React.FC<NoteModalProps> = ({
       });
     }
 
-    await performAutoSnapshot('Auto snapshot on close');
+    await performAutoSnapshot(snapshotReason || 'Auto snapshot on save');
+  };
+
+  const handleSaveAndClose = async () => {
+    await saveCurrentNote('Auto snapshot on close');
+    if (note.parentNoteId) {
+      const parent = notes.find((n) => n.id === note.parentNoteId && !n.isTrash);
+      if (parent) {
+        setEditingNote(parent);
+        return;
+      }
+    }
     onClose();
   };
 
@@ -827,7 +838,11 @@ export const NoteModal: React.FC<NoteModalProps> = ({
 
   return (
     <div
-      onClick={handleSaveAndClose}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          handleSaveAndClose();
+        }
+      }}
       className="fixed inset-0 z-50 flex flex-col bg-black/60 backdrop-blur-xs p-0 sm:p-4 md:p-8 sm:items-center sm:justify-center overflow-y-auto animate-in fade-in duration-150"
     >
       <div
@@ -960,7 +975,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
             <button
               type="button"
               onClick={async () => {
-                await handleSaveAndClose();
+                await saveCurrentNote('Auto snapshot before opening extracted note');
                 const targetNote = notes.find((n) => n.id === extractToast.noteId);
                 if (targetNote) {
                   setEditingNote(targetNote);
@@ -996,7 +1011,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
                 <button
                   type="button"
                   onClick={async () => {
-                    await handleSaveAndClose();
+                    await saveCurrentNote('Auto snapshot before returning to parent');
                     setEditingNote(parentNote);
                   }}
                   className="hover:underline flex items-center gap-1 text-stone-500 hover:text-amber-600 dark:hover:text-amber-400"
@@ -1016,7 +1031,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
             <button
               type="button"
               onClick={async () => {
-                await handleSaveAndClose();
+                await saveCurrentNote('Auto snapshot before returning to parent');
                 setEditingNote(parentNote);
               }}
               className="inline-flex items-center gap-1.5 text-xs font-medium text-stone-500 hover:text-amber-600 dark:hover:text-amber-400 transition-colors py-0.5 px-1.5 -ml-1.5 rounded-md hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
@@ -1579,7 +1594,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
                     await updateNote(note.id, { childNoteIds: newIds });
                   }}
                   onOpenChildNote={async (childNote) => {
-                    await handleSaveAndClose();
+                    await saveCurrentNote('Auto snapshot before opening sub-page');
                     setEditingNote(childNote);
                   }}
                   category={category}
@@ -1592,13 +1607,13 @@ export const NoteModal: React.FC<NoteModalProps> = ({
                       <div className="py-1 text-stone-800 dark:text-stone-200 leading-relaxed overflow-x-auto">
                         <MarkdownRenderer
                           content={content}
-                          onOpenLinkedNote={(titleOrId) => {
+                          onOpenLinkedNote={async (titleOrId) => {
                             const q = titleOrId.toLowerCase().trim();
                             const found = notes.find(
                               (n) => n.id.toLowerCase() === q || (n.title && n.title.toLowerCase() === q)
                             );
                             if (found) {
-                              handleSaveAndClose();
+                              await saveCurrentNote('Auto snapshot before following link');
                               setEditingNote(found);
                             }
                           }}
@@ -1634,13 +1649,13 @@ export const NoteModal: React.FC<NoteModalProps> = ({
               <div className="min-h-[240px] py-1 text-stone-800 dark:text-stone-200 leading-relaxed overflow-x-auto">
                 <MarkdownRenderer
                   content={content}
-                  onOpenLinkedNote={(titleOrId) => {
+                  onOpenLinkedNote={async (titleOrId) => {
                     const q = titleOrId.toLowerCase().trim();
                     const found = notes.find(
                       (n) => n.id.toLowerCase() === q || (n.title && n.title.toLowerCase() === q)
                     );
                     if (found) {
-                      handleSaveAndClose();
+                      await saveCurrentNote('Auto snapshot before following link');
                       setEditingNote(found);
                     }
                   }}
@@ -1674,7 +1689,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
                         key={target.id}
                         type="button"
                         onClick={async () => {
-                          await handleSaveAndClose();
+                          await saveCurrentNote('Auto snapshot before following link');
                           const targetNote = notes.find((n) => n.id === target.id);
                           if (targetNote) setEditingNote(targetNote);
                         }}
@@ -1700,7 +1715,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
                         key={source.id}
                         type="button"
                         onClick={async () => {
-                          await handleSaveAndClose();
+                          await saveCurrentNote('Auto snapshot before following link');
                           const sourceNote = notes.find((n) => n.id === source.id);
                           if (sourceNote) setEditingNote(sourceNote);
                         }}

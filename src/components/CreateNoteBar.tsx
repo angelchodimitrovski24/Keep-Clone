@@ -125,6 +125,7 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
 
       // Ignore clicks inside portaled mobile bottom sheet, modals, or dialogs
       if (
+        !target.isConnected ||
         target.closest('.keep-backdrop-anim') ||
         target.closest('.keep-sheet-anim') ||
         target.closest('[role="dialog"]') ||
