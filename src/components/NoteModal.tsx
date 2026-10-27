@@ -1809,7 +1809,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
               isFormattingOpen={isFormattingOpen}
               onToggleFormatting={() => setIsFormattingOpen(!isFormattingOpen)}
               menuPlacement="top"
-              menuAlign="left"
+              menuAlign="right"
             />
           </div>
 

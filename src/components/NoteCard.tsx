@@ -98,8 +98,10 @@ export const NoteCard: React.FC<NoteCardProps> = ({
 
   const isSelected = selectedNoteIds.includes(note.id);
   const colorClasses = getNoteColorClasses(note.color, note.theme);
+  const [isAnyMenuOpen, setIsAnyMenuOpen] = useState(false);
 
   const handleCardClick = () => {
+    if (isAnyMenuOpen) return;
     if (isCategoryLocked && categoryObj) {
       setUnlockCategoryModalTarget(categoryObj);
       return;
@@ -171,7 +173,9 @@ export const NoteCard: React.FC<NoteCardProps> = ({
     <>
       <div
         onClick={handleCardClick}
-        className={`group relative flex flex-col justify-between rounded-2xl border transition-all duration-200 cursor-default hover:keep-elevation-1 break-inside-avoid mb-4 ${colorClasses} ${
+        className={`group relative flex flex-col justify-between rounded-2xl border transition-all duration-200 cursor-default hover:keep-elevation-1 break-inside-avoid mb-4 ${
+          isAnyMenuOpen ? 'z-30 shadow-md ring-1 ring-stone-400/40 dark:ring-stone-600/40' : 'z-0'
+        } ${colorClasses} ${
           isSelected
             ? 'ring-2 ring-stone-900 dark:ring-stone-100 keep-elevation-2'
             : 'hover:border-stone-400/80 dark:hover:border-stone-500'
@@ -523,14 +527,19 @@ export const NoteCard: React.FC<NoteCardProps> = ({
             <span className="text-stone-400 hover:text-amber-600 transition-colors">Click to unlock</span>
           </div>
         ) : (
-          <div className="px-2 py-1.5 opacity-90 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity flex items-center justify-between border-t border-black/5 dark:border-white/5 sm:border-transparent">
+          <div className={`px-2 py-1.5 ${
+            isAnyMenuOpen
+              ? 'opacity-100'
+              : 'opacity-90 sm:opacity-0 sm:group-hover:opacity-100'
+          } transition-opacity flex items-center justify-between border-t border-black/5 dark:border-white/5 sm:border-transparent`}>
             <NoteActions
               note={activeNote}
               isTrash={note.isTrash}
               compact={true}
               className="w-full justify-between"
-              menuPlacement="auto"
+              menuPlacement="top"
               menuAlign="right"
+              onMenuOpenChange={setIsAnyMenuOpen}
               onColorChange={(color) => updateNote(note.id, { color })}
               onThemeChange={(theme) => updateNote(note.id, { theme })}
               onArchiveToggle={() => toggleArchiveNote(note.id)}

@@ -63,6 +63,7 @@ interface NoteActionsProps {
   compact?: boolean;
   menuPlacement?: 'top' | 'bottom' | 'auto';
   menuAlign?: 'left' | 'right';
+  onMenuOpenChange?: (open: boolean) => void;
 }
 
 export const NoteActions: React.FC<NoteActionsProps> = ({
@@ -95,6 +96,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
   compact = false,
   menuPlacement = 'auto',
   menuAlign = 'right',
+  onMenuOpenChange,
 }) => {
   const { labels, categories, createLabel, setIsCategoryModalOpen } = useKeep();
   const [showColorPicker, setShowColorPicker] = useState(false);
@@ -105,6 +107,12 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
   const [newLabelText, setNewLabelText] = useState('');
   const [mounted, setMounted] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+
+  // Notify parent whenever any action menu / picker opens or closes
+  useEffect(() => {
+    const isAnyOpen = showMenu || showColorPicker || showReminderPicker || showLabelPicker || showCategoryPicker;
+    onMenuOpenChange?.(isAnyOpen);
+  }, [showMenu, showColorPicker, showReminderPicker, showLabelPicker, showCategoryPicker, onMenuOpenChange]);
 
   const labelQuery = newLabelText.trim().toLowerCase();
   const filteredLabels = labelQuery
@@ -137,21 +145,27 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
     if (menuPlacement === 'bottom') {
       pos = 'bottom';
     } else if (menuPlacement === 'top') {
-      if (spaceAbove < 240 && spaceBelow > spaceAbove + 100) {
+      if (spaceAbove < 220 && spaceBelow > spaceAbove + 60) {
         pos = 'bottom';
       } else {
         pos = 'top';
       }
     } else {
-      pos = spaceBelow < 320 && spaceAbove > spaceBelow ? 'top' : 'bottom';
+      if (spaceAbove >= 240) {
+        pos = 'top';
+      } else if (spaceBelow >= 240) {
+        pos = 'bottom';
+      } else {
+        pos = spaceAbove >= spaceBelow ? 'top' : 'bottom';
+      }
     }
 
     setDropdownPosition(pos);
     const availableSpace = pos === 'top'
-      ? Math.max(160, Math.floor(rect.top - 24))
-      : Math.max(160, Math.floor(window.innerHeight - rect.bottom - 22));
+      ? Math.max(200, Math.floor(rect.top - 16))
+      : Math.max(200, Math.floor(window.innerHeight - rect.bottom - 16));
 
-    setDynamicMaxHeight(availableSpace);
+    setDynamicMaxHeight(Math.min(460, availableSpace));
   };
 
   const verticalPositionClass = dropdownPosition === 'bottom' ? 'top-full mt-1.5' : 'bottom-full mb-2';
