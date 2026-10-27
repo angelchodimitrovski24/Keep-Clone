@@ -1435,244 +1435,209 @@ export const NoteModal: React.FC<NoteModalProps> = ({
         ) : (
           <>
             <div className="px-3.5 sm:px-6 py-2.5 sm:py-3 overflow-y-auto flex-1 flex flex-col justify-between space-y-4">
-          <div>
-            {isList ? (
-              <div className="space-y-2">
-                {/* Active Interactive Checkboxes */}
-                {activeTodos.map((todo) => (
-                  <div
-                    key={todo.id}
-                    className="flex items-start gap-2.5 sm:gap-3 group py-1 min-w-0 w-full rounded-lg transition-colors hover:bg-black/[0.02] dark:hover:bg-white/[0.02]"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={todo.completed}
-                      onChange={() => handleToggleTodo(todo.id)}
-                      className="w-4 h-4 mt-1 rounded text-blue-600 focus:ring-0 cursor-pointer accent-blue-600 shrink-0"
-                    />
+            <div className="space-y-4">
+              {/* 1. Notion-style Sub-pages list (Shown whenever note has subpages or is in Notion mode) */}
+              {isNotionPage && (
+                <div className="mb-2">
+                  <NotionSubpagesSection
+                    parentNoteId={note.id}
+                    childNoteIds={childNoteIds}
+                    onChangeChildIds={async (newIds) => {
+                      setChildNoteIds(newIds);
+                      await updateNote(note.id, { childNoteIds: newIds });
+                    }}
+                    onOpenChildNote={async (childNote) => {
+                      await saveCurrentNote('Auto snapshot before opening sub-page');
+                      setEditingNote(childNote);
+                    }}
+                    category={category}
+                  />
+                </div>
+              )}
+
+              {/* 2. Interactive Checklist Items (if checkboxes are enabled) */}
+              {isList && (
+                <div className={`space-y-2 ${isNotionPage ? 'pt-3 border-t border-black/5 dark:border-white/5' : ''}`}>
+                  {/* Active Interactive Checkboxes */}
+                  {activeTodos.map((todo) => (
+                    <div
+                      key={todo.id}
+                      className="flex items-start gap-2.5 sm:gap-3 group py-1 min-w-0 w-full rounded-lg transition-colors hover:bg-black/[0.02] dark:hover:bg-white/[0.02]"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={todo.completed}
+                        onChange={() => handleToggleTodo(todo.id)}
+                        className="w-4 h-4 mt-1 rounded text-blue-600 focus:ring-0 cursor-pointer accent-blue-600 shrink-0"
+                      />
+                      <ChecklistItemInput
+                        id={`modal-todo-${todo.id}`}
+                        value={todo.text}
+                        completed={todo.completed}
+                        onChange={(val) => {
+                          setTodos((prev) =>
+                            prev.map((t) => (t.id === todo.id ? { ...t, text: val } : t))
+                          );
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            // Add new empty todo item right below
+                            const newId = 'todo-' + Date.now();
+                            setTodos((prev) => {
+                              const index = prev.findIndex((t) => t.id === todo.id);
+                              const updated = [...prev];
+                              updated.splice(index + 1, 0, { id: newId, text: '', completed: false });
+                              return updated;
+                            });
+                            setTimeout(() => {
+                              document.getElementById(`modal-todo-${newId}`)?.focus();
+                            }, 50);
+                          }
+                          if (e.key === 'Backspace' && todo.text === '') {
+                            e.preventDefault();
+                            const index = todos.findIndex((t) => t.id === todo.id);
+                            const prevTodo = todos[index - 1];
+                            handleRemoveTodo(todo.id);
+                            if (prevTodo) {
+                              setTimeout(() => {
+                                const prevEl = document.getElementById(`modal-todo-${prevTodo.id}`) as HTMLTextAreaElement | null;
+                                if (prevEl) {
+                                  prevEl.focus();
+                                  prevEl.selectionStart = prevEl.value.length;
+                                  prevEl.selectionEnd = prevEl.value.length;
+                                }
+                              }, 50);
+                            }
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveTodo(todo.id)}
+                        className="opacity-40 sm:opacity-0 sm:group-hover:opacity-100 hover:opacity-100 text-stone-400 hover:text-red-500 dark:hover:text-red-400 p-1 sm:p-1.5 transition-all shrink-0 mt-0.5"
+                        title="Delete item"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+
+                  {/* Add item row */}
+                  <div className="flex items-start gap-2.5 sm:gap-3 pt-2 border-t border-black/5 dark:border-white/5 min-w-0 w-full">
+                    <Plus className="w-4 h-4 mt-1 text-stone-400 shrink-0" />
                     <ChecklistItemInput
-                      id={`modal-todo-${todo.id}`}
-                      value={todo.text}
-                      completed={todo.completed}
-                      onChange={(val) => {
-                        setTodos((prev) =>
-                          prev.map((t) => (t.id === todo.id ? { ...t, text: val } : t))
-                        );
-                      }}
+                      id="modal-todo-new"
+                      placeholder="List item"
+                      value={newTodoInput}
+                      onChange={setNewTodoInput}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' && !e.shiftKey) {
                           e.preventDefault();
-                          // Add new empty todo item right below
-                          const newId = 'todo-' + Date.now();
-                          setTodos((prev) => {
-                            const index = prev.findIndex((t) => t.id === todo.id);
-                            const updated = [...prev];
-                            updated.splice(index + 1, 0, { id: newId, text: '', completed: false });
-                            return updated;
-                          });
+                          handleAddTodo();
                           setTimeout(() => {
-                            document.getElementById(`modal-todo-${newId}`)?.focus();
+                            document.getElementById('modal-todo-new')?.focus();
                           }, 50);
-                        }
-                        if (e.key === 'Backspace' && todo.text === '') {
-                          e.preventDefault();
-                          const index = todos.findIndex((t) => t.id === todo.id);
-                          const prevTodo = todos[index - 1];
-                          handleRemoveTodo(todo.id);
-                          if (prevTodo) {
-                            setTimeout(() => {
-                              const prevEl = document.getElementById(`modal-todo-${prevTodo.id}`) as HTMLTextAreaElement | null;
-                              if (prevEl) {
-                                prevEl.focus();
-                                prevEl.selectionStart = prevEl.value.length;
-                                prevEl.selectionEnd = prevEl.value.length;
-                              }
-                            }, 50);
-                          }
                         }
                       }}
                     />
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveTodo(todo.id)}
-                      className="opacity-40 sm:opacity-0 sm:group-hover:opacity-100 hover:opacity-100 text-stone-400 hover:text-red-500 dark:hover:text-red-400 p-1 sm:p-1.5 transition-all shrink-0 mt-0.5"
-                      title="Delete item"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
                   </div>
-                ))}
 
-                {/* Add item row */}
-                <div className="flex items-start gap-2.5 sm:gap-3 pt-2 border-t border-black/5 dark:border-white/5 min-w-0 w-full">
-                  <Plus className="w-4 h-4 mt-1 text-stone-400 shrink-0" />
-                  <ChecklistItemInput
-                    id="modal-todo-new"
-                    placeholder="List item"
-                    value={newTodoInput}
-                    onChange={setNewTodoInput}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        handleAddTodo();
-                        setTimeout(() => {
-                          document.getElementById('modal-todo-new')?.focus();
-                        }, 50);
-                      }
-                    }}
-                  />
-                </div>
+                  {/* Completed items accordion */}
+                  {completedTodos.length > 0 && (
+                    <div className="pt-4 border-t border-black/10 dark:border-white/10 mt-4">
+                      <button
+                        type="button"
+                        onClick={() => setShowCompletedTodos(!showCompletedTodos)}
+                        className="flex items-center gap-1.5 text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2"
+                      >
+                        {showCompletedTodos ? (
+                          <ChevronDown className="w-4 h-4" />
+                        ) : (
+                          <ChevronRight className="w-4 h-4" />
+                        )}
+                        {completedTodos.length} Completed Items
+                      </button>
 
-                {/* Completed items accordion */}
-                {completedTodos.length > 0 && (
-                  <div className="pt-4 border-t border-black/10 dark:border-white/10 mt-4">
-                    <button
-                      type="button"
-                      onClick={() => setShowCompletedTodos(!showCompletedTodos)}
-                      className="flex items-center gap-1.5 text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2"
-                    >
-                      {showCompletedTodos ? (
-                        <ChevronDown className="w-4 h-4" />
-                      ) : (
-                        <ChevronRight className="w-4 h-4" />
-                      )}
-                      {completedTodos.length} Completed Items
-                    </button>
-
-                    {showCompletedTodos && (
-                      <div className="space-y-2 pl-1 sm:pl-2">
-                        {completedTodos.map((todo) => (
-                          <div
-                            key={todo.id}
-                            className="flex items-start gap-2.5 sm:gap-3 group py-1 min-w-0 w-full rounded-lg transition-colors hover:bg-black/[0.02] dark:hover:bg-white/[0.02]"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={todo.completed}
-                              onChange={() => handleToggleTodo(todo.id)}
-                              className="w-4 h-4 mt-1 rounded text-blue-600 focus:ring-0 cursor-pointer accent-blue-600 shrink-0"
-                            />
-                            <ChecklistItemInput
-                              id={`modal-todo-${todo.id}`}
-                              value={todo.text}
-                              completed={true}
-                              onChange={(val) => {
-                                setTodos((prev) =>
-                                  prev.map((t) => (t.id === todo.id ? { ...t, text: val } : t))
-                                );
-                              }}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Backspace' && todo.text === '') {
-                                  e.preventDefault();
-                                  handleRemoveTodo(todo.id);
-                                }
-                              }}
-                            />
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveTodo(todo.id)}
-                              className="opacity-40 sm:opacity-0 sm:group-hover:opacity-100 hover:opacity-100 text-stone-400 hover:text-red-500 dark:hover:text-red-400 p-1 sm:p-1.5 transition-all shrink-0 mt-0.5"
-                              title="Delete item"
+                      {showCompletedTodos && (
+                        <div className="space-y-2 pl-1 sm:pl-2">
+                          {completedTodos.map((todo) => (
+                            <div
+                              key={todo.id}
+                              className="flex items-start gap-2.5 sm:gap-3 group py-1 min-w-0 w-full rounded-lg transition-colors hover:bg-black/[0.02] dark:hover:bg-white/[0.02]"
                             >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            ) : isNotionPage ? (
-              <div className="space-y-3">
-                {/* Notion-style Sub-pages list - Shown prominently under title like on the image! */}
-                <NotionSubpagesSection
-                  parentNoteId={note.id}
-                  childNoteIds={childNoteIds}
-                  onChangeChildIds={async (newIds) => {
-                    setChildNoteIds(newIds);
-                    await updateNote(note.id, { childNoteIds: newIds });
-                  }}
-                  onOpenChildNote={async (childNote) => {
-                    await saveCurrentNote('Auto snapshot before opening sub-page');
-                    setEditingNote(childNote);
-                  }}
-                  category={category}
-                />
+                              <input
+                                type="checkbox"
+                                checked={todo.completed}
+                                onChange={() => handleToggleTodo(todo.id)}
+                                className="w-4 h-4 mt-1 rounded text-blue-600 focus:ring-0 cursor-pointer accent-blue-600 shrink-0"
+                              />
+                              <ChecklistItemInput
+                                id={`modal-todo-${todo.id}`}
+                                value={todo.text}
+                                completed={true}
+                                onChange={(val) => {
+                                  setTodos((prev) =>
+                                    prev.map((t) => (t.id === todo.id ? { ...t, text: val } : t))
+                                  );
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Backspace' && todo.text === '') {
+                                    e.preventDefault();
+                                    handleRemoveTodo(todo.id);
+                                  }
+                                }}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveTodo(todo.id)}
+                                className="opacity-40 sm:opacity-0 sm:group-hover:opacity-100 hover:opacity-100 text-stone-400 hover:text-red-500 dark:hover:text-red-400 p-1 sm:p-1.5 transition-all shrink-0 mt-0.5"
+                                title="Delete item"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
 
-                {/* Additional Written Notes / Description (Shown below the subpages) */}
-                {content.trim() || isPreviewMode ? (
-                  <div className="pt-3 border-t border-black/5 dark:border-white/5">
-                    {isPreviewMode ? (
-                      <div className="py-1 text-stone-800 dark:text-stone-200 leading-relaxed overflow-x-auto">
-                        <MarkdownRenderer
-                          content={content}
-                          onOpenLinkedNote={async (titleOrId) => {
-                            const q = titleOrId.toLowerCase().trim();
-                            const found = notes.find(
-                              (n) => n.id.toLowerCase() === q || (n.title && n.title.toLowerCase() === q)
-                            );
-                            if (found) {
-                              await saveCurrentNote('Auto snapshot before following link');
-                              setEditingNote(found);
-                            }
-                          }}
-                        />
-                      </div>
-                    ) : (
-                      <KeepWysiwygEditor
-                        ref={editorRef}
+              {/* 3. Written Note / Rich Text Editor / Markdown - ALWAYS directly editable and mixed in! */}
+              {(!isList || isNotionPage || content.trim()) && (
+                <div className={isNotionPage || isList ? 'pt-2 border-t border-black/5 dark:border-white/5' : ''}>
+                  {isPreviewMode ? (
+                    <div className="min-h-[140px] py-1 text-stone-800 dark:text-stone-200 leading-relaxed overflow-x-auto">
+                      <MarkdownRenderer
                         content={content}
-                        onChange={setContent}
-                        placeholder="Add written notes, markdown, or thoughts…"
-                        minHeightClass="min-h-[100px]"
-                        listenWindowPaste={true}
+                        onOpenLinkedNote={async (titleOrId) => {
+                          const q = titleOrId.toLowerCase().trim();
+                          const found = notes.find(
+                            (n) => n.id.toLowerCase() === q || (n.title && n.title.toLowerCase() === q)
+                          );
+                          if (found) {
+                            await saveCurrentNote('Auto snapshot before following link');
+                            setEditingNote(found);
+                          }
+                        }}
                       />
-                    )}
-                  </div>
-                ) : (
-                  <div className="pt-1">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setContent(' ');
-                        setTimeout(() => editorRef.current?.focus(), 50);
-                      }}
-                      className="text-xs text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 transition-colors py-1"
-                    >
-                      + Add written notes or description below
-                    </button>
-                  </div>
-                )}
-              </div>
-            ) : isPreviewMode ? (
-              <div className="min-h-[240px] py-1 text-stone-800 dark:text-stone-200 leading-relaxed overflow-x-auto">
-                <MarkdownRenderer
-                  content={content}
-                  onOpenLinkedNote={async (titleOrId) => {
-                    const q = titleOrId.toLowerCase().trim();
-                    const found = notes.find(
-                      (n) => n.id.toLowerCase() === q || (n.title && n.title.toLowerCase() === q)
-                    );
-                    if (found) {
-                      await saveCurrentNote('Auto snapshot before following link');
-                      setEditingNote(found);
-                    }
-                  }}
-                />
-              </div>
-            ) : (
-              <KeepWysiwygEditor
-                ref={editorRef}
-                content={content}
-                onChange={setContent}
-                placeholder="Take a note…"
-                minHeightClass="min-h-[240px]"
-                autoFocus={true}
-                listenWindowPaste={true}
-              />
-            )}
-          </div>
+                    </div>
+                  ) : (
+                    <KeepWysiwygEditor
+                      ref={editorRef}
+                      content={content}
+                      onChange={setContent}
+                      placeholder="Take a note, add thoughts, markdown, or text…"
+                      minHeightClass={isNotionPage ? 'min-h-[140px]' : 'min-h-[240px]'}
+                      autoFocus={!isNotionPage && !isList}
+                      listenWindowPaste={true}
+                    />
+                  )}
+                </div>
+              )}
+            </div>
 
           {/* Bidirectional Linked Notes & Backlinks */}
           {(outgoing.length > 0 || backlinks.length > 0) && (

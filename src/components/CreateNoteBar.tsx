@@ -608,27 +608,16 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
                 }}
                 category={category}
               />
-              {content.trim() ? (
+              <div className="pt-2 border-t border-black/5 dark:border-white/5">
                 <KeepWysiwygEditor
                   ref={editorRef}
                   content={content}
                   onChange={setContent}
-                  placeholder="Add written notes, markdown, or thoughts…"
+                  placeholder="Take a note, add thoughts, markdown, or text…"
                   minHeightClass="min-h-[80px]"
                   listenWindowPaste={!editingNote}
                 />
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setContent(' ');
-                    setTimeout(() => editorRef.current?.focus(), 50);
-                  }}
-                  className="text-xs text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 transition-colors py-1"
-                >
-                  + Add written notes or description below
-                </button>
-              )}
+              </div>
             </div>
           ) : (
             <KeepWysiwygEditor
