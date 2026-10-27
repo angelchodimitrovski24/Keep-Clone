@@ -146,8 +146,16 @@ export const CreateNoteByDateModal: React.FC = () => {
 
   return (
     <div
-      onClick={() => setIsDateCompileModalOpen(false)}
-      className="keep-backdrop-anim fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-2 sm:p-4 overflow-y-auto"
+      role="dialog"
+      aria-modal="true"
+      data-portal="true"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          e.stopPropagation();
+          setIsDateCompileModalOpen(false);
+        }
+      }}
+      className="keep-backdrop-anim keep-modal fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-2 sm:p-4 overflow-y-auto"
     >
       <div
         onClick={(e) => e.stopPropagation()}
@@ -172,7 +180,8 @@ export const CreateNoteByDateModal: React.FC = () => {
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => {
+              onClick={(e) => {
+                e.stopPropagation();
                 setIsDateCompileModalOpen(false);
                 setIsNotionTemplateModalOpen(true);
               }}
@@ -185,7 +194,10 @@ export const CreateNoteByDateModal: React.FC = () => {
 
             <button
               type="button"
-              onClick={() => setIsDateCompileModalOpen(false)}
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsDateCompileModalOpen(false);
+              }}
               className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-black/[0.06] dark:hover:bg-white/[0.08] text-stone-500 hover:text-stone-800 dark:hover:text-stone-200 transition-colors shrink-0"
               title="Close"
             >
@@ -532,7 +544,10 @@ export const CreateNoteByDateModal: React.FC = () => {
           <div className="flex items-center gap-2 w-full sm:w-auto">
             <button
               type="button"
-              onClick={() => setIsDateCompileModalOpen(false)}
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsDateCompileModalOpen(false);
+              }}
               className="flex-1 sm:flex-none px-4 py-2 text-xs font-medium text-stone-600 dark:text-stone-400 hover:bg-black/[0.05] dark:hover:bg-white/[0.08] rounded-xl transition-colors"
             >
               Cancel

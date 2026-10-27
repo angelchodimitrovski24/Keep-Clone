@@ -86,12 +86,18 @@ export const NotionTemplateModal: React.FC = () => {
   // Popular keyword suggestion pills (from categories, labels, and top note keywords)
   const suggestionKeywords = useMemo(() => {
     const set = new Set<string>();
-    categories.forEach((c) => set.add(c.name));
-    labels.forEach((l) => set.add(l.name));
+    (categories || []).forEach((c) => {
+      if (c && typeof c === 'object' && c.name) set.add(c.name);
+      else if (typeof c === 'string') set.add(c);
+    });
+    (labels || []).forEach((l) => {
+      if (l && typeof l === 'object' && l.name) set.add(l.name);
+      else if (typeof l === 'string') set.add(l);
+    });
 
     // Also pick prominent words from recent notes
-    notes.slice(0, 20).forEach((n) => {
-      if (n.title) {
+    (notes || []).slice(0, 20).forEach((n) => {
+      if (n && typeof n.title === 'string' && n.title) {
         const words = n.title.split(/\s+/).filter((w) => w.length >= 4);
         words.slice(0, 2).forEach((w) => set.add(w.replace(/[^a-zA-Z0-9_-]/g, '')));
       }
@@ -272,8 +278,16 @@ export const NotionTemplateModal: React.FC = () => {
 
   return (
     <div
-      onClick={() => setIsNotionTemplateModalOpen(false)}
-      className="keep-backdrop-anim fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-2 sm:p-4 overflow-y-auto"
+      role="dialog"
+      aria-modal="true"
+      data-portal="true"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          e.stopPropagation();
+          setIsNotionTemplateModalOpen(false);
+        }
+      }}
+      className="keep-backdrop-anim keep-modal fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-2 sm:p-4 overflow-y-auto"
     >
       <div
         onClick={(e) => e.stopPropagation()}
@@ -297,7 +311,10 @@ export const NotionTemplateModal: React.FC = () => {
 
           <button
             type="button"
-            onClick={() => setIsNotionTemplateModalOpen(false)}
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsNotionTemplateModalOpen(false);
+            }}
             className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-black/[0.06] dark:hover:bg-white/[0.08] text-stone-500 hover:text-stone-800 dark:hover:text-stone-200 transition-colors shrink-0"
             title="Close"
           >
@@ -747,7 +764,10 @@ export const NotionTemplateModal: React.FC = () => {
           <div className="flex items-center gap-2 shrink-0">
             <button
               type="button"
-              onClick={() => setIsNotionTemplateModalOpen(false)}
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsNotionTemplateModalOpen(false);
+              }}
               className="px-3.5 py-1.5 text-xs font-medium rounded-xl hover:bg-black/[0.06] dark:hover:bg-white/[0.08] text-stone-600 dark:text-stone-300 transition-colors"
             >
               Cancel

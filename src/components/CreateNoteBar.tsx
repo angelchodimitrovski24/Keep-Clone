@@ -173,6 +173,13 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
     setIsExpanded(false);
   };
 
+  // When a note is opened for editing, close and reset CreateNoteBar so it doesn't linger
+  React.useEffect(() => {
+    if (editingNote) {
+      resetForm();
+    }
+  }, [editingNote]);
+
   const handleSaveAndClose = async () => {
     const rawContent = editorRef.current?.getHTML() || content;
     const latestContent = renderMarkdownTablesInHtml(rawContent);
@@ -374,7 +381,14 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
             </label>
             <button
               type="button"
-              onClick={() => setIsDateCompileModalOpen(true)}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsDateCompileModalOpen(true);
+              }}
+              onMouseDown={(e) => {
+                e.stopPropagation();
+              }}
               className="p-2 rounded-full hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-600 dark:text-stone-300 transition-colors"
               title="Create note from date range (Today, 7d, 14d, 30d...)"
             >
@@ -382,7 +396,14 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
             </button>
             <button
               type="button"
-              onClick={() => setIsNotionTemplateModalOpen(true)}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsNotionTemplateModalOpen(true);
+              }}
+              onMouseDown={(e) => {
+                e.stopPropagation();
+              }}
               className="p-2 rounded-full hover:bg-stone-100 dark:hover:bg-stone-700 text-amber-600 dark:text-amber-400 hover:text-amber-700 transition-colors"
               title="Notion Template Hub (Today's Notes, Days, Per Keyword)"
             >
@@ -774,7 +795,14 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
           <div className="flex items-center gap-1.5 shrink-0">
             <button
               type="button"
-              onClick={() => setIsDateCompileModalOpen(true)}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsDateCompileModalOpen(true);
+              }}
+              onMouseDown={(e) => {
+                e.stopPropagation();
+              }}
               className="p-1.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10 text-stone-600 dark:text-stone-300 transition-colors"
               title="Create note from date range (Today, 7d, 14d, 30d...)"
             >
@@ -782,7 +810,14 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
             </button>
             <button
               type="button"
-              onClick={() => setIsNotionTemplateModalOpen(true)}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsNotionTemplateModalOpen(true);
+              }}
+              onMouseDown={(e) => {
+                e.stopPropagation();
+              }}
               className="p-1.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10 text-amber-600 dark:text-amber-400 hover:text-amber-700 transition-colors"
               title="Notion Template Hub (Today's Notes, Days, Per Keyword)"
             >

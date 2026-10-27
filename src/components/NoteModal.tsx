@@ -23,6 +23,7 @@ import {
   Share2,
   FilePlus,
   Sparkles,
+  CalendarRange,
   ArrowLeft,
   Edit2,
   Printer,
@@ -106,6 +107,8 @@ export const NoteModal: React.FC<NoteModalProps> = ({
     updateNoteReadingTime,
     deleteNoteReadingStats,
     setSharingNote,
+    setIsNotionTemplateModalOpen,
+    setIsDateCompileModalOpen,
   } = useKeep();
 
   const [title, setTitle] = useState('');
@@ -1806,7 +1809,31 @@ export const NoteModal: React.FC<NoteModalProps> = ({
             />
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsDateCompileModalOpen(true);
+              }}
+              className="p-1.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10 text-stone-600 dark:text-stone-300 transition-colors"
+              title="Create note from date range (Today, 7d, 14d, 30d...)"
+            >
+              <CalendarRange className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsNotionTemplateModalOpen(true);
+              }}
+              className="p-1.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10 text-amber-600 dark:text-amber-400 hover:text-amber-700 transition-colors"
+              title="Notion Template Hub (Today's Notes, Days, Per Keyword)"
+            >
+              <Sparkles className="w-4 h-4" />
+            </button>
             <button
               type="button"
               onClick={handlePrint}
