@@ -65,12 +65,15 @@ export function extractClipboardPayload(clipboardData: DataTransfer | null): Cli
     }
   }
 
-  // 3. If no binary File objects, check text/html for <img src="...">
+  // 3. If no binary File objects, check text/html for standalone <img src="...">
   const imageUrls: string[] = [];
   if (files.length === 0 && typeof clipboardData.getData === 'function') {
     try {
       const html = clipboardData.getData('text/html');
-      if (html && /<img\s/i.test(html)) {
+      const plain = clipboardData.getData('text/plain')?.trim();
+      // Only extract standalone images if there is NO substantial plain text,
+      // or if the text is simply an image URL. If there is actual text, preserve it as text!
+      if (html && /<img\s/i.test(html) && (!plain || plain.length === 0 || /^https?:\/\/\S+$/i.test(plain))) {
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, 'text/html');
         const imgs = doc.querySelectorAll('img');

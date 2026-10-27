@@ -93,21 +93,28 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
         return;
       }
       const { files, imageUrls } = extractClipboardPayload(e.clipboardData);
-      if (files.length === 0 && imageUrls.length === 0) return;
+      const text = e.clipboardData?.getData('text/plain');
+      if (files.length === 0 && imageUrls.length === 0 && !text?.trim()) return;
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (e as any).__keepPasteHandled = true;
       e.preventDefault();
       setIsExpanded(true);
 
-      try {
-        const saved = await copyFilesToLocalFolder(files, undefined, imageUrls);
-        if (saved.length > 0) {
-          const blocks = saved.map((f) => f.markdownLink).join('\n\n');
-          setContent((prev) => (prev ? `${prev}\n\n${blocks}` : blocks));
+      if (text?.trim()) {
+        setContent(text);
+      }
+
+      if (files.length > 0 || imageUrls.length > 0) {
+        try {
+          const saved = await copyFilesToLocalFolder(files, undefined, imageUrls);
+          if (saved.length > 0) {
+            const blocks = saved.map((f) => f.markdownLink).join('\n\n');
+            setContent((prev) => (prev ? `${prev}\n\n${blocks}` : blocks));
+          }
+        } catch (err) {
+          console.error('Collapsed paste failed:', err);
         }
-      } catch (err) {
-        console.error('Collapsed paste failed:', err);
       }
     };
 
@@ -421,6 +428,10 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
         onPaste={(e) => {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           if (e.defaultPrevented || (e.nativeEvent as any)?.__keepPasteHandled) return;
+          const target = e.target as HTMLElement | null;
+          if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+            return;
+          }
           const { files, imageUrls } = extractClipboardPayload(e.clipboardData);
           if (files.length > 0 || imageUrls.length > 0) {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -531,10 +542,27 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
           </button>
         </div>
 
-        {/* Content body: List or Text */}
-        <div className="px-4 py-2">
-          {isList ? (
-            <div className="space-y-2">
+        {/* Content body: List, Notion Sub-pages, or Text - mixed together */}
+        <div className="px-4 py-2 space-y-3">
+          {/* 1. Notion subpages section */}
+          {(isNotionMode || childNoteIds.length > 0) && (
+            <div className="mb-2">
+              <NotionSubpagesSection
+                parentNoteId={tempNoteId}
+                childNoteIds={childNoteIds}
+                onChangeChildIds={setChildNoteIds}
+                onOpenChildNote={(child) => {
+                  handleSaveAndClose();
+                  setEditingNote(child);
+                }}
+                category={category}
+              />
+            </div>
+          )}
+
+          {/* 2. Interactive Checklist Items */}
+          {isList && (
+            <div className={`space-y-2 ${(isNotionMode || childNoteIds.length > 0) ? 'pt-3 border-t border-black/5 dark:border-white/5' : ''}`}>
               {todos.map((todo) => (
                 <div
                   key={todo.id}
@@ -617,39 +645,21 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
                 />
               </div>
             </div>
-          ) : isNotionMode ? (
-            <div className="space-y-3">
-              <NotionSubpagesSection
-                parentNoteId={tempNoteId}
-                childNoteIds={childNoteIds}
-                onChangeChildIds={setChildNoteIds}
-                onOpenChildNote={(child) => {
-                  handleSaveAndClose();
-                  setEditingNote(child);
-                }}
-                category={category}
+          )}
+
+          {/* 3. Written Note / Rich Text Editor / Markdown - always directly editable */}
+          {(!isList || isNotionMode || content.trim() || childNoteIds.length > 0) && (
+            <div className={(isNotionMode || childNoteIds.length > 0 || isList) ? 'pt-2 border-t border-black/5 dark:border-white/5' : ''}>
+              <KeepWysiwygEditor
+                ref={editorRef}
+                content={content}
+                onChange={setContent}
+                placeholder="Take a note, add thoughts, markdown, or text…"
+                minHeightClass={(isNotionMode || childNoteIds.length > 0) ? 'min-h-[80px]' : 'min-h-[100px]'}
+                autoFocus={!isNotionMode && !isList}
+                listenWindowPaste={!editingNote}
               />
-              <div className="pt-2 border-t border-black/5 dark:border-white/5">
-                <KeepWysiwygEditor
-                  ref={editorRef}
-                  content={content}
-                  onChange={setContent}
-                  placeholder="Take a note, add thoughts, markdown, or text…"
-                  minHeightClass="min-h-[80px]"
-                  listenWindowPaste={!editingNote}
-                />
-              </div>
             </div>
-          ) : (
-            <KeepWysiwygEditor
-              ref={editorRef}
-              content={content}
-              onChange={setContent}
-              placeholder="Take a note…"
-              minHeightClass="min-h-[100px]"
-              autoFocus={true}
-              listenWindowPaste={!editingNote}
-            />
           )}
 
           {/* Category, Labels & Reminder chips */}
@@ -728,22 +738,6 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
             )}
           </div>
         </div>
-
-        {/* Notion-style Sub-pages / Child Notes Section for regular notes with subpages */}
-        {!isNotionMode && childNoteIds.length > 0 && (
-          <div className="px-3 sm:px-4 pb-2">
-            <NotionSubpagesSection
-              parentNoteId={tempNoteId}
-              childNoteIds={childNoteIds}
-              onChangeChildIds={setChildNoteIds}
-              onOpenChildNote={(child) => {
-                handleSaveAndClose();
-                setEditingNote(child);
-              }}
-              category={category}
-            />
-          </div>
-        )}
 
         {/* Google Keep Authentic Formatting Bar (H1, H2, Aa, B, I, U, Clear) */}
         {!isList && isFormattingOpen && (

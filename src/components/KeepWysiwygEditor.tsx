@@ -193,6 +193,20 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
           }
         }
 
+        // Paste standard plain text or rich text directly into active editor
+        if (plainText) {
+          if (activeEditor) {
+            nativeEvt.__keepPasteHandled = true;
+            rawEvent.preventDefault();
+            if ('stopPropagation' in rawEvent) {
+              rawEvent.stopPropagation();
+            }
+            activeEditor.chain().focus().insertContent(plainText).run();
+            onChangeRef.current(activeEditor.getHTML());
+            return true;
+          }
+        }
+
         return false;
       },
       [processAndInsertFiles]
@@ -279,6 +293,17 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
       if (!listenWindowPaste) return;
 
       const onWindowPaste = (e: ClipboardEvent) => {
+        // If typing inside an input, textarea, or another editable element, let it handle natively
+        const target = e.target as HTMLElement | null;
+        if (
+          target &&
+          (target.tagName === 'INPUT' ||
+            target.tagName === 'TEXTAREA' ||
+            (target.isContentEditable && !target.closest('.ProseMirror')))
+        ) {
+          return;
+        }
+
         handleClipboardDataTransfer(e.clipboardData, e);
       };
 
@@ -368,9 +393,6 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
     return (
       <div
         className={`w-full flex flex-col relative ${className}`}
-        onPasteCapture={(e) => {
-          handleClipboardDataTransfer(e.clipboardData, e);
-        }}
         onDropCapture={(e) => {
           handleClipboardDataTransfer(e.dataTransfer, e);
         }}

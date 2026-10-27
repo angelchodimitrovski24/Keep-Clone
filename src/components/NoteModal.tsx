@@ -854,6 +854,10 @@ export const NoteModal: React.FC<NoteModalProps> = ({
         onPaste={(e) => {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           if (e.defaultPrevented || (e.nativeEvent as any)?.__keepPasteHandled) return;
+          const target = e.target as HTMLElement | null;
+          if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+            return;
+          }
           const { files, imageUrls } = extractClipboardPayload(e.clipboardData);
           if (files.length > 0 || imageUrls.length > 0) {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
