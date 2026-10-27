@@ -11,6 +11,7 @@ import {
   Trash2,
   Lock,
   CalendarRange,
+  FileText,
 } from 'lucide-react';
 import { useKeep } from '@/context/KeepContext';
 import { NoteActions } from './NoteActions';
@@ -28,6 +29,7 @@ import { setUnlockedNote, setSessionPassword } from '@/lib/encryptionSession';
 import { NoteThemeArtwork } from './NoteThemeArtwork';
 import { ChecklistItemInput } from './ChecklistItemInput';
 import { printNote } from '@/lib/printNote';
+import { NotionSubpagesSection } from './NotionSubpagesSection';
 
 interface CreateNoteBarProps {
   onOpenDrawingModal?: () => void;
@@ -41,6 +43,7 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
     selectedCategory,
     categories,
     editingNote,
+    setEditingNote,
     setIsDateCompileModalOpen,
   } = useKeep();
   const [isExpanded, setIsExpanded] = useState(false);
@@ -58,6 +61,9 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
   const [images, setImages] = useState<string[]>([]);
   const [drawings, setDrawings] = useState<NoteDrawing[]>([]);
   const [linkedNoteIds, setLinkedNoteIds] = useState<string[]>([]);
+  const [childNoteIds, setChildNoteIds] = useState<string[]>([]);
+  const [isNotionMode, setIsNotionMode] = useState(false);
+  const [tempNoteId, setTempNoteId] = useState<string>(() => 'note-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6));
   const [showLinkModal, setShowLinkModal] = useState(false);
   const [isFormattingOpen, setIsFormattingOpen] = useState(false);
   const [isEncrypted, setIsEncrypted] = useState(false);
@@ -152,6 +158,9 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
     setImages([]);
     setDrawings([]);
     setLinkedNoteIds([]);
+    setChildNoteIds([]);
+    setIsNotionMode(false);
+    setTempNoteId('note-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6));
     setShowLinkModal(false);
     setIsFormattingOpen(false);
     setIsEncrypted(false);
@@ -169,8 +178,9 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
       title.trim().length > 0 ||
       (latestContent.trim().length > 0 && latestContent.trim() !== '<p></p>');
     const hasMedia = images.length > 0 || drawings.length > 0;
+    const hasSubnotes = childNoteIds.length > 0;
 
-    if (hasText || hasTodos || hasMedia) {
+    if (hasText || hasTodos || hasMedia || hasSubnotes) {
       const finalTodos = newTodoInput.trim()
         ? [...todos, { id: 'todo-' + Date.now(), text: newTodoInput.trim(), completed: false }]
         : todos;
@@ -191,6 +201,7 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
           );
 
           const created = await addNote({
+            id: tempNoteId,
             title: title.trim() || 'Encrypted Note',
             content: '',
             isList,
@@ -204,6 +215,8 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
             images: [],
             drawings,
             linkedNoteIds,
+            childNoteIds,
+            noteType: isNotionMode || childNoteIds.length > 0 ? 'notion' : 'default',
             isEncrypted: true,
             encryptedData: bundle,
           });
@@ -221,6 +234,7 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
         }
       } else {
         await addNote({
+          id: tempNoteId,
           title: title.trim(),
           content: latestContent.trim(),
           isList,
@@ -234,6 +248,8 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
           images,
           drawings,
           linkedNoteIds,
+          childNoteIds,
+          noteType: isNotionMode || childNoteIds.length > 0 ? 'notion' : 'default',
         });
       }
     }
@@ -314,6 +330,17 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
               title="New list"
             >
               <CheckSquare className="w-5 h-5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setIsNotionMode(true);
+                setIsExpanded(true);
+              }}
+              className="p-2 rounded-full hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-600 dark:text-stone-300"
+              title="New Notion-style note with sub-pages"
+            >
+              <FileText className="w-5 h-5" />
             </button>
             <button
               type="button"
@@ -638,6 +665,22 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
           </div>
         </div>
 
+        {/* Notion-style Sub-pages / Child Notes Section */}
+        {(isNotionMode || childNoteIds.length > 0) && (
+          <div className="px-3 sm:px-4 pb-2">
+            <NotionSubpagesSection
+              parentNoteId={tempNoteId}
+              childNoteIds={childNoteIds}
+              onChangeChildIds={setChildNoteIds}
+              onOpenChildNote={(child) => {
+                handleSaveAndClose();
+                setEditingNote(child);
+              }}
+              category={category}
+            />
+          </div>
+        )}
+
         {/* Google Keep Authentic Formatting Bar (H1, H2, Aa, B, I, U, Clear) */}
         {!isList && isFormattingOpen && (
           <div className="px-2.5 sm:px-4 py-1.5 border-t border-black/5 dark:border-white/5 bg-black/2 dark:bg-white/2">
@@ -654,6 +697,8 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
             onSelectCategory={setCategory}
             onAddImage={handleAddImage}
             onToggleChecklist={() => setIsList(!isList)}
+            onToggleSubpages={() => setIsNotionMode(!isNotionMode)}
+            hasSubpages={isNotionMode || childNoteIds.length > 0}
             onAddReminder={(r) => setReminder(r)}
             onToggleLabel={handleToggleLabel}
             onPrint={() => {

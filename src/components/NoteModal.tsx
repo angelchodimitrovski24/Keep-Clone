@@ -26,6 +26,7 @@ import {
   ArrowLeft,
   Edit2,
   Printer,
+  FileText,
 } from 'lucide-react';
 import { Note, NoteColor, NoteBackgroundTheme, TodoItem, NoteDrawing, NoteVersion } from '@/types/note';
 import { getNoteColorClasses } from '@/lib/constants';
@@ -46,6 +47,7 @@ import { NoteThemeArtwork } from './NoteThemeArtwork';
 import { ChecklistItemInput } from './ChecklistItemInput';
 import { EditReadingTimeModal } from './EditReadingTimeModal';
 import { printNote } from '@/lib/printNote';
+import { NotionSubpagesSection } from './NotionSubpagesSection';
 
 function formatStopwatchTime(seconds: number): string {
   const h = Math.floor(seconds / 3600);
@@ -120,6 +122,8 @@ export const NoteModal: React.FC<NoteModalProps> = ({
   const [images, setImages] = useState<string[]>([]);
   const [drawings, setDrawings] = useState<NoteDrawing[]>([]);
   const [linkedNoteIds, setLinkedNoteIds] = useState<string[]>([]);
+  const [childNoteIds, setChildNoteIds] = useState<string[]>([]);
+  const [showSubpages, setShowSubpages] = useState(false);
   const [showCompletedTodos, setShowCompletedTodos] = useState(true);
   const [isFormattingOpen, setIsFormattingOpen] = useState(false);
   const [isPreviewMode, setIsPreviewMode] = useState(false);
@@ -262,6 +266,11 @@ export const NoteModal: React.FC<NoteModalProps> = ({
     return !unlockedCategoryNames.includes(categoryObj.name.toLowerCase());
   }, [categoryObj, unlockedCategoryNames]);
 
+  const parentNote = useMemo(() => {
+    if (!note?.parentNoteId) return null;
+    return notes.find((n) => n.id === note.parentNoteId && !n.isTrash) || null;
+  }, [note?.parentNoteId, notes]);
+
   // Sync state when note opens or note changes
   useEffect(() => {
     if (note) {
@@ -286,6 +295,8 @@ export const NoteModal: React.FC<NoteModalProps> = ({
         setImages(unlocked?.images || note.images || []);
         setDrawings(note.drawings || []);
         setLinkedNoteIds(note.linkedNoteIds || []);
+        setChildNoteIds(note.childNoteIds || []);
+        setShowSubpages(!!(note.childNoteIds && note.childNoteIds.length > 0) || note.noteType === 'notion');
         setIsFormattingOpen(false);
         setIsPreviewMode(false);
         setAutoSnapshotStatus('idle');
@@ -656,6 +667,8 @@ export const NoteModal: React.FC<NoteModalProps> = ({
             reminder,
             drawings,
             linkedNoteIds,
+            childNoteIds,
+            noteType: showSubpages || childNoteIds.length > 0 ? 'notion' : (note.noteType || 'default'),
           });
         } catch (err) {
           console.error('Failed saving encrypted note on close:', err);
@@ -676,6 +689,8 @@ export const NoteModal: React.FC<NoteModalProps> = ({
         images,
         drawings,
         linkedNoteIds,
+        childNoteIds,
+        noteType: showSubpages || childNoteIds.length > 0 ? 'notion' : (note.noteType || 'default'),
       });
     }
 
@@ -955,6 +970,29 @@ export const NoteModal: React.FC<NoteModalProps> = ({
               className="p-1 text-stone-400 hover:text-white dark:hover:text-stone-900"
             >
               <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
+        {/* Notion-style Parent Breadcrumb */}
+        {parentNote && (
+          <div className="px-3.5 sm:px-6 pt-3 pb-0 select-none">
+            <button
+              type="button"
+              onClick={async () => {
+                await handleSaveAndClose();
+                setEditingNote(parentNote);
+              }}
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-stone-500 hover:text-amber-600 dark:hover:text-amber-400 transition-colors py-0.5 px-1.5 -ml-1.5 rounded-md hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+              title={`Back to parent note: ${parentNote.title || 'Untitled'}`}
+            >
+              <span>←</span>
+              <FileText className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+              <span className="truncate max-w-[200px]">{parentNote.title || 'Parent note'}</span>
+              <span className="text-stone-400">/</span>
+              <span className="text-stone-700 dark:text-stone-300 font-semibold truncate max-w-[150px]">
+                {title || 'Current note'}
+              </span>
             </button>
           </div>
         )}
@@ -1513,6 +1551,23 @@ export const NoteModal: React.FC<NoteModalProps> = ({
                 listenWindowPaste={true}
               />
             )}
+
+            {/* Notion-style Sub-pages / Child Notes Section */}
+            {(showSubpages || (childNoteIds && childNoteIds.length > 0) || note.noteType === 'notion') && (
+              <NotionSubpagesSection
+                parentNoteId={note.id}
+                childNoteIds={childNoteIds}
+                onChangeChildIds={async (newIds) => {
+                  setChildNoteIds(newIds);
+                  await updateNote(note.id, { childNoteIds: newIds });
+                }}
+                onOpenChildNote={async (childNote) => {
+                  await handleSaveAndClose();
+                  setEditingNote(childNote);
+                }}
+                category={category}
+              />
+            )}
           </div>
 
           {/* Bidirectional Linked Notes & Backlinks */}
@@ -1666,6 +1721,8 @@ export const NoteModal: React.FC<NoteModalProps> = ({
               }}
               onPrint={handlePrint}
               onToggleChecklist={handleToggleChecklist}
+              onToggleSubpages={() => setShowSubpages(!showSubpages)}
+              hasSubpages={showSubpages || (childNoteIds && childNoteIds.length > 0)}
               onAddReminder={setReminder}
               onToggleLabel={handleToggleLabel}
               onEncrypt={() => setShowEncryptModal(true)}

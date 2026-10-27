@@ -27,6 +27,7 @@ import {
   Printer,
   Search,
   Plus,
+  FileText,
 } from 'lucide-react';
 import { Note, NoteColor, NoteBackgroundTheme } from '@/types/note';
 import { NOTE_COLORS, NOTE_THEMES } from '@/lib/constants';
@@ -52,6 +53,8 @@ interface NoteActionsProps {
   onOpenVersions?: () => void;
   onStartReading?: () => void;
   onPrint?: () => void;
+  onToggleSubpages?: () => void;
+  hasSubpages?: boolean;
   showFormattingToggle?: boolean;
   isFormattingOpen?: boolean;
   onToggleFormatting?: () => void;
@@ -82,6 +85,8 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
   onOpenVersions,
   onStartReading,
   onPrint,
+  onToggleSubpages,
+  hasSubpages = false,
   showFormattingToggle = false,
   isFormattingOpen = false,
   onToggleFormatting,
@@ -592,6 +597,20 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
               >
                 <CheckSquare className="w-4 h-4" />
                 {note.isList ? 'Show plain text' : 'Show checkboxes'}
+              </button>
+            )}
+
+            {onToggleSubpages && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMenu(false);
+                  onToggleSubpages();
+                }}
+                className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
+              >
+                <FileText className="w-4 h-4 text-amber-500" />
+                {hasSubpages ? 'Sub-pages (Notion)' : 'Add Notion sub-pages'}
               </button>
             )}
 
@@ -1125,6 +1144,20 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                         >
                           <CheckSquare className="w-5 h-5 text-stone-500 shrink-0" />
                           <span>{note.isList ? 'Show plain text' : 'Show checkboxes'}</span>
+                        </button>
+                      )}
+
+                      {onToggleSubpages && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowMenu(false);
+                            onToggleSubpages();
+                          }}
+                          className="w-full text-left px-6 py-3.5 flex items-center gap-4 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] active:bg-black/[0.08] dark:active:bg-white/[0.1] text-stone-800 dark:text-stone-200 text-[14.5px] font-normal tracking-[0.15px] transition-colors"
+                        >
+                          <FileText className="w-5 h-5 text-amber-500 shrink-0" />
+                          <span>{hasSubpages ? 'Sub-pages (Notion)' : 'Add Notion sub-pages'}</span>
                         </button>
                       )}
 

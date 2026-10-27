@@ -320,14 +320,27 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
         {/* Layout Toggle */}
         <button
           type="button"
-          onClick={() => setLayoutMode(layoutMode === 'grid' ? 'list' : 'grid')}
-          className="p-1.5 sm:p-2.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors shrink-0"
-          title={layoutMode === 'grid' ? 'List view' : 'Grid view'}
+          onClick={() => {
+            const nextMode = layoutMode === 'grid' ? 'list' : layoutMode === 'list' ? 'notion' : 'grid';
+            setLayoutMode(nextMode);
+          }}
+          className={`p-1.5 sm:p-2.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors shrink-0 ${
+            layoutMode === 'notion' ? 'text-amber-600 dark:text-amber-400 font-semibold' : ''
+          }`}
+          title={
+            layoutMode === 'grid'
+              ? 'Grid view (click for List)'
+              : layoutMode === 'list'
+              ? 'List view (click for Notion Page List)'
+              : 'Notion List view (click for Grid)'
+          }
         >
           {layoutMode === 'grid' ? (
+            <LayoutGrid className="w-5 h-5" />
+          ) : layoutMode === 'list' ? (
             <Rows className="w-5 h-5" />
           ) : (
-            <LayoutGrid className="w-5 h-5" />
+            <FileText className="w-5 h-5" />
           )}
         </button>
 

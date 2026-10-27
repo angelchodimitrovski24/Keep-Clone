@@ -65,6 +65,9 @@ export interface Note {
   encryptedData?: EncryptedNoteBundle | null;
   linkedNoteIds?: string[]; // IDs of linked notes
   category?: string | null; // Note category name
+  childNoteIds?: string[]; // IDs of sub-notes / Notion child pages
+  parentNoteId?: string | null; // ID of parent note if this is a sub-page
+  noteType?: 'default' | 'notion'; // Note type
   versions?: NoteVersion[]; // Revisions history (unlimited)
   totalReadingTime?: number; // Total reading time in seconds accumulated across all stopwatch sessions
   createdAt: number;
@@ -136,7 +139,7 @@ export type ViewFilter =
 
 export * from './calendar';
 
-export type LayoutViewMode = 'grid' | 'list';
+export type LayoutViewMode = 'grid' | 'list' | 'notion';
 
 export type FontSizeOption = 'small' | 'medium' | 'large' | 'xlarge' | 'huge' | 'max' | string;
 export type AppThemeMode = 'system' | 'light' | 'dark';

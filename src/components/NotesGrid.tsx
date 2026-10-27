@@ -3,6 +3,7 @@
 import React, { useMemo } from 'react';
 import { useKeep } from '@/context/KeepContext';
 import { NoteCard } from './NoteCard';
+import { NotionNotesList } from './NotionNotesList';
 import { Note } from '@/types/note';
 import { Trash2, Lock } from 'lucide-react';
 
@@ -129,6 +130,35 @@ export const NotesGrid: React.FC<NotesGridProps> = ({
           <Lock className="w-4 h-4" />
           Unlock Category
         </button>
+      </div>
+    );
+  }
+
+  // Notion-style List View mode
+  if (layoutMode === 'notion') {
+    return (
+      <div className="w-full">
+        {/* Trash View Top Notice */}
+        {currentFilter === 'trash' && (
+          <div className="max-w-3xl mx-auto flex items-center justify-between p-3 mb-4 bg-stone-100 dark:bg-stone-800/60 rounded-xl text-stone-600 dark:text-stone-300 text-sm italic">
+            <span>Notes in Trash are kept local. You can empty it anytime.</span>
+            {filteredNotes.length > 0 && (
+              <button
+                type="button"
+                onClick={emptyTrash}
+                className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded-lg not-italic font-medium text-xs flex items-center gap-1.5 transition-colors shadow-sm"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Empty Trash
+              </button>
+            )}
+          </div>
+        )}
+        <NotionNotesList
+          notes={filteredNotes}
+          onSelectNote={onSelectNote}
+          onOpenDrawingModal={onOpenDrawingModal}
+        />
       </div>
     );
   }

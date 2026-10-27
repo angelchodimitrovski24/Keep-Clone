@@ -251,30 +251,42 @@ export const SettingsModal: React.FC = () => {
             <label className="text-sm font-semibold text-stone-900 dark:text-stone-100 block mb-1">
               Notes Layout View
             </label>
-            <div className="grid grid-cols-2 gap-2 mt-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-2">
               <button
                 type="button"
                 onClick={() => setLayoutMode('grid')}
-                className={`flex items-center justify-center gap-2 py-2 px-3 rounded-xl border text-sm transition-all ${
+                className={`flex items-center justify-center gap-2 py-2 px-3 rounded-xl border text-xs sm:text-sm transition-all ${
                   layoutMode === 'grid'
                     ? 'border-amber-500 bg-amber-500/10 text-amber-900 dark:text-amber-200 font-semibold ring-1 ring-amber-500'
                     : 'border-stone-200 dark:border-stone-700 text-stone-700 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-800'
                 }`}
               >
                 <LayoutGrid className="w-4 h-4" />
-                <span>Multi-column Grid</span>
+                <span>Grid</span>
               </button>
               <button
                 type="button"
                 onClick={() => setLayoutMode('list')}
-                className={`flex items-center justify-center gap-2 py-2 px-3 rounded-xl border text-sm transition-all ${
+                className={`flex items-center justify-center gap-2 py-2 px-3 rounded-xl border text-xs sm:text-sm transition-all ${
                   layoutMode === 'list'
                     ? 'border-amber-500 bg-amber-500/10 text-amber-900 dark:text-amber-200 font-semibold ring-1 ring-amber-500'
                     : 'border-stone-200 dark:border-stone-700 text-stone-700 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-800'
                 }`}
               >
                 <Rows className="w-4 h-4" />
-                <span>Single-column List</span>
+                <span>List</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setLayoutMode('notion')}
+                className={`flex items-center justify-center gap-2 py-2 px-3 rounded-xl border text-xs sm:text-sm transition-all ${
+                  layoutMode === 'notion'
+                    ? 'border-amber-500 bg-amber-500/10 text-amber-900 dark:text-amber-200 font-semibold ring-1 ring-amber-500'
+                    : 'border-stone-200 dark:border-stone-700 text-stone-700 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-800'
+                }`}
+              >
+                <FileText className="w-4 h-4" />
+                <span>Notion List</span>
               </button>
             </div>
           </div>
