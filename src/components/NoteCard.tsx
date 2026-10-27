@@ -388,7 +388,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
               )}
 
               {/* List items view */}
-              {activeNote.isList ? (
+              {activeNote.isList && (activeTodos.length > 0 || completedTodos.length > 0) && (
                 <div className="space-y-1.5 my-1" style={{ fontSize: 'var(--note-font-size, 15px)' }}>
                   {activeTodos.slice(0, 8).map((todo) => (
                     <div
@@ -407,22 +407,25 @@ export const NoteCard: React.FC<NoteCardProps> = ({
                     </div>
                   )}
                 </div>
-              ) : (
-                activeNote.content && (
-                  <div className="max-h-72 overflow-hidden text-stone-700 dark:text-stone-300 leading-relaxed font-normal">
-                    <MarkdownRenderer
-                      content={activeNote.content}
-                      onOpenLinkedNote={handleOpenLinkedNote}
-                      onToggleCheckbox={(idx, checked) => {
-                        const updated = toggleMarkdownCheckbox(activeNote.content, idx, checked);
-                        updateNote(note.id, { content: updated });
-                      }}
-                      onToggleHtmlCheckbox={(updatedHtml) => {
-                        updateNote(note.id, { content: updatedHtml });
-                      }}
-                    />
-                  </div>
-                )
+              )}
+
+              {/* Written content (rendered Markdown / HTML) */}
+              {activeNote.content && (
+                <div className={`max-h-72 overflow-hidden text-stone-700 dark:text-stone-300 leading-relaxed font-normal ${
+                  activeNote.isList && (activeTodos.length > 0 || completedTodos.length > 0) ? 'pt-2 mt-2 border-t border-black/5 dark:border-white/5' : ''
+                }`}>
+                  <MarkdownRenderer
+                    content={activeNote.content}
+                    onOpenLinkedNote={handleOpenLinkedNote}
+                    onToggleCheckbox={(idx, checked) => {
+                      const updated = toggleMarkdownCheckbox(activeNote.content, idx, checked);
+                      updateNote(note.id, { content: updated });
+                    }}
+                    onToggleHtmlCheckbox={(updatedHtml) => {
+                      updateNote(note.id, { content: updatedHtml });
+                    }}
+                  />
+                </div>
               )}
 
               {/* Bi-directional connected notes badge */}

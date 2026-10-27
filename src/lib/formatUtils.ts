@@ -1,4 +1,4 @@
-import { renderMarkdownTablesInHtml } from './tableUtils';
+import { renderMarkdownTablesInHtml, isTableSeparatorLine, convertTableLinesToHtml } from './tableUtils';
 import { getMediaBlobUrl, getSyncLocalMediaFolder } from './localPaste';
 
 export type GoogleKeepFormatCommand =
@@ -303,16 +303,22 @@ export function renderMarkdownImagesInString(str: string): string {
 }
 
 /**
- * Converts Markdown string or plain text to standard Google Keep HTML for Tiptap
+ * Converts Markdown string, Tiptap HTML with embedded markdown, or plain text
+ * to standard semantic Google Keep HTML with complete support for headings,
+ * task list checkboxes, bullet/number lists, tables, blockquotes, code blocks,
+ * and inline formatting (bold, italic, strikethrough, code, links).
  */
 export function convertMarkdownToHtml(content: string): string {
   if (!content) return '';
-  // If already HTML, also ensure any embedded markdown images and tables get rendered
-  if (/<[a-z][\s\S]*>/i.test(content)) {
-    return renderMarkdownTablesInHtml(renderMarkdownImagesInString(content));
-  }
 
-  const lines = content.split('\n');
+  // 1. Unpack any existing <p> or <br> tags into discrete lines so embedded markdown inside paragraphs gets parsed
+  const normalized = content
+    .replace(/<\/p>\s*<p[^>]*>/gi, '\n')
+    .replace(/^<p[^>]*>/i, '')
+    .replace(/<\/p>$/i, '')
+    .replace(/<br\s*\/?>/gi, '\n');
+
+  const lines = normalized.split(/\r?\n/);
   let result = '';
   let inTaskList = false;
   let inBulletList = false;
@@ -338,18 +344,17 @@ export function convertMarkdownToHtml(content: string): string {
 
   const formatInline = (str: string) => {
     return str
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/`([^`]+)`/g, '<code>$1</code>')
-      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-      .replace(/\*(.*?)\*/g, '<em>$1</em>')
+      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+      .replace(/__([^_]+)__/g, '<strong>$1</strong>')
+      .replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, '<em>$1</em>')
       .replace(/(^|[\s.,;:!?(])_([^_]+)_(?=[.,;:!?)\s]|$)/g, '$1<u>$2</u>')
-      .replace(/~~(.*?)~~/g, '<s>$1</s>')
+      .replace(/~~([^~]+)~~/g, '<s>$1</s>')
+      .replace(/`([^`]+)`/g, '<code>$1</code>')
       .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-blue-600 dark:text-blue-400 underline hover:opacity-80">$1</a>');
   };
 
-  for (let i = 0; i < lines.length; i++) {
+  let i = 0;
+  while (i < lines.length) {
     const rawLine = lines[i];
     const trimmed = rawLine.trim();
 
@@ -369,20 +374,36 @@ export function convertMarkdownToHtml(content: string): string {
           .replace(/>/g, '&gt;');
         result += `<pre><code${codeBlockLang ? ` class="language-${codeBlockLang}"` : ''}>${codeText}</code></pre>`;
       }
+      i++;
       continue;
     }
 
     if (inCodeBlock) {
       codeBlockLines.push(rawLine);
+      i++;
       continue;
     }
 
     if (!trimmed) {
       closeOpenLists();
+      i++;
       continue;
     }
 
-    // 2. Task List item: - [ ] or - [x] or [ ] or [x]
+    // 2. Markdown Table detection (current line has pipe and next line is separator)
+    if (i + 1 < lines.length && rawLine.includes('|') && isTableSeparatorLine(lines[i + 1])) {
+      closeOpenLists();
+      const tableLines = [rawLine, lines[i + 1]];
+      i += 2;
+      while (i < lines.length && (lines[i].includes('|') || isTableSeparatorLine(lines[i]))) {
+        tableLines.push(lines[i]);
+        i++;
+      }
+      result += convertTableLinesToHtml(tableLines);
+      continue;
+    }
+
+    // 3. Task List item: - [ ] or - [x] or [ ] or [x]
     const taskMatch = rawLine.match(/^\s*(?:[-*+]\s+)?\[([ xX])\]\s*(.*)$/);
     if (taskMatch) {
       if (inBulletList) { result += '</ul>'; inBulletList = false; }
@@ -392,53 +413,40 @@ export function convertMarkdownToHtml(content: string): string {
         inTaskList = true;
       }
       const isChecked = taskMatch[1].toLowerCase() === 'x';
-      const itemText = formatInline(taskMatch[2]);
+      const itemText = formatInline(taskMatch[2].trim());
       result += `<li data-type="taskItem" data-checked="${isChecked}"><label><input type="checkbox"${isChecked ? ' checked="checked"' : ''}><span></span></label><div><p>${itemText}</p></div></li>`;
+      i++;
       continue;
     }
 
-    // 3. Headings: #, ##, ###, ####
-    const h1Match = rawLine.match(/^#\s+(.*)$/);
-    if (h1Match) {
+    // 4. Headings: #, ##, ###, ####
+    const headingMatch = rawLine.match(/^\s*(#{1,4})\s+(.*)$/);
+    if (headingMatch) {
       closeOpenLists();
-      result += `<h1>${formatInline(h1Match[1])}</h1>`;
-      continue;
-    }
-    const h2Match = rawLine.match(/^##\s+(.*)$/);
-    if (h2Match) {
-      closeOpenLists();
-      result += `<h2>${formatInline(h2Match[1])}</h2>`;
-      continue;
-    }
-    const h3Match = rawLine.match(/^###\s+(.*)$/);
-    if (h3Match) {
-      closeOpenLists();
-      result += `<h3>${formatInline(h3Match[1])}</h3>`;
-      continue;
-    }
-    const h4Match = rawLine.match(/^####\s+(.*)$/);
-    if (h4Match) {
-      closeOpenLists();
-      result += `<h4>${formatInline(h4Match[1])}</h4>`;
+      const level = headingMatch[1].length;
+      result += `<h${level}>${formatInline(headingMatch[2].trim())}</h${level}>`;
+      i++;
       continue;
     }
 
-    // 4. Blockquotes: > quote
-    const bqMatch = rawLine.match(/^\s*>\s*(.*)$/);
+    // 5. Blockquotes: > quote
+    const bqMatch = rawLine.match(/^\s*(?:&gt;|>)\s*(.*)$/);
     if (bqMatch) {
       closeOpenLists();
-      result += `<blockquote><p>${formatInline(bqMatch[1])}</p></blockquote>`;
+      result += `<blockquote><p>${formatInline(bqMatch[1].trim())}</p></blockquote>`;
+      i++;
       continue;
     }
 
-    // 5. Horizontal rules: --- or *** or ___
+    // 6. Horizontal rules: --- or *** or ___
     if (/^([-*_]){3,}$/.test(trimmed)) {
       closeOpenLists();
       result += `<hr />`;
+      i++;
       continue;
     }
 
-    // 6. Bullet list: - or *
+    // 7. Bullet list: - or *
     const bulletMatch = rawLine.match(/^\s*[-*+]\s+(.*)$/);
     if (bulletMatch) {
       if (inTaskList) { result += '</ul>'; inTaskList = false; }
@@ -447,11 +455,12 @@ export function convertMarkdownToHtml(content: string): string {
         result += '<ul>';
         inBulletList = true;
       }
-      result += `<li><p>${formatInline(bulletMatch[1])}</p></li>`;
+      result += `<li><p>${formatInline(bulletMatch[1].trim())}</p></li>`;
+      i++;
       continue;
     }
 
-    // 7. Number list: 1.
+    // 8. Number list: 1.
     const numberMatch = rawLine.match(/^\s*\d+\.\s+(.*)$/);
     if (numberMatch) {
       if (inTaskList) { result += '</ul>'; inTaskList = false; }
@@ -460,24 +469,47 @@ export function convertMarkdownToHtml(content: string): string {
         result += '<ol>';
         inNumberList = true;
       }
-      result += `<li><p>${formatInline(numberMatch[1])}</p></li>`;
+      result += `<li><p>${formatInline(numberMatch[1].trim())}</p></li>`;
+      i++;
       continue;
     }
 
-    // 8. Markdown Image line: ![alt](path)
+    // 9. Markdown Image line: ![alt](path)
     const imgMatch = trimmed.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
     if (imgMatch) {
       closeOpenLists();
       const fileName = imgMatch[1] || 'image';
       const rawPath = imgMatch[2];
       const serveUrl = resolveLocalMediaUrl(rawPath);
-      result += `<div class="my-2"><p class="text-xs font-mono text-stone-400 select-all my-0.5">![${fileName}](${rawPath})</p><img src="${serveUrl}" alt="${fileName}" class="rounded-xl max-h-96 w-auto my-1 border border-black/10 dark:border-white/10" loading="lazy" /></div>`;
+      result += `<div class="my-2 keep-media-img-wrapper"><img src="${serveUrl}" alt="${fileName}" class="rounded-xl max-h-96 w-auto my-1 border border-black/10 dark:border-white/10" loading="lazy" /></div>`;
+      i++;
       continue;
     }
 
-    // 9. Normal paragraph
+    // 10. Existing HTML blocks
+    if (
+      trimmed.startsWith('<div') ||
+      trimmed.startsWith('<table') ||
+      trimmed.startsWith('<h1') ||
+      trimmed.startsWith('<h2') ||
+      trimmed.startsWith('<h3') ||
+      trimmed.startsWith('<h4') ||
+      trimmed.startsWith('<ul') ||
+      trimmed.startsWith('<ol') ||
+      trimmed.startsWith('<blockquote') ||
+      trimmed.startsWith('<hr') ||
+      trimmed.startsWith('<pre')
+    ) {
+      closeOpenLists();
+      result += trimmed;
+      i++;
+      continue;
+    }
+
+    // 11. Normal paragraph
     closeOpenLists();
-    result += `<p>${formatInline(rawLine)}</p>`;
+    result += `<p>${formatInline(trimmed)}</p>`;
+    i++;
   }
 
   // Close unclosed code block if file ends inside code block
@@ -491,7 +523,7 @@ export function convertMarkdownToHtml(content: string): string {
   }
 
   closeOpenLists();
-  return renderMarkdownTablesInHtml(result);
+  return renderMarkdownTablesInHtml(renderMarkdownImagesInString(result));
 }
 
 /**
@@ -524,3 +556,23 @@ export function toggleHtmlCheckbox(html: string, index: number): string {
   return html;
 }
 
+
+/**
+ * Toggles a checkbox in any content (HTML taskItem, paragraph markdown, or raw markdown)
+ */
+export function toggleCheckboxInAnyContent(content: string, index: number, newChecked?: boolean): string {
+  if (!content) return content;
+  if (content.includes('data-type="taskItem"')) {
+    return toggleHtmlCheckbox(content, index);
+  }
+  let currentIndex = 0;
+  return content.replace(/(\[)([ xX])(\])/g, (match, prefix, check, suffix) => {
+    if (currentIndex === index) {
+      currentIndex++;
+      const nextChecked = newChecked !== undefined ? newChecked : check.toLowerCase() !== 'x';
+      return `${prefix}${nextChecked ? 'x' : ' '}${suffix}`;
+    }
+    currentIndex++;
+    return match;
+  });
+}
