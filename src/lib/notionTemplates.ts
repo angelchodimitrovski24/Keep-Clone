@@ -20,9 +20,10 @@ export interface DayOption {
  */
 export function getDaysRange(count: number): DayOption[] {
   const result: DayOption[] = [];
+  const safeCount = Math.max(1, Math.min(365, Number(count) || 1));
   const now = new Date();
 
-  for (let i = 0; i < count; i++) {
+  for (let i = 0; i < safeCount; i++) {
     const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
     const isToday = i === 0;
 
@@ -80,15 +81,20 @@ export function generateTopicSubpageContent(topicName: string): string {
  * Filters notes matching a given keyword across title, content, labels, or category.
  */
 export function filterNotesByKeyword(notes: Note[], keyword: string): Note[] {
-  const q = keyword.trim().toLowerCase();
+  const q = (keyword || '').trim().toLowerCase();
   if (!q) return [];
 
-  return notes.filter((n) => {
-    if (n.isTrash) return false;
-    const titleMatch = Boolean(n.title && n.title.toLowerCase().includes(q));
-    const contentMatch = Boolean(n.content && n.content.toLowerCase().includes(q));
-    const labelMatch = Boolean(n.labels && n.labels.some((l) => l.toLowerCase().includes(q)));
-    const categoryMatch = Boolean(n.category && n.category.toLowerCase().includes(q));
+  return (notes || []).filter((n) => {
+    if (!n || n.isTrash) return false;
+    const titleMatch = Boolean(n.title && typeof n.title === 'string' && n.title.toLowerCase().includes(q));
+    const contentMatch = Boolean(n.content && typeof n.content === 'string' && n.content.toLowerCase().includes(q));
+    const labelMatch = Boolean(
+      n.labels &&
+      Array.isArray(n.labels) &&
+      n.labels.some((l) => typeof l === 'string' && l.toLowerCase().includes(q))
+    );
+    const categoryName = typeof n.category === 'string' ? n.category : (n.category as any)?.name;
+    const categoryMatch = Boolean(categoryName && typeof categoryName === 'string' && categoryName.toLowerCase().includes(q));
 
     return titleMatch || contentMatch || labelMatch || categoryMatch;
   });
@@ -102,10 +108,12 @@ export function filterNotesByDays(
   daysCount: number,
   field: 'created' | 'updated' = 'created'
 ): Note[] {
-  const cutoff = Date.now() - daysCount * 24 * 60 * 60 * 1000;
-  return notes.filter((n) => {
-    if (n.isTrash) return false;
-    const ts = field === 'created' ? n.createdAt : n.updatedAt;
+  const count = Math.max(1, Number(daysCount) || 1);
+  const cutoff = Date.now() - count * 24 * 60 * 60 * 1000;
+  return (notes || []).filter((n) => {
+    if (!n || n.isTrash) return false;
+    const rawTs = field === 'created' ? n.createdAt : n.updatedAt;
+    const ts = typeof rawTs === 'number' ? rawTs : rawTs ? new Date(rawTs).getTime() : 0;
     return ts >= cutoff;
   });
 }

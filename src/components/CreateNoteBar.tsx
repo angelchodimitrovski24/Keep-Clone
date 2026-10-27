@@ -46,7 +46,9 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
     categories,
     editingNote,
     setEditingNote,
+    isDateCompileModalOpen,
     setIsDateCompileModalOpen,
+    isNotionTemplateModalOpen,
     setIsNotionTemplateModalOpen,
   } = useKeep();
   const [isExpanded, setIsExpanded] = useState(false);
@@ -127,7 +129,7 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
 
   // Click outside to auto-save like Google Keep
   React.useEffect(() => {
-    if (!isExpanded) return;
+    if (!isExpanded || isNotionTemplateModalOpen || isDateCompileModalOpen) return;
 
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as HTMLElement | null;
@@ -154,7 +156,23 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [isExpanded, title, content, isList, todos, images, drawings, isPinned, color, theme, labels, reminder, category]);
+  }, [
+    isExpanded,
+    isNotionTemplateModalOpen,
+    isDateCompileModalOpen,
+    title,
+    content,
+    isList,
+    todos,
+    images,
+    drawings,
+    isPinned,
+    color,
+    theme,
+    labels,
+    reminder,
+    category,
+  ]);
 
   const resetForm = () => {
     setTitle('');

@@ -281,16 +281,22 @@ export const NotionTemplateModal: React.FC = () => {
       role="dialog"
       aria-modal="true"
       data-portal="true"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) {
+          e.stopPropagation();
+        }
+      }}
       onClick={(e) => {
         if (e.target === e.currentTarget) {
           e.stopPropagation();
           setIsNotionTemplateModalOpen(false);
         }
       }}
-      className="keep-backdrop-anim keep-modal fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-2 sm:p-4 overflow-y-auto"
+      className="keep-backdrop-anim keep-modal fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-xs p-2 sm:p-4 overflow-y-auto"
     >
       <div
         onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
         className="w-full max-w-2xl bg-white dark:bg-[#202124] rounded-2xl sm:rounded-3xl shadow-2xl border border-stone-200/80 dark:border-stone-700 flex flex-col overflow-hidden max-h-[92vh] h-[780px] transition-all"
       >
         {/* Modal Header */}
@@ -529,6 +535,14 @@ export const NotionTemplateModal: React.FC = () => {
                   <div className="max-h-44 overflow-y-auto space-y-1 rounded-xl border border-black/[0.06] dark:border-white/[0.07] p-1.5">
                     {matchingDateNotes.map((n) => {
                       const isSelected = selectedDateNoteIds.includes(n.id);
+                      const catName = typeof n.category === 'string' ? n.category : (n.category as any)?.name;
+                      const rawTs = dateField === 'created' ? n.createdAt : n.updatedAt;
+                      const ts = typeof rawTs === 'number' ? rawTs : rawTs ? new Date(rawTs).getTime() : 0;
+                      const dateLabel = ts ? new Date(ts).toLocaleDateString(undefined, {
+                        month: 'short',
+                        day: 'numeric',
+                      }) : '';
+
                       return (
                         <div
                           key={n.id}
@@ -547,18 +561,17 @@ export const NotionTemplateModal: React.FC = () => {
                               className="rounded text-amber-500"
                             />
                             <span className="truncate font-medium">{n.title || 'Untitled note'}</span>
-                            {n.category && (
+                            {catName && (
                               <span className="text-[10px] px-1.5 rounded-full bg-stone-200 dark:bg-stone-800 text-stone-600 dark:text-stone-400 shrink-0">
-                                {n.category}
+                                {catName}
                               </span>
                             )}
                           </div>
-                          <span className="text-[11px] text-stone-400 shrink-0 ml-2">
-                            {new Date(dateField === 'created' ? n.createdAt : n.updatedAt).toLocaleDateString(undefined, {
-                              month: 'short',
-                              day: 'numeric',
-                            })}
-                          </span>
+                          {dateLabel && (
+                            <span className="text-[11px] text-stone-400 shrink-0 ml-2">
+                              {dateLabel}
+                            </span>
+                          )}
                         </div>
                       );
                     })}
@@ -694,6 +707,11 @@ export const NotionTemplateModal: React.FC = () => {
                   <div className="max-h-48 overflow-y-auto space-y-1 rounded-xl border border-black/[0.06] dark:border-white/[0.07] p-1.5">
                     {matchingKeywordNotes.map((n) => {
                       const isSelected = selectedKeywordNoteIds.includes(n.id);
+                      const catName = typeof n.category === 'string' ? n.category : (n.category as any)?.name;
+                      const textSnippet = typeof n.content === 'string'
+                        ? n.content.replace(/<[^>]+>/g, '').slice(0, 30)
+                        : '';
+
                       return (
                         <div
                           key={n.id}
@@ -712,14 +730,14 @@ export const NotionTemplateModal: React.FC = () => {
                               className="rounded text-amber-500"
                             />
                             <span className="truncate font-medium">{n.title || 'Untitled note'}</span>
-                            {n.category && (
+                            {catName && (
                               <span className="text-[10px] px-1.5 rounded-full bg-stone-200 dark:bg-stone-800 text-stone-600 dark:text-stone-400 shrink-0">
-                                {n.category}
+                                {catName}
                               </span>
                             )}
                           </div>
                           <span className="text-[11px] text-stone-400 line-clamp-1 max-w-[120px] truncate ml-2">
-                            {n.content?.replace(/<[^>]+>/g, '').slice(0, 30) || 'No text'}
+                            {textSnippet || 'No text'}
                           </span>
                         </div>
                       );

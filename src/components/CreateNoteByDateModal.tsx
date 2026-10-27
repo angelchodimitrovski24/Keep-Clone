@@ -149,16 +149,22 @@ export const CreateNoteByDateModal: React.FC = () => {
       role="dialog"
       aria-modal="true"
       data-portal="true"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) {
+          e.stopPropagation();
+        }
+      }}
       onClick={(e) => {
         if (e.target === e.currentTarget) {
           e.stopPropagation();
           setIsDateCompileModalOpen(false);
         }
       }}
-      className="keep-backdrop-anim keep-modal fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-2 sm:p-4 overflow-y-auto"
+      className="keep-backdrop-anim keep-modal fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-xs p-2 sm:p-4 overflow-y-auto"
     >
       <div
         onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
         className="w-full max-w-2xl bg-white dark:bg-[#202124] rounded-2xl sm:rounded-3xl shadow-2xl border border-stone-200/80 dark:border-stone-700 flex flex-col overflow-hidden max-h-[92vh] h-[820px] transition-all"
       >
         {/* Header */}
