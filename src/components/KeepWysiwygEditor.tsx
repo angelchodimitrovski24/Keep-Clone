@@ -16,7 +16,7 @@ import Placeholder from '@tiptap/extension-placeholder';
 import Image from '@tiptap/extension-image';
 import { Table, TableRow, TableHeader, TableCell } from '@tiptap/extension-table';
 import { KeepFormattingBar } from './KeepFormattingBar';
-import { GoogleKeepFormatCommand, convertMarkdownToHtml } from '@/lib/formatUtils';
+import { GoogleKeepFormatCommand, convertMarkdownToHtml, convertHtmlToMarkdown } from '@/lib/formatUtils';
 import { KeepMediaExtension } from '@/lib/keepMediaExtension';
 import {
   extractClipboardPayload,
@@ -173,11 +173,40 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
           }
         }
 
-        // Intercept pasted markdown code blocks, tables, headings or markdown content
+        const htmlText = clipboardData?.getData('text/html');
+
+        // 1. Check if pasted content contains HTML markup (explicit text/html or plain text with HTML tags)
+        const isHtmlPayload = Boolean(
+          (plainText && /<(?:p|h[1-6]|ul|ol|li|table|div|blockquote|b|strong|i|em|a|code|pre|hr|span)[^>]*>/i.test(plainText)) ||
+          (htmlText && !/<meta/i.test(htmlText) && /<(?:p|h[1-6]|ul|ol|li|table|div|blockquote|b|strong|i|em|a|code|pre|hr)[^>]*>/i.test(htmlText))
+        );
+
+        if (isHtmlPayload) {
+          const rawHtml = (plainText && /<[a-z][\s\S]*>/i.test(plainText))
+            ? plainText
+            : (htmlText || plainText || '');
+          const markdown = convertHtmlToMarkdown(rawHtml);
+          const html = convertMarkdownToHtml(markdown);
+
+          if (activeEditor) {
+            nativeEvt.__keepPasteHandled = true;
+            rawEvent.preventDefault();
+            if ('stopPropagation' in rawEvent) {
+              rawEvent.stopPropagation();
+            }
+            activeEditor.chain().focus().insertContent(html).run();
+            onChangeRef.current(activeEditor.getHTML());
+            return true;
+          }
+        }
+
+        // 2. Intercept pasted markdown code blocks, tables, headings, task lists, bullet lists or markdown content
         if (
           plainText &&
           (/(?:^|\n)\s*```/.test(plainText) ||
             /(?:^|\n)\s*#{1,4}\s+/.test(plainText) ||
+            /(?:^|\n)\s*[-*+]\s+\[[ xX]\]/.test(plainText) ||
+            /(?:^|\n)\s*[-*+]\s+/.test(plainText) ||
             (plainText.includes('|') && /\|?\s*:?-+:?\s*\|/.test(plainText)))
         ) {
           if (activeEditor) {

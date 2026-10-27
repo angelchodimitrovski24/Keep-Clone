@@ -576,3 +576,138 @@ export function toggleCheckboxInAnyContent(content: string, index: number, newCh
     return match;
   });
 }
+
+/**
+ * Converts raw HTML string into clean standard Markdown (headings, bold, italic,
+ * lists, task checkboxes, tables, code blocks, links, and blockquotes).
+ */
+export function convertHtmlToMarkdown(html: string): string {
+  if (!html || !/<[a-z][\s\S]*>/i.test(html)) return html;
+
+  let md = html;
+
+  // 1. Code blocks: <pre><code...>...</code></pre>
+  md = md.replace(/<pre[^>]*><code(?: class="language-([^"]*)")?>([\s\S]*?)<\/code><\/pre>/gi, (_m, lang, code) => {
+    const cleanCode = code
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&amp;/g, '&')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'");
+    return `\n\n\`\`\`${lang || ''}\n${cleanCode.trim()}\n\`\`\`\n\n`;
+  });
+
+  // 2. Tables: <table>...</table> to Markdown table
+  md = md.replace(/<table[^>]*>([\s\S]*?)<\/table>/gi, (_m, tableInner) => {
+    const rows: string[][] = [];
+    const trRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+    let trMatch: RegExpExecArray | null;
+    while ((trMatch = trRegex.exec(tableInner)) !== null) {
+      const cells: string[] = [];
+      const thTdRegex = /<(?:th|td)[^>]*>([\s\S]*?)<\/(?:th|td)>/gi;
+      let cellMatch: RegExpExecArray | null;
+      while ((cellMatch = thTdRegex.exec(trMatch[1])) !== null) {
+        cells.push(cellMatch[1].replace(/<[^>]+>/g, '').trim());
+      }
+      if (cells.length > 0) {
+        rows.push(cells);
+      }
+    }
+    if (rows.length === 0) return '';
+    const colCount = Math.max(...rows.map((r) => r.length));
+    const padRow = (r: string[]) => {
+      const padded = [...r];
+      while (padded.length < colCount) padded.push('');
+      return '| ' + padded.join(' | ') + ' |';
+    };
+
+    let tableMd = '\n\n' + padRow(rows[0]) + '\n';
+    tableMd += '| ' + Array(colCount).fill('---').join(' | ') + ' |\n';
+    for (let r = 1; r < rows.length; r++) {
+      tableMd += padRow(rows[r]) + '\n';
+    }
+    return tableMd + '\n\n';
+  });
+
+  // 3. Task list items: <li data-type="taskItem" data-checked="true/false">...
+  md = md.replace(/<li[^>]*data-type="taskItem"[^>]*data-checked="(true|false)"[^>]*>([\s\S]*?)<\/li>/gi, (_m, checked, inner) => {
+    const isChecked = checked === 'true';
+    const text = inner.replace(/<label[\s\S]*?<\/label>/gi, '').replace(/<[^>]+>/g, '').trim();
+    return `\n- [${isChecked ? 'x' : ' '}] ${text}\n`;
+  });
+
+  // 4. Checkbox inputs inside <li>: <li><input type="checkbox" checked?> text</li>
+  md = md.replace(/<li[^>]*>[\s\S]*?<input[^>]*type="checkbox"([^>]*)>([\s\S]*?)<\/li>/gi, (_m, inputAttrs, text) => {
+    const isChecked = /checked/i.test(inputAttrs);
+    const cleanText = text.replace(/<[^>]+>/g, '').trim();
+    return `\n- [${isChecked ? 'x' : ' '}] ${cleanText}\n`;
+  });
+
+  // 5. Headings: <h1> to <h6>
+  md = md.replace(/<h([1-6])[^>]*>([\s\S]*?)<\/h\1>/gi, (_m, level, text) => {
+    const hashes = '#'.repeat(parseInt(level, 10));
+    const cleanText = text.replace(/<[^>]+>/g, '').trim();
+    return `\n\n${hashes} ${cleanText}\n\n`;
+  });
+
+  // 6. Horizontal rules
+  md = md.replace(/<hr\s*\/?>/gi, '\n\n---\n\n');
+
+  // 7. Blockquotes
+  md = md.replace(/<blockquote[^>]*>([\s\S]*?)<\/blockquote>/gi, (_m, text) => {
+    const cleanLines = text.replace(/<[^>]+>/g, '').trim().split('\n');
+    return '\n\n' + cleanLines.map((l: string) => `> ${l.trim()}`).join('\n') + '\n\n';
+  });
+
+  // 8. Bullet list items: <li>
+  md = md.replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, (_m, text) => {
+    const cleanText = text.replace(/<[^>]+>/g, '').trim();
+    return `\n- ${cleanText}\n`;
+  });
+
+  // 9. Paragraphs and divs: <p>, <div>
+  md = md.replace(/<(?:p|div)[^>]*>([\s\S]*?)<\/(?:p|div)>/gi, (_m, text) => {
+    return `\n\n${text.trim()}\n\n`;
+  });
+
+  // 10. Line breaks: <br>
+  md = md.replace(/<br\s*\/?>/gi, '\n');
+
+  // 11. Images: <img src="..." alt="...">
+  md = md.replace(/<img[^>]*src="([^"]+)"[^>]*alt="([^"]*)"[^>]*>/gi, (_m, src, alt) => {
+    return `![${alt || 'image'}](${src})`;
+  });
+  md = md.replace(/<img[^>]*alt="([^"]*)"[^>]*src="([^"]+)"[^>]*>/gi, (_m, alt, src) => {
+    return `![${alt || 'image'}](${src})`;
+  });
+
+  // 12. Links: <a href="...">text</a>
+  md = md.replace(/<a[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi, (_m, href, text) => {
+    const cleanText = text.replace(/<[^>]+>/g, '').trim();
+    return `[${cleanText || href}](${href})`;
+  });
+
+  // 13. Inline formatting
+  md = md.replace(/<(?:strong|b)[^>]*>([\s\S]*?)<\/(?:strong|b)>/gi, '**$1**');
+  md = md.replace(/<(?:em|i)[^>]*>([\s\S]*?)<\/(?:em|i)>/gi, '*$1*');
+  md = md.replace(/<u>([\s\S]*?)<\/u>/gi, '_$1_');
+  md = md.replace(/<(?:s|strike|del)[^>]*>([\s\S]*?)<\/(?:s|strike|del)>/gi, '~~$1~~');
+  md = md.replace(/<code[^>]*>([\s\S]*?)<\/code>/gi, '`$1`');
+
+  // 14. Strip any leftover HTML tags
+  md = md.replace(/<[^>]+>/g, '');
+
+  // 15. Decode common HTML entities
+  md = md
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, ' ');
+
+  // 16. Clean up excess whitespace
+  md = md.replace(/\n{3,}/g, '\n\n').trim();
+
+  return md;
+}

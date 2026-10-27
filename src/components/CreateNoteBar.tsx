@@ -23,6 +23,7 @@ import { getNoteColorClasses } from '@/lib/constants';
 import { GoogleKeepFormatCommand, resolveLocalMediaUrl } from '@/lib/formatUtils';
 import { extractClipboardPayload, copyFilesToLocalFolder } from '@/lib/localPaste';
 import { renderMarkdownTablesInHtml } from '@/lib/tableUtils';
+import { convertHtmlToMarkdown } from '@/lib/formatUtils';
 import { LinkNoteModal } from './LinkNoteModal';
 import { EncryptNoteModal } from './EncryptNoteModal';
 import { encryptNote } from '@/lib/crypto';
@@ -102,7 +103,9 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
       setIsExpanded(true);
 
       if (text?.trim()) {
-        setContent(text);
+        const containsHtml = /<(?:p|h[1-6]|ul|ol|li|table|div|blockquote|b|strong|i|em|a|code|pre|hr|span)[^>]*>/i.test(text);
+        const processed = containsHtml ? convertHtmlToMarkdown(text) : text;
+        setContent(processed);
       }
 
       if (files.length > 0 || imageUrls.length > 0) {
