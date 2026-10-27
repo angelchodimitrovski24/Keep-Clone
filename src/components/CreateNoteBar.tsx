@@ -468,24 +468,33 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
 
         {/* Header & Pin */}
         <div className="flex items-center justify-between px-4 pt-3 pb-1">
-          <textarea
-            placeholder="Title"
-            value={title}
-            rows={1}
-            onChange={(e) => {
-              setTitle(e.target.value);
-              e.target.style.height = 'auto';
-              e.target.style.height = `${e.target.scrollHeight}px`;
-            }}
-            ref={(el) => {
-              if (el) {
-                el.style.height = 'auto';
-                el.style.height = `${el.scrollHeight}px`;
-              }
-            }}
-            style={{ fontSize: 'calc(var(--note-font-size, 15px) * 1.15)' }}
-            className="w-full bg-transparent font-semibold text-stone-900 dark:text-stone-100 placeholder:text-stone-500 outline-none resize-none leading-snug overflow-hidden block"
-          />
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            {isNotionMode && (
+              <span className="text-2xl leading-none select-none shrink-0">
+                {categories.find((c) => c.name === category)?.icon || '📚'}
+              </span>
+            )}
+            <textarea
+              placeholder={isNotionMode ? 'Untitled page' : 'Title'}
+              value={title}
+              rows={1}
+              onChange={(e) => {
+                setTitle(e.target.value);
+                e.target.style.height = 'auto';
+                e.target.style.height = `${e.target.scrollHeight}px`;
+              }}
+              ref={(el) => {
+                if (el) {
+                  el.style.height = 'auto';
+                  el.style.height = `${el.scrollHeight}px`;
+                }
+              }}
+              style={!isNotionMode ? { fontSize: 'calc(var(--note-font-size, 15px) * 1.15)' } : undefined}
+              className={`w-full bg-transparent text-stone-900 dark:text-stone-100 placeholder:text-stone-500 outline-none resize-none leading-snug overflow-hidden block ${
+                isNotionMode ? 'font-bold text-2xl tracking-tight' : 'font-semibold'
+              }`}
+            />
+          </div>
           <button
             type="button"
             onClick={() => setIsPinned(!isPinned)}
@@ -586,6 +595,40 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
                 />
               </div>
             </div>
+          ) : isNotionMode ? (
+            <div className="space-y-3">
+              <NotionSubpagesSection
+                parentNoteId={tempNoteId}
+                childNoteIds={childNoteIds}
+                onChangeChildIds={setChildNoteIds}
+                onOpenChildNote={(child) => {
+                  handleSaveAndClose();
+                  setEditingNote(child);
+                }}
+                category={category}
+              />
+              {content.trim() ? (
+                <KeepWysiwygEditor
+                  ref={editorRef}
+                  content={content}
+                  onChange={setContent}
+                  placeholder="Add written notes, markdown, or thoughts…"
+                  minHeightClass="min-h-[80px]"
+                  listenWindowPaste={!editingNote}
+                />
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setContent(' ');
+                    setTimeout(() => editorRef.current?.focus(), 50);
+                  }}
+                  className="text-xs text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 transition-colors py-1"
+                >
+                  + Add written notes or description below
+                </button>
+              )}
+            </div>
           ) : (
             <KeepWysiwygEditor
               ref={editorRef}
@@ -675,8 +718,8 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
           </div>
         </div>
 
-        {/* Notion-style Sub-pages / Child Notes Section */}
-        {(isNotionMode || childNoteIds.length > 0) && (
+        {/* Notion-style Sub-pages / Child Notes Section for regular notes with subpages */}
+        {!isNotionMode && childNoteIds.length > 0 && (
           <div className="px-3 sm:px-4 pb-2">
             <NotionSubpagesSection
               parentNoteId={tempNoteId}

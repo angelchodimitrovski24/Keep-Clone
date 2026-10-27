@@ -271,6 +271,12 @@ export const NoteModal: React.FC<NoteModalProps> = ({
     return notes.find((n) => n.id === note.parentNoteId && !n.isTrash) || null;
   }, [note?.parentNoteId, notes]);
 
+  const isNotionPage = Boolean(
+    (note && note.noteType === 'notion') ||
+    showSubpages ||
+    (childNoteIds && childNoteIds.length > 0)
+  );
+
   // Sync state when note opens or note changes
   useEffect(() => {
     if (note) {
@@ -975,7 +981,37 @@ export const NoteModal: React.FC<NoteModalProps> = ({
         )}
 
         {/* Notion-style Parent Breadcrumb */}
-        {parentNote && (
+        {isNotionPage ? (
+          <div className="px-3.5 sm:px-6 pt-3 pb-0 select-none flex items-center gap-1.5 text-xs text-stone-400 dark:text-stone-400">
+            <span>Workspace</span>
+            <span>/</span>
+            {category && (
+              <>
+                <span className="text-stone-500 dark:text-stone-400">{category}</span>
+                <span>/</span>
+              </>
+            )}
+            {parentNote && (
+              <>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await handleSaveAndClose();
+                    setEditingNote(parentNote);
+                  }}
+                  className="hover:underline flex items-center gap-1 text-stone-500 hover:text-amber-600 dark:hover:text-amber-400"
+                >
+                  <FileText className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                  <span className="truncate max-w-[150px]">{parentNote.title || 'Parent note'}</span>
+                </button>
+                <span>/</span>
+              </>
+            )}
+            <span className="text-stone-700 dark:text-stone-200 font-medium truncate max-w-[200px]">
+              {categoryObj?.icon || '📚'} {title || 'Untitled'}
+            </span>
+          </div>
+        ) : parentNote ? (
           <div className="px-3.5 sm:px-6 pt-3 pb-0 select-none">
             <button
               type="button"
@@ -995,11 +1031,11 @@ export const NoteModal: React.FC<NoteModalProps> = ({
               </span>
             </button>
           </div>
-        )}
+        ) : null}
 
-        {/* Header: Note Title (Shows FIRST, Full width, Word-wrapped, with Mobile Back & Done controls) */}
-        <div className="px-3.5 sm:px-6 pt-3 sm:pt-5 pb-1.5 shrink-0">
-          <div className="flex items-center gap-1 sm:gap-0">
+        {/* Header: Note Title */}
+        <div className="px-3.5 sm:px-6 pt-3 sm:pt-4 pb-1.5 shrink-0">
+          <div className="flex items-center gap-2">
             {/* Native Mobile App Back Arrow (←) */}
             <button
               type="button"
@@ -1010,8 +1046,14 @@ export const NoteModal: React.FC<NoteModalProps> = ({
               <ArrowLeft className="w-5 h-5" />
             </button>
 
+            {isNotionPage && (
+              <span className="text-2xl sm:text-3xl leading-none select-none shrink-0 mr-1">
+                {categoryObj?.icon || '📚'}
+              </span>
+            )}
+
             <textarea
-              placeholder="Title"
+              placeholder={isNotionPage ? 'Untitled page' : 'Title'}
               value={title}
               rows={1}
               onChange={(e) => {
@@ -1025,8 +1067,10 @@ export const NoteModal: React.FC<NoteModalProps> = ({
                   el.style.height = `${el.scrollHeight}px`;
                 }
               }}
-              className="w-full bg-transparent font-semibold text-stone-900 dark:text-stone-100 placeholder:text-stone-400 outline-none resize-none leading-snug overflow-hidden block"
-              style={{ fontSize: 'calc(var(--note-font-size, 15px) * 1.25)' }}
+              className={`w-full bg-transparent text-stone-900 dark:text-stone-100 placeholder:text-stone-400 outline-none resize-none leading-snug overflow-hidden block ${
+                isNotionPage ? 'font-bold text-2xl sm:text-3xl tracking-tight' : 'font-semibold'
+              }`}
+              style={!isNotionPage ? { fontSize: 'calc(var(--note-font-size, 15px) * 1.25)' } : undefined}
             />
 
             {/* Mobile Done checkmark button */}
@@ -1524,6 +1568,68 @@ export const NoteModal: React.FC<NoteModalProps> = ({
                   </div>
                 )}
               </div>
+            ) : isNotionPage ? (
+              <div className="space-y-3">
+                {/* Notion-style Sub-pages list - Shown prominently under title like on the image! */}
+                <NotionSubpagesSection
+                  parentNoteId={note.id}
+                  childNoteIds={childNoteIds}
+                  onChangeChildIds={async (newIds) => {
+                    setChildNoteIds(newIds);
+                    await updateNote(note.id, { childNoteIds: newIds });
+                  }}
+                  onOpenChildNote={async (childNote) => {
+                    await handleSaveAndClose();
+                    setEditingNote(childNote);
+                  }}
+                  category={category}
+                />
+
+                {/* Additional Written Notes / Description (Shown below the subpages) */}
+                {content.trim() || isPreviewMode ? (
+                  <div className="pt-3 border-t border-black/5 dark:border-white/5">
+                    {isPreviewMode ? (
+                      <div className="py-1 text-stone-800 dark:text-stone-200 leading-relaxed overflow-x-auto">
+                        <MarkdownRenderer
+                          content={content}
+                          onOpenLinkedNote={(titleOrId) => {
+                            const q = titleOrId.toLowerCase().trim();
+                            const found = notes.find(
+                              (n) => n.id.toLowerCase() === q || (n.title && n.title.toLowerCase() === q)
+                            );
+                            if (found) {
+                              handleSaveAndClose();
+                              setEditingNote(found);
+                            }
+                          }}
+                        />
+                      </div>
+                    ) : (
+                      <KeepWysiwygEditor
+                        ref={editorRef}
+                        content={content}
+                        onChange={setContent}
+                        placeholder="Add written notes, markdown, or thoughts…"
+                        minHeightClass="min-h-[100px]"
+                        listenWindowPaste={true}
+                      />
+                    )}
+                  </div>
+                ) : (
+                  <div className="pt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setContent(' ');
+                        setTimeout(() => editorRef.current?.focus(), 50);
+                      }}
+                      className="text-xs text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 transition-colors py-1"
+                    >
+                      + Add written notes or description below
+                    </button>
+                  </div>
+                )}
+              </div>
             ) : isPreviewMode ? (
               <div className="min-h-[240px] py-1 text-stone-800 dark:text-stone-200 leading-relaxed overflow-x-auto">
                 <MarkdownRenderer
@@ -1549,23 +1655,6 @@ export const NoteModal: React.FC<NoteModalProps> = ({
                 minHeightClass="min-h-[240px]"
                 autoFocus={true}
                 listenWindowPaste={true}
-              />
-            )}
-
-            {/* Notion-style Sub-pages / Child Notes Section */}
-            {(showSubpages || (childNoteIds && childNoteIds.length > 0) || note.noteType === 'notion') && (
-              <NotionSubpagesSection
-                parentNoteId={note.id}
-                childNoteIds={childNoteIds}
-                onChangeChildIds={async (newIds) => {
-                  setChildNoteIds(newIds);
-                  await updateNote(note.id, { childNoteIds: newIds });
-                }}
-                onOpenChildNote={async (childNote) => {
-                  await handleSaveAndClose();
-                  setEditingNote(childNote);
-                }}
-                category={category}
               />
             )}
           </div>
