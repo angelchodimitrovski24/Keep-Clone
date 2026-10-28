@@ -57,6 +57,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
     importDataSmart,
     currentFilter,
     setCurrentFilter,
+    setEditingNote,
     localMediaFolder,
     setIsLocalFolderModalOpen,
     setIsSettingsOpen,
@@ -217,7 +218,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
           <Menu className="w-5 h-5" />
         </button>
 
-        <div className="flex items-center gap-1.5 sm:gap-2 cursor-pointer select-none">
+        <div onClick={() => { setEditingNote(null); setCurrentFilter('notes'); if (window.location.pathname.startsWith('/note/')) { window.history.pushState(null, '', '/'); } }} className="flex items-center gap-1.5 sm:gap-2 cursor-pointer select-none">
           <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-amber-400 flex items-center justify-center text-white shadow-md shadow-amber-400/20">
             <span className="font-black text-lg sm:text-xl leading-none">💡</span>
           </div>
@@ -463,14 +464,14 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
           type="button"
           onClick={() => fileInputRef.current?.click()}
           className="p-2.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors hidden md:flex"
-          title="Intelligent import backup (ZIP or JSON)"
+          title="Intelligent import backup (ZIP, JSON, ICS, MHTML webpage)"
         >
           <Upload className="w-5 h-5" />
         </button>
         <input
           ref={fileInputRef}
           type="file"
-          accept=".zip,.json,application/zip,application/x-zip-compressed,application/json"
+          accept=".zip,.json,.mhtml,.mht,.ics,application/zip,application/x-zip-compressed,application/json,multipart/related,message/rfc822,text/calendar"
           onChange={handleImportFile}
           className="hidden"
         />

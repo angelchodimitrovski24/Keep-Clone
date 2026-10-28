@@ -47,6 +47,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     canInstallPwa,
     isPwaInstalled,
     setIsDateCompileModalOpen,
+    setEditingNote,
   } = useKeep();
 
   const navItems: { id: ViewFilter; label: string; icon: React.ReactNode }[] = [
@@ -59,6 +60,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   ];
 
   const handleSelectNav = (id: ViewFilter, labelName?: string) => {
+    setEditingNote(null);
     setCurrentFilter(id, labelName);
     if (typeof window !== 'undefined') {
       if (id === 'calendar') {

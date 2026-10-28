@@ -1672,11 +1672,18 @@ export function KeepProvider({
       if (result.success) {
         await initLocalMediaCache().catch(() => {});
         await loadInitialData();
+        if (result.importedNoteId) {
+          const freshNotes = await getAllNotesFromDB();
+          const target = freshNotes.find((n) => n.id === result.importedNoteId);
+          if (target) {
+            setEditingNote(target);
+          }
+        }
       }
       setImportSummary(result);
       return result;
     },
-    [loadInitialData]
+    [loadInitialData, setEditingNote]
   );
 
   const importDataJSON = useCallback(
@@ -1835,6 +1842,11 @@ export function KeepProvider({
       isSettingsOpen,
       isGoogleDriveModalOpen,
       isPdfExportModalOpen,
+      setIsPdfExportModalOpen,
+      isDateCompileModalOpen,
+      setIsDateCompileModalOpen,
+      isNotionTemplateModalOpen,
+      setIsNotionTemplateModalOpen,
       isInstallModalOpen,
       canInstallPwa,
       isPwaInstalled,

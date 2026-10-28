@@ -18,6 +18,7 @@ import { Table, TableRow, TableHeader, TableCell } from '@tiptap/extension-table
 import { KeepFormattingBar } from './KeepFormattingBar';
 import { GoogleKeepFormatCommand, convertMarkdownToHtml, convertHtmlToMarkdown } from '@/lib/formatUtils';
 import { KeepMediaExtension } from '@/lib/keepMediaExtension';
+import { importMhtmlIntoNote } from '@/lib/mhtmlParser';
 import {
   extractClipboardPayload,
   copyFilesToLocalFolder,
@@ -71,6 +72,29 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
     const processAndInsertFiles = useCallback(
       async (files: File[], imageUrls: string[] = []) => {
         if (files.length === 0 && imageUrls.length === 0) return;
+
+        const mhtmlFiles = files.filter((f) =>
+          f.name.toLowerCase().endsWith('.mhtml') ||
+          f.name.toLowerCase().endsWith('.mht') ||
+          f.type.includes('message/rfc822') ||
+          f.type.includes('multipart/related')
+        );
+        const regularFiles = files.filter((f) => !mhtmlFiles.includes(f));
+
+        for (const mf of mhtmlFiles) {
+          try {
+            await importMhtmlIntoNote({
+              file: mf,
+              onInsertEditorContent: (html) => {
+                editorInstanceRef.current?.chain().focus().insertContent(html).run();
+              },
+            });
+          } catch (err) {
+            console.warn('Failed inserting MHTML into WYSIWYG editor:', err);
+          }
+        }
+
+        if (regularFiles.length === 0 && imageUrls.length === 0) return;
 
         try {
           setIsCopyingFiles(true);

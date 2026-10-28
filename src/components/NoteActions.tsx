@@ -28,6 +28,7 @@ import {
   Search,
   Plus,
   FileText,
+  Globe,
 } from 'lucide-react';
 import { Note, NoteColor, NoteBackgroundTheme } from '@/types/note';
 import { NOTE_COLORS, NOTE_THEMES } from '@/lib/constants';
@@ -64,6 +65,7 @@ interface NoteActionsProps {
   menuPlacement?: 'top' | 'bottom' | 'auto';
   menuAlign?: 'left' | 'right';
   onMenuOpenChange?: (open: boolean) => void;
+  onImportMhtml?: (file: File) => void;
 }
 
 export const NoteActions: React.FC<NoteActionsProps> = ({
@@ -77,6 +79,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
   onDuplicate,
   onShare,
   onAddImage,
+  onImportMhtml,
   onToggleChecklist,
   onAddReminder,
   onToggleLabel,
@@ -198,6 +201,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
   const moreBtnRef = useRef<HTMLButtonElement>(null);
   const sheetRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const mhtmlInputRef = useRef<HTMLInputElement>(null);
 
   // Close menus when clicking outside
   useEffect(() => {
@@ -440,6 +444,20 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
             className="hidden"
             onChange={onAddImage}
           />
+          <input
+            ref={mhtmlInputRef}
+            type="file"
+            accept=".mhtml,.mht,multipart/related,message/rfc822"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f && onImportMhtml) {
+                onImportMhtml(f);
+              }
+              e.target.value = '';
+            }}
+          />
+
         </>
       )}
 
@@ -663,6 +681,20 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                 {hasSubpages ? 'Sub-pages (Notion)' : 'Add Notion sub-pages'}
               </button>
             )}
+            {onImportMhtml && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMenu(false);
+                  mhtmlInputRef.current?.click();
+                }}
+                className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
+              >
+                <Globe className="w-4 h-4 text-blue-500" />
+                Import MHTML into note
+              </button>
+            )}
+
 
             <div className="my-1 border-t border-black/[0.06] dark:border-white/[0.08]" />
 
@@ -797,6 +829,20 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                 Share note (Short link)
               </button>
             )}
+                      {onImportMhtml && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowMenu(false);
+                            mhtmlInputRef.current?.click();
+                          }}
+                          className="w-full text-left px-6 py-3.5 flex items-center gap-4 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] active:bg-black/[0.08] dark:active:bg-white/[0.1] text-stone-800 dark:text-stone-200 text-[14.5px] font-normal tracking-[0.15px] transition-colors"
+                        >
+                          <Globe className="w-5 h-5 text-blue-500 shrink-0" />
+                          <span>Import MHTML into note</span>
+                        </button>
+                      )}
+
 
             {onDelete && (
               <button

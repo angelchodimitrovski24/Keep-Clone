@@ -18,6 +18,7 @@ import {
   Cloud,
   FileText,
   Smartphone,
+  Globe,
 } from 'lucide-react';
 import { useKeep, getFontSizeInPx } from '@/context/KeepContext';
 import { FontSizeOption, AppThemeMode } from '@/types/note';
@@ -48,6 +49,7 @@ export const SettingsModal: React.FC = () => {
   } = useKeep();
 
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const mhtmlInputRef = React.useRef<HTMLInputElement>(null);
 
   if (!isSettingsOpen) return null;
 
@@ -370,15 +372,33 @@ export const SettingsModal: React.FC = () => {
                 title="Intelligently import backup (ZIP or JSON) updating only changed items without duplicates"
               >
                 <Upload className="w-4 h-4 text-emerald-500" />
-                <span>Intelligent Import (ZIP / JSON / ICS)</span>
+                <span>Intelligent Import (ZIP / JSON / ICS / MHTML)</span>
               </button>
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".zip,.json,.ics,application/zip,application/x-zip-compressed,application/json,text/calendar"
+                accept=".zip,.json,.ics,.mhtml,.mht,application/zip,application/x-zip-compressed,application/json,text/calendar,multipart/related,message/rfc822"
                 onChange={handleImport}
                 className="hidden"
               />
+              {/* Dedicated MHTML Webpage Import button */}
+              <button
+                type="button"
+                onClick={() => mhtmlInputRef.current?.click()}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-blue-500/40 bg-blue-500/10 text-blue-700 dark:text-blue-300 text-xs font-semibold hover:bg-blue-500/20 transition-colors shadow-xs"
+                title="Import webpage snapshot (.mhtml or .mht file) with full formatting and embedded images"
+              >
+                <Globe className="w-4 h-4 text-blue-500" />
+                <span>Import MHTML Webpage</span>
+              </button>
+              <input
+                ref={mhtmlInputRef}
+                type="file"
+                accept=".mhtml,.mht,multipart/related,message/rfc822"
+                onChange={handleImport}
+                className="hidden"
+              />
+
             </div>
           </div>
 

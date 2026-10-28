@@ -1,12 +1,13 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useKeep } from '@/context/KeepContext';
 import { Header } from '@/components/Header';
 import { Sidebar } from '@/components/Sidebar';
 import { CreateNoteBar } from '@/components/CreateNoteBar';
 import { NotesGrid } from '@/components/NotesGrid';
 import { NoteModal } from '@/components/NoteModal';
+import { NoteTabsBar } from '@/components/NoteTabsBar';
 import { DrawingModal } from '@/components/DrawingModal';
 import { LabelManagerModal } from '@/components/LabelManagerModal';
 import { CategoryManagerModal } from '@/components/CategoryManagerModal';
@@ -51,6 +52,8 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
     updateNote,
     addNote,
     currentFilter,
+    selectedCategory,
+    selectedLabel,
     importSummary,
     setImportSummary,
     sharingNote,
@@ -60,6 +63,9 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const pendingNoteIdRef = useRef<string | null>(initialNoteId || null);
+  const [noteNotFoundId, setNoteNotFoundId] = useState<string | null>(null);
+  const [openTabIds, setOpenTabIds] = useState<string[]>([]);
+  const [activeTabId, setActiveTabId] = useState<string | null>(null);
 
   // Read URL parameters on mount if no initialNoteId prop was passed
   useEffect(() => {
@@ -86,19 +92,95 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
 
   // When notes are loaded from IndexedDB, open the pending note if present
   useEffect(() => {
-    if (pendingNoteIdRef.current && !isLoading && notes.length > 0) {
+    if (pendingNoteIdRef.current && !isLoading) {
       const targetId = pendingNoteIdRef.current;
       const found = notes.find((n) => n.id === targetId);
       if (found) {
+        setOpenTabIds((prev) => (prev.includes(found.id) ? prev : [...prev, found.id]));
+        setActiveTabId(found.id);
         setEditingNote(found);
         pendingNoteIdRef.current = null;
+        setNoteNotFoundId(null);
       } else {
-        // Target note was not found in local DB
         console.warn(`Note with ID ${targetId} not found in notes.`);
+        setNoteNotFoundId(targetId);
         pendingNoteIdRef.current = null;
       }
     }
   }, [notes, isLoading, setEditingNote]);
+
+  // Whenever editingNote changes from outside (e.g. reminders, docks), sync to tabs
+  useEffect(() => {
+    if (editingNote) {
+      setOpenTabIds((prev) => (prev.includes(editingNote.id) ? prev : [...prev, editingNote.id]));
+      setActiveTabId(editingNote.id);
+      setNoteNotFoundId(null);
+    }
+  }, [editingNote]);
+
+  // Tab action handlers
+  const openNoteInTab = (noteId: string) => {
+    const found = notes.find((n) => n.id === noteId);
+    if (!found) return;
+    setOpenTabIds((prev) => (prev.includes(noteId) ? prev : [...prev, noteId]));
+    setActiveTabId(noteId);
+    setEditingNote(found);
+    setNoteNotFoundId(null);
+    const targetPath = `/note/${encodeURIComponent(noteId)}`;
+    if (typeof window !== 'undefined' && window.location.pathname !== targetPath) {
+      window.history.pushState({ noteId }, '', targetPath);
+    }
+    if (typeof document !== 'undefined') {
+      document.title = `${found.title || 'Untitled'} - Keep Clone`;
+    }
+  };
+
+  const closeNoteTab = (noteId: string) => {
+    setOpenTabIds((prev) => {
+      const next = prev.filter((id) => id !== noteId);
+      if (activeTabId === noteId) {
+        if (next.length > 0) {
+          const nextActiveId = next[next.length - 1];
+          setActiveTabId(nextActiveId);
+          const nextNote = notes.find((n) => n.id === nextActiveId) || null;
+          setEditingNote(nextNote);
+          if (nextNote && typeof window !== 'undefined') {
+            window.history.pushState({ noteId: nextActiveId }, '', `/note/${encodeURIComponent(nextActiveId)}`);
+            document.title = `${nextNote.title || 'Note'} - Keep Clone`;
+          }
+        } else {
+          setActiveTabId(null);
+          setEditingNote(null);
+          if (typeof window !== 'undefined') {
+            const revertPath = currentFilter === 'calendar' ? '/calendar' : currentFilter === 'stats' ? '/stats' : '/';
+            window.history.pushState(null, '', revertPath);
+            document.title = currentFilter === 'calendar' ? 'Calendar - Keep Clone' : currentFilter === 'stats' ? 'Reading Stats - Keep Clone' : 'Google Keep Clone';
+          }
+        }
+      }
+      return next;
+    });
+  };
+
+  const handleSelectMainTab = () => {
+    setActiveTabId(null);
+    setEditingNote(null);
+    if (typeof window !== 'undefined') {
+      const revertPath = currentFilter === 'calendar' ? '/calendar' : currentFilter === 'stats' ? '/stats' : '/';
+      if (window.location.pathname !== revertPath) {
+        window.history.pushState(null, '', revertPath);
+      }
+      document.title = currentFilter === 'calendar' ? 'Calendar - Keep Clone' : currentFilter === 'stats' ? 'Reading Stats - Keep Clone' : 'Google Keep Clone';
+    }
+  };
+
+  const handleNewNoteTab = async () => {
+    const newNote = await addNote({
+      title: '',
+      content: '',
+    });
+    openNoteInTab(newNote.id);
+  };
 
   // Synchronize editingNote with browser URL address bar
   useEffect(() => {
@@ -106,22 +188,19 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
 
     const currentPath = window.location.pathname;
 
-    if (editingNote) {
-      const targetPath = `/note/${encodeURIComponent(editingNote.id)}`;
+    if (activeTabId) {
+      const targetPath = `/note/${encodeURIComponent(activeTabId)}`;
       if (currentPath !== targetPath) {
-        window.history.pushState({ noteId: editingNote.id }, '', targetPath);
-      }
-      if (editingNote.title) {
-        document.title = `${editingNote.title} - Keep Clone`;
+        window.history.pushState({ noteId: activeTabId }, '', targetPath);
       }
     } else {
-      // When closed, if URL starts with /note/, revert cleanly to /
       if (currentPath.startsWith('/note/')) {
-        window.history.pushState(null, '', '/');
-        document.title = 'Google Keep Clone';
+        const revertPath = currentFilter === 'calendar' ? '/calendar' : currentFilter === 'stats' ? '/stats' : '/';
+        window.history.pushState(null, '', revertPath);
+        document.title = currentFilter === 'calendar' ? 'Calendar - Keep Clone' : currentFilter === 'stats' ? 'Reading Stats - Keep Clone' : 'Google Keep Clone';
       }
     }
-  }, [editingNote]);
+  }, [activeTabId, currentFilter]);
 
   // Listen to browser Back / Forward buttons (popstate)
   useEffect(() => {
@@ -135,13 +214,15 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
         const noteId = decodeURIComponent(match[1]);
         const target = notes.find((n) => n.id === noteId);
         if (target) {
+          setOpenTabIds((prev) => (prev.includes(noteId) ? prev : [...prev, noteId]));
+          setActiveTabId(noteId);
           setEditingNote(target);
         } else {
-          // If notes are loaded and not found, close modal
+          setActiveTabId(null);
           setEditingNote(null);
         }
       } else {
-        // Navigated back to home / or another route
+        setActiveTabId(null);
         setEditingNote(null);
       }
     };
@@ -149,6 +230,11 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, [notes, setEditingNote]);
+
+  const activeTabNote = useMemo(() => {
+    if (!activeTabId) return null;
+    return notes.find((n) => n.id === activeTabId) || (editingNote?.id === activeTabId ? editingNote : null);
+  }, [activeTabId, notes, editingNote]);
 
   const handleSaveDrawing = async (drawing: NoteDrawing) => {
     if (drawingNoteId) {
@@ -174,7 +260,7 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
       <Header onToggleSidebar={() => setSidebarOpen(!sidebarOpen)} />
 
       {/* Main View Area */}
-      <div className="flex-1 flex">
+      <div className="flex-1 flex min-w-0 overflow-hidden">
         {/* Navigation Sidebar */}
         <Sidebar
           isOpen={sidebarOpen}
@@ -182,41 +268,85 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
           onOpenLabelModal={() => setIsLabelModalOpen(true)}
         />
 
-        {/* Notes Feed Container */}
-        <main className="flex-1 p-2.5 sm:p-4 md:p-8 overflow-y-auto max-w-[1600px] mx-auto w-full">
-          {currentFilter === 'stats' ? (
-            <ReadingStatsView />
-          ) : currentFilter === 'calendar' ? (
-            <CalendarView />
-          ) : (
-            <>
-              {/* Category Filter Pills */}
-              <CategoryPillsBar />
+        {/* Center Workspace (Tabs Bar + Main Scrollable Area) */}
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+          {/* Internal Workspace Tabs Bar */}
+          <NoteTabsBar
+            openTabIds={openTabIds}
+            activeTabId={activeTabId}
+            notes={notes}
+            currentFilter={currentFilter}
+            selectedCategory={selectedCategory}
+            selectedLabel={selectedLabel}
+            onSelectMainTab={handleSelectMainTab}
+            onSelectNoteTab={openNoteInTab}
+            onCloseNoteTab={closeNoteTab}
+            onNewNoteTab={handleNewNoteTab}
+          />
 
-              {/* Note Composer (visible in Notes and Category views) */}
-              {(currentFilter === 'notes' || currentFilter === 'category') && (
-                <CreateNoteBar
-                  onOpenDrawingModal={() => setIsDrawingModalOpen(true, null)}
-                />
-              )}
-
-              {/* Notes Grid Display */}
-              <NotesGrid
-                onSelectNote={(note) => setEditingNote(note)}
+          {/* Notes Feed / Active Note Full Page View Container */}
+          <main className="flex-1 p-2.5 sm:p-4 md:p-8 overflow-y-auto max-w-[1600px] mx-auto w-full">
+            {pendingNoteIdRef.current && isLoading ? (
+              <div className="w-full max-w-4xl mx-auto py-24 flex flex-col items-center justify-center text-stone-400">
+                <div className="w-8 h-8 border-3 border-amber-500 border-t-transparent rounded-full animate-spin mb-3" />
+                <p className="text-sm font-medium">Loading note…</p>
+              </div>
+            ) : noteNotFoundId ? (
+              <div className="w-full max-w-xl mx-auto py-24 text-center select-none">
+                <div className="text-5xl mb-4">📝</div>
+                <h2 className="text-xl font-bold text-stone-800 dark:text-stone-200 mb-2">Note not found</h2>
+                <p className="text-sm text-stone-500 dark:text-stone-400 mb-6">
+                  The note with ID &quot;{noteNotFoundId}&quot; could not be found or may have been deleted.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNoteNotFoundId(null);
+                    handleSelectMainTab();
+                  }}
+                  className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-medium text-sm transition-colors shadow-sm cursor-pointer"
+                >
+                  Back to all notes
+                </button>
+              </div>
+            ) : activeTabNote ? (
+              <NoteModal
+                key={activeTabNote.id}
+                note={activeTabNote}
+                isOpen={true}
+                fullPage={true}
+                onClose={() => closeNoteTab(activeTabNote.id)}
                 onOpenDrawingModal={(noteId) => setIsDrawingModalOpen(true, noteId)}
               />
-            </>
-          )}
-        </main>
-      </div>
+            ) : currentFilter === 'stats' ? (
+              <ReadingStatsView />
+            ) : currentFilter === 'calendar' ? (
+              <CalendarView />
+            ) : (
+              <>
+                {/* Category Filter Pills */}
+                <CategoryPillsBar />
 
-      {/* Full Note Editing Dialog */}
-      <NoteModal
-        note={editingNote}
-        isOpen={!!editingNote}
-        onClose={() => setEditingNote(null)}
-        onOpenDrawingModal={(noteId) => setIsDrawingModalOpen(true, noteId)}
-      />
+                {/* Note Composer (visible in Notes and Category views) */}
+                {(currentFilter === 'notes' || currentFilter === 'category') && (
+                  <CreateNoteBar
+                    onOpenDrawingModal={() => setIsDrawingModalOpen(true, null)}
+                  />
+                )}
+
+                {/* Notes Grid Display */}
+                <NotesGrid
+                  onSelectNote={(note) => {
+                    setNoteNotFoundId(null);
+                    openNoteInTab(note.id);
+                  }}
+                  onOpenDrawingModal={(noteId) => setIsDrawingModalOpen(true, noteId)}
+                />
+              </>
+            )}
+          </main>
+        </div>
+      </div>
 
       {/* Canvas Drawing Modal */}
       <DrawingModal

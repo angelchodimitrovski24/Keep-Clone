@@ -48,6 +48,7 @@ import { NoteThemeArtwork } from './NoteThemeArtwork';
 import { ChecklistItemInput } from './ChecklistItemInput';
 import { EditReadingTimeModal } from './EditReadingTimeModal';
 import { printNote } from '@/lib/printNote';
+import { importMhtmlIntoNote } from '@/lib/mhtmlParser';
 import { NotionSubpagesSection } from './NotionSubpagesSection';
 
 function formatStopwatchTime(seconds: number): string {
@@ -78,6 +79,7 @@ interface NoteModalProps {
   isOpen: boolean;
   onClose: () => void;
   onOpenDrawingModal?: (noteId: string) => void;
+  fullPage?: boolean;
 }
 
 export const NoteModal: React.FC<NoteModalProps> = ({
@@ -85,6 +87,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
   isOpen,
   onClose,
   onOpenDrawingModal,
+  fullPage = false,
 }) => {
   const {
     notes,
@@ -706,10 +709,27 @@ export const NoteModal: React.FC<NoteModalProps> = ({
     await performAutoSnapshot(snapshotReason || 'Auto snapshot on save');
   };
 
-  const handleSaveAndClose = async () => {
+  const handleSaveAndClose = useCallback(async () => {
     await saveCurrentNote('Auto snapshot on close');
     onClose();
-  };
+  }, [note, notes, setEditingNote, onClose, saveCurrentNote]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        const hasOpenSubModal =
+          showEncryptModal ||
+          showLinkModal ||
+          isEditingReadingTime;
+        if (!hasOpenSubModal) {
+          handleSaveAndClose();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, showEncryptModal, showLinkModal, isEditingReadingTime, handleSaveAndClose]);
 
   const handlePrint = () => {
     if (!note) return;
@@ -806,11 +826,36 @@ export const NoteModal: React.FC<NoteModalProps> = ({
     editorRef.current?.handleFormat(cmd);
   };
 
-  const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleImportMhtml = async (file: File) => {
+    await importMhtmlIntoNote({
+      file,
+      currentTitle: title,
+      onUpdateTitle: (newTitle) => setTitle(newTitle),
+      onAddImages: (newImgs) => setImages((prev) => [...prev, ...newImgs]),
+      onInsertEditorContent: (html) => editorRef.current?.insertContent(html),
+      onAppendContent: (md) => setContent((prev) => (prev ? `${prev}\n\n${md}` : md)),
+    });
+  };
+
+const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const fileList = e.target.files;
     if (!fileList || fileList.length === 0) return;
     const filesArray = Array.from(fileList);
     e.target.value = '';
+
+    const mhtmlFiles = filesArray.filter((f) =>
+      f.name.toLowerCase().endsWith('.mhtml') ||
+      f.name.toLowerCase().endsWith('.mht') ||
+      f.type.includes('message/rfc822') ||
+      f.type.includes('multipart/related')
+    );
+    const otherFiles = filesArray.filter((f) => !mhtmlFiles.includes(f));
+
+    for (const mf of mhtmlFiles) {
+      await handleImportMhtml(mf);
+    }
+
+    if (otherFiles.length === 0) return;
 
     // Insert into WYSIWYG editor or append markdown links to note content
     if (editorRef.current) {
@@ -834,13 +879,34 @@ export const NoteModal: React.FC<NoteModalProps> = ({
 
   return (
     <div
-      onClick={(e) => {
+      onClick={!fullPage ? (e) => {
         if (e.target === e.currentTarget) {
           handleSaveAndClose();
         }
-      }}
-      className="fixed inset-0 z-50 flex flex-col bg-black/60 backdrop-blur-xs p-0 sm:p-4 md:p-8 sm:items-center sm:justify-center overflow-y-auto animate-in fade-in duration-150"
+      } : undefined}
+      className={
+        fullPage
+          ? "w-full max-w-5xl mx-auto flex flex-col pb-12 animate-in fade-in duration-150"
+          : "fixed inset-0 z-50 flex flex-col bg-black/60 backdrop-blur-xs p-0 sm:p-4 md:p-8 sm:items-center sm:justify-center overflow-y-auto animate-in fade-in duration-150"
+      }
     >
+      {fullPage && (
+        <div className="flex items-center justify-between mb-3 px-1 sm:px-2">
+          <button
+            type="button"
+            onClick={handleSaveAndClose}
+            className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-black/5 dark:hover:bg-white/10 transition-colors cursor-pointer group border border-stone-200/80 dark:border-stone-700/80 bg-white/60 dark:bg-stone-800/60 shadow-2xs backdrop-blur-xs"
+            title="Back to all notes"
+          >
+            <ArrowLeft className="w-4 h-4 transition-transform group-hover:-translate-x-0.5" />
+            <span>Back to notes</span>
+          </button>
+
+          <div className="flex items-center gap-2 text-xs text-stone-500 dark:text-stone-400">
+            <span>{note.updatedAt ? `Last edited ${new Date(note.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}</span>
+          </div>
+        </div>
+      )}
       <div
         ref={modalContentRef}
         onClick={(e) => e.stopPropagation()}
@@ -895,7 +961,11 @@ export const NoteModal: React.FC<NoteModalProps> = ({
             }
           }
         }}
-        className={`w-full h-full sm:h-auto sm:max-w-3xl sm:min-h-[460px] sm:max-h-[92vh] rounded-none sm:rounded-2xl border-0 sm:border sm:border-stone-200/80 dark:sm:border-stone-700/80 shadow-none sm:keep-elevation-2 flex flex-col transition-all duration-150 relative overflow-hidden ${colorClasses}`}
+        className={
+          fullPage
+            ? `w-full min-h-[calc(100vh-160px)] rounded-2xl border border-stone-200/80 dark:border-stone-700/80 shadow-xs flex flex-col transition-all duration-150 relative overflow-hidden ${colorClasses}`
+            : `w-full h-full sm:h-auto sm:max-w-3xl sm:min-h-[460px] sm:max-h-[92vh] rounded-none sm:rounded-2xl border-0 sm:border sm:border-stone-200/80 dark:sm:border-stone-700/80 shadow-none sm:keep-elevation-2 flex flex-col transition-all duration-150 relative overflow-hidden ${colorClasses}`
+        }
       >
         {/* Themed Background Illustration */}
         <NoteThemeArtwork theme={theme} isModal={true} />
@@ -1630,7 +1700,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
                       content={content}
                       onChange={setContent}
                       placeholder="Take a note, add thoughts, markdown, or text…"
-                      minHeightClass={isNotionPage ? 'min-h-[140px]' : 'min-h-[240px]'}
+                      minHeightClass={fullPage ? 'min-h-[340px]' : (isNotionPage ? 'min-h-[140px]' : 'min-h-[240px]')}
                       autoFocus={!isNotionPage && !isList}
                       listenWindowPaste={true}
                     />
@@ -1761,6 +1831,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
               onThemeChange={setTheme}
               onSelectCategory={handleCategoryChange}
               onAddImage={handleAddImage}
+              onImportMhtml={handleImportMhtml}
               onArchiveToggle={() => {
                 toggleArchiveNote(note.id);
                 onClose();
@@ -1843,9 +1914,9 @@ export const NoteModal: React.FC<NoteModalProps> = ({
             <button
               type="button"
               onClick={handleSaveAndClose}
-              className="px-5 py-1.5 text-sm font-medium rounded-lg text-stone-800 dark:text-stone-200 hover:bg-black/5 dark:hover:bg-white/10 active:bg-black/10 dark:active:bg-white/15 transition-colors shrink-0"
+              className="px-5 py-1.5 text-sm font-medium rounded-lg text-stone-800 dark:text-stone-200 hover:bg-black/5 dark:hover:bg-white/10 active:bg-black/10 dark:active:bg-white/15 transition-colors shrink-0 cursor-pointer"
             >
-              Close
+              {fullPage ? 'Close & Save' : 'Close'}
             </button>
           </div>
         </div>

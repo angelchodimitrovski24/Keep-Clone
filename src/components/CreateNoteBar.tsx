@@ -13,6 +13,7 @@ import {
   CalendarRange,
   FileText,
   Sparkles,
+  Globe,
 } from 'lucide-react';
 import { useKeep } from '@/context/KeepContext';
 import { NoteActions } from './NoteActions';
@@ -31,6 +32,7 @@ import { setUnlockedNote, setSessionPassword } from '@/lib/encryptionSession';
 import { NoteThemeArtwork } from './NoteThemeArtwork';
 import { ChecklistItemInput } from './ChecklistItemInput';
 import { printNote } from '@/lib/printNote';
+import { importMhtmlIntoNote } from '@/lib/mhtmlParser';
 import { NotionSubpagesSection } from './NotionSubpagesSection';
 
 interface CreateNoteBarProps {
@@ -50,6 +52,7 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
     setIsDateCompileModalOpen,
     isNotionTemplateModalOpen,
     setIsNotionTemplateModalOpen,
+    importDataSmart,
   } = useKeep();
   const [isExpanded, setIsExpanded] = useState(false);
   const [title, setTitle] = useState('');
@@ -295,7 +298,19 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
   };
 
   // Copy selected files & images to note (images gallery + content)
-  const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleImportMhtml = async (file: File) => {
+    setIsExpanded(true);
+    await importMhtmlIntoNote({
+      file,
+      currentTitle: title,
+      onUpdateTitle: (newTitle) => setTitle(newTitle),
+      onAddImages: (newImgs) => setImages((prev) => [...prev, ...newImgs]),
+      onInsertEditorContent: (html) => editorRef.current?.insertContent(html),
+      onAppendContent: (md) => setContent((prev) => (prev ? `${prev}\n\n${md}` : md)),
+    });
+  };
+
+const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const fileList = e.target.files;
     if (!fileList || fileList.length === 0) return;
     const filesArray = Array.from(fileList);
@@ -407,9 +422,26 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
                 }}
               />
             </label>
-            <button
-              type="button"
-              onClick={(e) => {
+            {/* Import Webpage MHTML */}
+            <label
+              className="p-2 rounded-full hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-600 dark:text-stone-300 hover:text-blue-600 dark:hover:text-blue-400 cursor-pointer transition-colors"
+              title="Import webpage snapshot (.mhtml or .mht)"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <Globe className="w-5 h-5" />
+              <input
+                type="file"
+                accept=".mhtml,.mht,multipart/related,message/rfc822"
+                className="hidden"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  await importDataSmart(file);
+                  e.target.value = '';
+                }}
+              />
+            </label>
+            <button type="button" onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 setIsDateCompileModalOpen(true);
@@ -775,6 +807,7 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
             onThemeChange={setTheme}
             onSelectCategory={setCategory}
             onAddImage={handleAddImage}
+            onImportMhtml={handleImportMhtml}
             onToggleChecklist={() => setIsList(!isList)}
             onToggleSubpages={() => setIsNotionMode(!isNotionMode)}
             hasSubpages={isNotionMode || childNoteIds.length > 0}

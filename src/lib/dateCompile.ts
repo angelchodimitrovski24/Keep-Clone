@@ -190,7 +190,8 @@ export function compileNotesToPayload(
 
     const metaItems: string[] = [`${fieldName}: ${dateFormatted}`];
     if (options.includeMeta) {
-      if (n.category) metaItems.push(`Category: **${n.category}**`);
+      const catName = typeof n.category === 'string' ? n.category : (n.category as any)?.name;
+      if (catName) metaItems.push(`Category: **${catName}**`);
       if (n.labels && n.labels.length > 0) {
         metaItems.push(`Labels: ${n.labels.map((l) => `#${l}`).join(' ')}`);
       }

@@ -77,13 +77,15 @@ export const CreateNoteByDateModal: React.FC = () => {
   const visibleMatchingNotes = useMemo(() => {
     if (!filterSearch.trim()) return matchingNotes;
     const q = filterSearch.toLowerCase().trim();
-    return matchingNotes.filter(
-      (n) =>
-        (n.title && n.title.toLowerCase().includes(q)) ||
-        (n.content && n.content.toLowerCase().includes(q)) ||
-        (n.category && n.category.toLowerCase().includes(q)) ||
-        (n.labels && n.labels.some((l) => l.toLowerCase().includes(q)))
-    );
+    return matchingNotes.filter((n) => {
+      const catName = typeof n.category === 'string' ? n.category : (n.category as any)?.name;
+      return (
+        (n.title && typeof n.title === 'string' && n.title.toLowerCase().includes(q)) ||
+        (n.content && typeof n.content === 'string' && n.content.toLowerCase().includes(q)) ||
+        (catName && typeof catName === 'string' && catName.toLowerCase().includes(q)) ||
+        (Array.isArray(n.labels) && n.labels.some((l) => typeof l === 'string' && l.toLowerCase().includes(q)))
+      );
+    });
   }, [matchingNotes, filterSearch]);
 
   if (!isDateCompileModalOpen) return null;
@@ -412,11 +414,14 @@ export const CreateNoteByDateModal: React.FC = () => {
                           >
                             {n.title || 'Untitled Note'}
                           </span>
-                          {n.category && (
-                            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-blue-500/10 text-blue-700 dark:text-blue-300 font-medium shrink-0">
-                              {n.category}
-                            </span>
-                          )}
+                          {(() => {
+                            const catName = typeof n.category === 'string' ? n.category : (n.category as any)?.name;
+                            return catName ? (
+                              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-blue-500/10 text-blue-700 dark:text-blue-300 font-medium shrink-0">
+                                {catName}
+                              </span>
+                            ) : null;
+                          })()}
                         </div>
                         <p className="text-[11px] text-stone-500 dark:text-stone-400 truncate mt-0.5">
                           {new Date(ts).toLocaleDateString([], {
