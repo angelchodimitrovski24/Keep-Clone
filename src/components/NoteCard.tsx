@@ -96,6 +96,35 @@ export const NoteCard: React.FC<NoteCardProps> = ({
     [activeNote, notes]
   );
 
+  // Resolve child sub-notes for Notion-style notes
+  const childNotes = useMemo(() => {
+    const list: Note[] = [];
+    const seen = new Set<string>();
+
+    if (note.childNoteIds && Array.isArray(note.childNoteIds)) {
+      for (const id of note.childNoteIds) {
+        const found = notes.find((n) => n.id === id && !n.isTrash);
+        if (found && !seen.has(found.id)) {
+          seen.add(found.id);
+          list.push(found);
+        }
+      }
+    }
+
+    // Also include any notes that have parentNoteId === note.id
+    if (note.id) {
+      const extra = notes.filter(
+        (n) => n.parentNoteId === note.id && !n.isTrash && !seen.has(n.id)
+      );
+      for (const extraNote of extra) {
+        seen.add(extraNote.id);
+        list.push(extraNote);
+      }
+    }
+
+    return list;
+  }, [note.childNoteIds, note.id, notes]);
+
   const isSelected = selectedNoteIds.includes(note.id);
   const colorClasses = getNoteColorClasses(note.color, note.theme);
   const [isAnyMenuOpen, setIsAnyMenuOpen] = useState(false);
@@ -428,6 +457,60 @@ export const NoteCard: React.FC<NoteCardProps> = ({
                 </div>
               )}
 
+              {/* Notion-style Sub-pages / Listed Notes under the note body */}
+              {childNotes.length > 0 && (
+                <div
+                  className="mt-2.5 pt-2 border-t border-black/[0.06] dark:border-white/[0.08] space-y-1"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="flex items-center justify-between text-[11px] font-semibold text-stone-500 dark:text-stone-400 mb-1 px-0.5">
+                    <span className="flex items-center gap-1.5">
+                      <FileText className="w-3.5 h-3.5 text-amber-500" />
+                      <span>Sub-pages ({childNotes.length})</span>
+                    </span>
+                  </div>
+
+                  <div className="space-y-1">
+                    {childNotes.slice(0, 6).map((child) => (
+                      <div
+                        key={child.id}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingNote(child);
+                        }}
+                        className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-black/[0.03] dark:bg-white/[0.04] hover:bg-black/[0.07] dark:hover:bg-white/[0.08] border border-black/[0.05] dark:border-white/[0.05] transition-colors cursor-pointer group/child"
+                        title={`Open sub-page: ${child.title || 'Untitled'}`}
+                      >
+                        <FileText className="w-3.5 h-3.5 text-amber-600/70 dark:text-amber-400/70 group-hover/child:text-amber-600 dark:group-hover/child:text-amber-400 transition-colors shrink-0" />
+                        <span className="text-xs font-medium text-stone-800 dark:text-stone-200 truncate flex-1">
+                          {child.title || 'Untitled sub-page'}
+                        </span>
+                        {child.category && (
+                          <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-stone-200/80 dark:bg-stone-800 text-stone-600 dark:text-stone-400 shrink-0">
+                            {child.category}
+                          </span>
+                        )}
+                        <span className="text-[11px] text-stone-400 dark:text-stone-500 opacity-60 group-hover/child:opacity-100 transition-opacity shrink-0">
+                          ↗
+                        </span>
+                      </div>
+                    ))}
+
+                    {childNotes.length > 6 && (
+                      <div
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onClick?.();
+                        }}
+                        className="text-[11px] text-amber-600 dark:text-amber-400 font-medium px-2 py-0.5 hover:underline cursor-pointer"
+                      >
+                        +{childNotes.length - 6} more sub-pages...
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Bi-directional connected notes badge */}
               {(outgoing.length > 0 || backlinks.length > 0) && (
                 <div className="flex flex-wrap items-center gap-1.5 mt-2.5 pt-2 border-t border-black/5 dark:border-white/5">
@@ -475,15 +558,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
                   </span>
                 )}
 
-                {note.childNoteIds && note.childNoteIds.length > 0 && (
-                  <span
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-blue-500/10 text-blue-800 dark:text-blue-300 border border-blue-500/20"
-                    title={`${note.childNoteIds.length} sub-page${note.childNoteIds.length === 1 ? '' : 's'}`}
-                  >
-                    <FileText className="w-3 h-3 text-blue-600 dark:text-blue-400" />
-                    <span>{note.childNoteIds.length} sub-page{note.childNoteIds.length === 1 ? '' : 's'}</span>
-                  </span>
-                )}
+
 
                 {((note.totalReadingTime && note.totalReadingTime > 0) || activeStopwatch?.noteId === note.id) && (
                   <button

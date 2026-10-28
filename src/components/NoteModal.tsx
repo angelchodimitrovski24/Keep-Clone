@@ -708,13 +708,6 @@ export const NoteModal: React.FC<NoteModalProps> = ({
 
   const handleSaveAndClose = async () => {
     await saveCurrentNote('Auto snapshot on close');
-    if (note.parentNoteId) {
-      const parent = notes.find((n) => n.id === note.parentNoteId && !n.isTrash);
-      if (parent) {
-        setEditingNote(parent);
-        return;
-      }
-    }
     onClose();
   };
 
