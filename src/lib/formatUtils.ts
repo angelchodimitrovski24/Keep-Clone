@@ -311,14 +311,99 @@ export function renderMarkdownImagesInString(str: string): string {
 export function convertMarkdownToHtml(content: string): string {
   if (!content) return '';
 
-  // 1. Unpack any existing <p>, <div>, or <br> tags into discrete lines so embedded markdown inside paragraphs gets parsed
-  const normalized = content
-    .replace(/<\/(?:p|div)>\s*<(?:p|div)[^>]*>/gi, '\n')
-    .replace(/^<(?:p|div)[^>]*>/i, '')
-    .replace(/<\/(?:p|div)>$/i, '')
-    .replace(/<br\s*\/?>/gi, '\n');
+  const protectedBlocks: string[] = [];
+  const addProtected = (html: string) => {
+    const idx = protectedBlocks.length;
+    protectedBlocks.push(html);
+    return `___KEEP_PRE_BLOCK_${idx}___`;
+  };
 
-  const lines = normalized.split(/\r?\n/);
+  let text = content;
+
+  // 1. Browser DOMParser pre-pass: flawlessly extracts Notion code blocks, pre tags, and syntax blocks without regex nesting bugs
+  if (typeof DOMParser !== 'undefined' && /<[a-z][\s\S]*>/i.test(text)) {
+    try {
+      const doc = new DOMParser().parseFromString(text, 'text/html');
+      const codeBlockSelectors = [
+        'pre',
+        '[class*="notion-code"]',
+        '[class*="code-block"]',
+        '[class*="codeblock"]',
+        '[class*="highlight"]',
+        '[class*="syntaxhighlighter"]',
+        '[class*="code-container"]',
+        '[class*="sourceCode"]',
+        '[class*="prettyprint"]',
+        '[data-language]',
+        '[data-code-language]',
+      ];
+
+      const elements = Array.from(doc.querySelectorAll(codeBlockSelectors.join(', ')));
+      elements.forEach((el) => {
+        if (el.parentElement?.closest(codeBlockSelectors.join(', '))) {
+          return;
+        }
+
+        const preAttrs = el.getAttribute('class') || '';
+        const codeEl = el.querySelector('code');
+        const codeAttrs =
+          (codeEl ? codeEl.getAttribute('class') : '') ||
+          el.getAttribute('data-language') ||
+          el.getAttribute('data-lang') ||
+          '';
+        const lang = detectCodeLanguage(preAttrs, codeAttrs);
+
+        el.querySelectorAll('br').forEach((br) => br.replaceWith('\n'));
+        el.querySelectorAll('p, div, li, tr').forEach((block) => {
+          block.append('\n');
+        });
+
+        const rawCode = el.textContent || '';
+        const cleanCode = cleanCodeContent(rawCode);
+        const escaped = cleanCode
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;');
+        const preHtml = `<pre><code${lang ? ` class="language-${lang}"` : ''}>${escaped}</code></pre>`;
+        const placeholder = addProtected(preHtml);
+        el.replaceWith(doc.createTextNode(`\n\n${placeholder}\n\n`));
+      });
+
+      text = doc.body ? doc.body.innerHTML : doc.documentElement.innerHTML;
+    } catch {
+      // Fallback to regex below
+    }
+  }
+
+  // 2. Protect existing HTML <pre>...</pre> blocks (regex fallback)
+  text = text.replace(/<pre\b[^>]*>([\s\S]*?)<\/pre>/gi, (match, inner) => {
+    if (inner.includes('___KEEP_PRE_BLOCK_')) return match;
+    return `\n\n${addProtected(match)}\n\n`;
+  });
+
+  // 3. Protect existing code containers (e.g. notion-code, code-block)
+  text = text.replace(/<(?:div|figure|section)\b([^>]*(?:notion-code|code-block|codeblock|highlight|syntaxhighlighter)[^>]*)>([\s\S]*?)<\/(?:div|figure|section)>/gi, (_match, _attrs, inner) => {
+    if (inner.includes('___KEEP_PRE_BLOCK_')) return inner;
+    const codeTagMatch = inner.match(/<code\b[^>]*>([\s\S]*?)<\/code>/i);
+    const codeInner = codeTagMatch ? codeTagMatch[1] : inner;
+    const clean = codeInner
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/(?:p|div)>\s*<(?:p|div)[^>]*>/gi, '\n')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&amp;/g, '&');
+    return `\n\n${addProtected(`<pre><code>${clean.trim()}</code></pre>`)}\n\n`;
+  });
+
+  // 4. Unpack <p> and <div> blocks to normal discrete lines
+  text = text
+    .replace(/<\/(?:p|div)>\s*<(?:p|div)[^>]*>/gi, '\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(?:p|div)>/gi, '\n')
+    .replace(/<(?:p|div)[^>]*>/gi, '');
+
+  const lines = text.split(/\r?\n/);
   let result = '';
   let inTaskList = false;
   let inBulletList = false;
@@ -364,6 +449,23 @@ export function convertMarkdownToHtml(content: string): string {
   while (i < lines.length) {
     const rawLine = lines[i];
     const trimmed = rawLine.trim();
+
+    // 0. Protected code blocks
+    if (trimmed.includes('___KEEP_PRE_BLOCK_')) {
+      closeOpenLists();
+      if (inCodeBlock) {
+        const codeText = codeBlockLines
+          .join('\n')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;');
+        result += `<pre><code${codeBlockLang ? ` class="language-${codeBlockLang}"` : ''}>${codeText}</code></pre>`;
+        inCodeBlock = false;
+      }
+      result += trimmed;
+      i++;
+      continue;
+    }
 
     // 1. Single-line code block: ```lang code ``` or ```code```
     const singleLineBlockMatch = trimmed.match(/^(`{3,}|~{3,})([a-zA-Z0-9_-]*)\s*([\s\S]+?)\s*\1$/);
@@ -508,20 +610,7 @@ export function convertMarkdownToHtml(content: string): string {
       continue;
     }
 
-    // 10. Existing multi-line <pre>...</pre> HTML block
-    if (trimmed.startsWith('<pre')) {
-      closeOpenLists();
-      let preBlock = rawLine;
-      while (!preBlock.includes('</pre>') && i + 1 < lines.length) {
-        i++;
-        preBlock += '\n' + lines[i];
-      }
-      result += preBlock;
-      i++;
-      continue;
-    }
-
-    // 11. Existing HTML blocks
+    // 10. Existing HTML blocks
     if (
       trimmed.startsWith('<div') ||
       trimmed.startsWith('<table') ||
@@ -540,7 +629,7 @@ export function convertMarkdownToHtml(content: string): string {
       continue;
     }
 
-    // 12. Normal paragraph
+    // 11. Normal paragraph
     closeOpenLists();
     result += `<p>${formatInline(trimmed)}</p>`;
     i++;
@@ -557,6 +646,12 @@ export function convertMarkdownToHtml(content: string): string {
   }
 
   closeOpenLists();
+
+  // Restore protected blocks (pre code blocks and notion code blocks)
+  for (let idx = 0; idx < protectedBlocks.length; idx++) {
+    result = result.replace(new RegExp(`___KEEP_PRE_BLOCK_${idx}___`, 'g'), () => protectedBlocks[idx]);
+  }
+
   return renderMarkdownTablesInHtml(renderMarkdownImagesInString(result));
 }
 
@@ -933,10 +1028,14 @@ export function convertHtmlToMarkdown(html: string): string {
   md = md.replace(/<(?:s|strike|del)[^>]*>([\s\S]*?)<\/(?:s|strike|del)>/gi, '~~$1~~');
   md = md.replace(/<code\b[^>]*>([\s\S]*?)<\/code>/gi, (_m, codeInner) => {
     const clean = codeInner
+      .replace(/<br\s*\/?>/gi, '\n')
       .replace(/<[^>]+>/g, '')
       .replace(/&lt;/g, '<')
       .replace(/&gt;/g, '>')
       .replace(/&amp;/g, '&');
+    if (clean.includes('\n')) {
+      return addCodeBlock('', clean);
+    }
     return `\`${clean.trim()}\``;
   });
 

@@ -9,6 +9,7 @@ import React, {
   useRef,
 } from 'react';
 import { useEditor, EditorContent, Editor } from '@tiptap/react';
+import { textblockTypeInputRule } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import CodeBlock from '@tiptap/extension-code-block';
 import TaskList from '@tiptap/extension-task-list';
@@ -275,6 +276,15 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
           codeBlock: false,
         }),
         CodeBlock.extend({
+          addInputRules() {
+            return [
+              textblockTypeInputRule({
+                find: /^(`{3,}|~{3,})([a-zA-Z0-9_#+-]*)\s$/,
+                type: this.type,
+                getAttributes: (match) => ({ language: match[2] || '' }),
+              }),
+            ];
+          },
           parseHTML() {
             return [
               { tag: 'pre', preserveWhitespace: 'full' },
@@ -328,6 +338,32 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
             view.dispatch(view.state.tr.insertText('  '));
             return true;
           }
+
+          // Convert ``` or ```lang + Enter into a code block immediately
+          if (event.key === 'Enter') {
+            const { selection } = view.state;
+            const { $from } = selection;
+            if ($from.parent.type.name === 'paragraph') {
+              const text = $from.parent.textContent;
+              const match = text.match(/^(`{3,}|~{3,})([a-zA-Z0-9_#+-]*)$/);
+              if (match) {
+                event.preventDefault();
+                const lang = match[2] || '';
+                const codeBlockType = view.state.schema.nodes.codeBlock;
+                if (codeBlockType) {
+                  const from = $from.start();
+                  const to = $from.end();
+                  view.dispatch(
+                    view.state.tr
+                      .setBlockType(from, to, codeBlockType, { language: lang })
+                      .delete(from, to)
+                  );
+                  return true;
+                }
+              }
+            }
+          }
+
           return false;
         },
         handlePaste: (view, event) => {
