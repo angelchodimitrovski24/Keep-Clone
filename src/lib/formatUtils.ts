@@ -311,11 +311,11 @@ export function renderMarkdownImagesInString(str: string): string {
 export function convertMarkdownToHtml(content: string): string {
   if (!content) return '';
 
-  // 1. Unpack any existing <p> or <br> tags into discrete lines so embedded markdown inside paragraphs gets parsed
+  // 1. Unpack any existing <p>, <div>, or <br> tags into discrete lines so embedded markdown inside paragraphs gets parsed
   const normalized = content
-    .replace(/<\/p>\s*<p[^>]*>/gi, '\n')
-    .replace(/^<p[^>]*>/i, '')
-    .replace(/<\/p>$/i, '')
+    .replace(/<\/(?:p|div)>\s*<(?:p|div)[^>]*>/gi, '\n')
+    .replace(/^<(?:p|div)[^>]*>/i, '')
+    .replace(/<\/(?:p|div)>$/i, '')
     .replace(/<br\s*\/?>/gi, '\n');
 
   const lines = normalized.split(/\r?\n/);
@@ -349,7 +349,7 @@ export function convertMarkdownToHtml(content: string): string {
       .replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, '<em>$1</em>')
       .replace(/(^|[\s.,;:!?(])_([^_]+)_(?=[.,;:!?)\s]|$)/g, '$1<u>$2</u>')
       .replace(/~~([^~]+)~~/g, '<s>$1</s>')
-      .replace(/`([^`]+)`/g, '<code>$1</code>')
+      .replace(/(?<!`)`([^`\r\n]+)`(?!`)/g, '<code>$1</code>')
       .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_m, alt, rawPath) => {
         const serveUrl = resolveLocalMediaUrl(rawPath.trim());
         return `<img src="${serveUrl}" alt="${alt || 'image'}" class="rounded-xl max-h-96 w-auto my-2 border border-black/10 dark:border-white/10 shadow-xs" loading="lazy" />`;
@@ -365,12 +365,27 @@ export function convertMarkdownToHtml(content: string): string {
     const rawLine = lines[i];
     const trimmed = rawLine.trim();
 
-    // 1. Fenced Code Block delimiters: ``` or ```lang
-    if (trimmed.startsWith('```')) {
+    // 1. Single-line code block: ```lang code ``` or ```code```
+    const singleLineBlockMatch = trimmed.match(/^(`{3,}|~{3,})([a-zA-Z0-9_-]*)\s*([\s\S]+?)\s*\1$/);
+    if (singleLineBlockMatch && !inCodeBlock) {
+      closeOpenLists();
+      const lang = singleLineBlockMatch[2].trim();
+      const codeText = singleLineBlockMatch[3]
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+      result += `<pre><code${lang ? ` class="language-${lang}"` : ''}>${codeText}</code></pre>`;
+      i++;
+      continue;
+    }
+
+    // 2. Fenced Code Block delimiters: ``` or ```lang or ~~~ or ~~~lang
+    const fenceMatch = trimmed.match(/^(`{3,}|~{3,})(.*)$/);
+    if (fenceMatch) {
       closeOpenLists();
       if (!inCodeBlock) {
         inCodeBlock = true;
-        codeBlockLang = trimmed.substring(3).trim();
+        codeBlockLang = fenceMatch[2].trim();
         codeBlockLines = [];
       } else {
         inCodeBlock = false;
@@ -704,7 +719,82 @@ export function convertHtmlToMarkdown(html: string): string {
     return `\n\n___KEEP_CODE_BLOCK_${blockIndex}___\n\n`;
   };
 
-  // 1. Code blocks: extract and protect all <pre>...</pre> blocks
+  // 1. Browser DOMParser pre-pass: flawlessly extracts Notion code blocks, pre tags, and syntax blocks without regex nesting bugs
+  if (typeof DOMParser !== 'undefined') {
+    try {
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const codeBlockSelectors = [
+        'pre',
+        '[class*="notion-code"]',
+        '[class*="code-block"]',
+        '[class*="codeblock"]',
+        '[class*="highlight"]',
+        '[class*="syntaxhighlighter"]',
+        '[class*="code-container"]',
+        '[class*="sourceCode"]',
+        '[class*="prettyprint"]',
+        '[data-language]',
+        '[data-code-language]',
+        '[role="region"][aria-label*="code" i]',
+      ];
+
+      const elements = Array.from(doc.querySelectorAll(codeBlockSelectors.join(', ')));
+      elements.forEach((el) => {
+        // Skip if nested inside an ancestor that was already selected
+        if (el.parentElement?.closest(codeBlockSelectors.join(', '))) {
+          return;
+        }
+
+        const preAttrs = el.getAttribute('class') || '';
+        const codeEl = el.querySelector('code');
+        const codeAttrs =
+          (codeEl ? codeEl.getAttribute('class') : '') ||
+          el.getAttribute('data-language') ||
+          el.getAttribute('data-lang') ||
+          '';
+        const lang = detectCodeLanguage(preAttrs, codeAttrs);
+
+        // Convert <br> and block line breaks to newlines
+        el.querySelectorAll('br').forEach((br) => br.replaceWith('\n'));
+        el.querySelectorAll('p, div, li, tr').forEach((block) => {
+          block.append('\n');
+        });
+
+        const rawCode = el.textContent || '';
+        const cleanCode = cleanCodeContent(rawCode);
+
+        if (cleanCode.length > 0) {
+          const placeholder = addCodeBlock(lang, cleanCode);
+          el.replaceWith(doc.createTextNode(`\n\n${placeholder}\n\n`));
+        }
+      });
+
+      // Also extract any multi-line <code> tags or <code> tags with language classes
+      doc.querySelectorAll('code').forEach((codeEl) => {
+        if (codeEl.closest(codeBlockSelectors.join(', '))) return;
+
+        const codeAttrs = codeEl.getAttribute('class') || '';
+        const lang = detectCodeLanguage('', codeAttrs);
+        const rawText = codeEl.textContent || '';
+        const isMultiLine = rawText.includes('\n') || cleanCodeContent(codeEl.innerHTML).includes('\n');
+
+        if (lang || isMultiLine) {
+          codeEl.querySelectorAll('br').forEach((br) => br.replaceWith('\n'));
+          const cleanCode = cleanCodeContent(codeEl.textContent || '');
+          if (cleanCode.length > 0) {
+            const placeholder = addCodeBlock(lang, cleanCode);
+            codeEl.replaceWith(doc.createTextNode(`\n\n${placeholder}\n\n`));
+          }
+        }
+      });
+
+      md = doc.body ? doc.body.innerHTML : doc.documentElement.innerHTML;
+    } catch {
+      // Fallback to regex below if DOMParser is unavailable or fails
+    }
+  }
+
+  // 2. Regex fallback for server-side or non-DOMParser environments
   md = md.replace(/<pre\b([^>]*)>([\s\S]*?)<\/pre>/gi, (_match, preAttrs, inner) => {
     const codeTagMatch = inner.match(/<code\b([^>]*)>/i);
     const codeAttrs = codeTagMatch ? codeTagMatch[1] : '';
@@ -715,8 +805,8 @@ export function convertHtmlToMarkdown(html: string): string {
     return addCodeBlock(lang, cleanCode);
   });
 
-  // 2. Code containers with class (e.g. <div class="highlight"> or <div class="code-block"> or <figure class="highlight">)
-  md = md.replace(/<(?:div|figure|section)\b([^>]*(?:highlight|code-block|codeblock|syntaxhighlighter|code-container|sourceCode|prettyprint)[^>]*)>([\s\S]*?)<\/(?:div|figure|section)>/gi, (_match, divAttrs, inner) => {
+  // 3. Code containers with class (including notion-code)
+  md = md.replace(/<(?:div|figure|section)\b([^>]*(?:notion-code|code-block|codeblock|highlight|syntaxhighlighter|code-container|sourceCode|prettyprint)[^>]*)>([\s\S]*?)<\/(?:div|figure|section)>/gi, (_match, divAttrs, inner) => {
     if (/___KEEP_CODE_BLOCK_\d+___/.test(inner)) return inner;
     const lang = detectCodeLanguage(divAttrs);
     const cleanCode = cleanCodeContent(inner);
@@ -726,7 +816,7 @@ export function convertHtmlToMarkdown(html: string): string {
     return inner;
   });
 
-  // 3. Multi-line <code> tags or <code> tags with language class / <br>
+  // 4. Multi-line <code> tags or <code> tags with language class / <br>
   md = md.replace(/<code\b([^>]*)>([\s\S]*?)<\/code>/gi, (match, codeAttrs, inner) => {
     const lang = detectCodeLanguage('', codeAttrs);
     const hasNewlines = inner.includes('\n') || /<br\s*\/?>/i.test(inner) || /<\/(?:p|div|li)>/i.test(inner);

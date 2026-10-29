@@ -132,16 +132,16 @@ export function cleanWebpageHtml(rawHtml: string): string {
     try {
       const doc = new DOMParser().parseFromString(rawHtml, 'text/html');
 
-      // 1. Remove script, style, iframe, audio, video, meta, object, embed tags (preserve anything in <pre>)
+      // 1. Remove script, style, iframe, audio, video, meta, object, embed tags (preserve anything in code containers)
       doc.querySelectorAll('script, style, noscript, iframe, link, meta, object, embed').forEach((el) => {
-        if (!el.closest('pre')) {
+        if (!el.closest('pre, code, [class*="code"], [class*="highlight"]')) {
           el.remove();
         }
       });
 
       // 2. Remove standard page chrome: navigation, header, footer, asides
       doc.querySelectorAll('nav, header, footer, aside').forEach((el) => {
-        if (!el.closest('pre')) {
+        if (!el.closest('pre, code, [class*="code"], [class*="highlight"]')) {
           el.remove();
         }
       });
@@ -169,7 +169,14 @@ export function cleanWebpageHtml(rawHtml: string): string {
         try {
           doc.querySelectorAll(selector).forEach((el) => {
             const tag = el.tagName.toLowerCase();
-            if (tag === 'article' || tag === 'main' || tag === 'body' || tag === 'pre' || el.closest('pre')) return;
+            if (
+              tag === 'article' ||
+              tag === 'main' ||
+              tag === 'body' ||
+              tag === 'pre' ||
+              tag === 'code' ||
+              el.closest('pre, code, [class*="code"], [class*="highlight"]')
+            ) return;
             el.remove();
           });
         } catch {
@@ -805,12 +812,11 @@ export async function importMhtmlIntoNote({
   // We do NOT add them to the top gallery (note.images) per user request.
 
   // 3. Insert or append content
-  if (onAppendContent) {
-    onAppendContent(parsed.markdownContent);
-  }
   if (onInsertEditorContent) {
     const html = convertMarkdownToHtml(parsed.markdownContent);
     onInsertEditorContent(html);
+  } else if (onAppendContent) {
+    onAppendContent(parsed.markdownContent);
   }
 
   return parsed;

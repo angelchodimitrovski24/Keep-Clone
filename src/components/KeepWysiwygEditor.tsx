@@ -10,6 +10,7 @@ import React, {
 } from 'react';
 import { useEditor, EditorContent, Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
+import CodeBlock from '@tiptap/extension-code-block';
 import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -270,6 +271,20 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
         StarterKit.configure({
           heading: {
             levels: [1, 2, 3, 4],
+          },
+          codeBlock: false,
+        }),
+        CodeBlock.extend({
+          parseHTML() {
+            return [
+              { tag: 'pre', preserveWhitespace: 'full' },
+              { tag: 'div.notion-code-block', preserveWhitespace: 'full' },
+              { tag: 'div.notion-code', preserveWhitespace: 'full' },
+              { tag: 'div[class*="notion-code"]', preserveWhitespace: 'full' },
+              { tag: 'div[class*="code-block"]', preserveWhitespace: 'full' },
+              { tag: 'div[class*="codeblock"]', preserveWhitespace: 'full' },
+              { tag: 'div[class*="highlight"]', preserveWhitespace: 'full' },
+            ];
           },
         }),
         Table.configure({
