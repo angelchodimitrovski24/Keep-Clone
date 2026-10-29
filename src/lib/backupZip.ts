@@ -555,52 +555,9 @@ export async function importBackupSmart(file: File): Promise<ImportResult> {
       const noteId = `note-mhtml-${now}-${Math.random().toString(36).slice(2, 7)}`;
       importedNoteId = noteId;
 
-      // Extract and save all images to IndexedDB and memory cache
-      const filesToUpload: File[] = [];
-      const imageUrls: string[] = [];
-
-      for (const img of parsed.images) {
-        try {
-          await saveMediaToDB({
-            id: img.fileName,
-            fileName: img.fileName,
-            blob: img.blob,
-            mimeType: img.mimeType,
-            size: img.blob.size,
-            updatedAt: now,
-          });
-
-          const blobUrl = URL.createObjectURL(img.blob);
-          registerMediaBlobUrl(img.fileName, blobUrl);
-          if (img.contentId) {
-            registerMediaBlobUrl(`cid:${img.contentId}`, blobUrl);
-          }
-          if (img.contentLocation) {
-            registerMediaBlobUrl(img.contentLocation, blobUrl);
-          }
-          registerMediaBlobUrl(img.dataUrl, blobUrl);
-
-          filesToUpload.push(new File([img.blob], img.fileName, { type: img.mimeType }));
-          imageUrls.push(img.dataUrl);
-          mediaExtractedCount++;
-        } catch (mediaErr) {
-          console.warn('Failed to save extracted MHTML image:', img.fileName, mediaErr);
-        }
-      }
-
-      // Optional upload to local-media server if available
-      if (filesToUpload.length > 0 && typeof window !== 'undefined') {
-        try {
-          const formData = new FormData();
-          formData.append('preserveName', 'true');
-          const syncFolder = getSyncLocalMediaFolder();
-          if (syncFolder) formData.append('folderPath', syncFolder);
-          for (const f of filesToUpload) formData.append('files', f, f.name);
-          fetch('/api/local-media', { method: 'POST', body: formData }).catch(() => {});
-        } catch {
-          // Ignore
-        }
-      }
+      // Note: Images are automatically saved to user's settings folder and IndexedDB via parseMhtmlFile
+      // Images are embedded inline as Markdown in parsed.markdownContent, not in the top gallery (images: [])
+      mediaExtractedCount += parsed.images.length;
 
       const noteTitle = (parsed.title || file.name.replace(/\.(mhtml|mht)$/i, '') || 'Webpage Snapshot').trim();
       const newNote: Note = {
@@ -619,7 +576,7 @@ export async function importBackupSmart(file: File): Promise<ImportResult> {
         createdAt: now,
         updatedAt: now,
         order: now,
-        images: imageUrls,
+        images: [],
       };
 
       parsedData = {

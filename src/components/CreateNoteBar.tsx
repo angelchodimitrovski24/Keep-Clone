@@ -297,14 +297,13 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
     resetForm();
   };
 
-  // Copy selected files & images to note (images gallery + content)
-    const handleImportMhtml = async (file: File) => {
+  // Copy selected files & images to note content
+  const handleImportMhtml = async (file: File) => {
     setIsExpanded(true);
     await importMhtmlIntoNote({
       file,
       currentTitle: title,
       onUpdateTitle: (newTitle) => setTitle(newTitle),
-      onAddImages: (newImgs) => setImages((prev) => [...prev, ...newImgs]),
       onInsertEditorContent: (html) => editorRef.current?.insertContent(html),
       onAppendContent: (md) => setContent((prev) => (prev ? `${prev}\n\n${md}` : md)),
     });

@@ -826,12 +826,11 @@ export const NoteModal: React.FC<NoteModalProps> = ({
     editorRef.current?.handleFormat(cmd);
   };
 
-    const handleImportMhtml = async (file: File) => {
+  const handleImportMhtml = async (file: File) => {
     await importMhtmlIntoNote({
       file,
       currentTitle: title,
       onUpdateTitle: (newTitle) => setTitle(newTitle),
-      onAddImages: (newImgs) => setImages((prev) => [...prev, ...newImgs]),
       onInsertEditorContent: (html) => editorRef.current?.insertContent(html),
       onAppendContent: (md) => setContent((prev) => (prev ? `${prev}\n\n${md}` : md)),
     });

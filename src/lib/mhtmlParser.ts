@@ -6,7 +6,7 @@
 
 import { convertHtmlToMarkdown, convertMarkdownToHtml } from './formatUtils';
 import { saveMediaToDB } from './db';
-import { registerMediaBlobUrl } from './localPaste';
+import { registerMediaBlobUrl, copyFilesToLocalFolder, SavedLocalMediaFile } from './localPaste';
 
 export interface MhtmlImage {
   id: string;
@@ -26,6 +26,191 @@ export interface MhtmlParsedResult {
   sourceUrl?: string;
   date?: string;
   images: MhtmlImage[];
+  savedFiles?: SavedLocalMediaFile[];
+}
+
+/**
+ * Detects whether an image is an advertisement, banner, logo, tracker, avatar, or social icon.
+ */
+export function isClutterImage(
+  fileName: string,
+  location?: string,
+  contentId?: string,
+  size?: number
+): boolean {
+  const combined = `${fileName || ''} ${location || ''} ${contentId || ''}`.toLowerCase();
+
+  // 1. Skip tiny tracking pixels (< 350 bytes)
+  if (size !== undefined && size > 0 && size < 350) {
+    return true;
+  }
+
+  // 2. Clutter keywords in filename, path, or content-id
+  const clutterKeywords = [
+    'logo',
+    'favicon',
+    'apple-touch-icon',
+    'site-logo',
+    'header-logo',
+    'footer-logo',
+    'nav-logo',
+    'brand-logo',
+    'navbar-brand',
+    'avatar',
+    'badge',
+    'sponsor',
+    'sponsored',
+    'advert',
+    'ad-',
+    'ads-',
+    'ad_',
+    'ads_',
+    '/ads/',
+    '/ad/',
+    'banner',
+    'tracker',
+    'tracking',
+    'pixel',
+    'beacon',
+    'analytics',
+    'telemetry',
+    'doubleclick',
+    'googletag',
+    'google-analytics',
+    'adnxs',
+    'taboola',
+    'outbrain',
+    'quantserve',
+    'scorecardresearch',
+    'facebook',
+    'twitter',
+    'instagram',
+    'linkedin',
+    'pinterest',
+    'social-share',
+    'share-button',
+    'social-icons',
+    'share-icon',
+    'close-btn',
+    'icon-share',
+  ];
+
+  for (const kw of clutterKeywords) {
+    if (combined.includes(kw)) {
+      return true;
+    }
+  }
+
+  // 3. Ad URL pattern regex (boundary matches)
+  if (/(?:^|[\/\-_.\?&=])(ad|ads|adunit|adsystem|promo|adserver|affiliate|marketing)(?:[\/\-_.\?&=]|$)/i.test(combined)) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Cleans web page HTML by removing scripts, navigation, headers, footers,
+ * sidebars, cookie notices, social sharing widgets, ad blocks, and logo images.
+ */
+export function cleanWebpageHtml(rawHtml: string): string {
+  if (!rawHtml) return '';
+
+  if (typeof DOMParser !== 'undefined') {
+    try {
+      const doc = new DOMParser().parseFromString(rawHtml, 'text/html');
+
+      // 1. Remove script, style, iframe, audio, video, svg, meta tags
+      doc.querySelectorAll('script, style, noscript, iframe, link, meta, svg, object, embed, canvas').forEach((el) => el.remove());
+
+      // 2. Remove standard page chrome: navigation, header, footer, asides
+      doc.querySelectorAll('nav, header, footer, aside').forEach((el) => el.remove());
+
+      // 3. Remove known clutter containers (ads, sponsors, banners, cookies, share widgets, logos)
+      const clutterSelectors = [
+        '[class*="ad-"]', '[class*="ads-"]', '[class*="advert"]', '[class*="sponsor"]', '[class*="banner"]',
+        '[id*="ad-"]', '[id*="ads-"]', '[id*="advert"]', '[id*="sponsor"]', '[id*="banner"]',
+        '[class*="google-ad"]', '[id*="google-ad"]', '[class*="taboola"]', '[class*="outbrain"]',
+        '[class*="cookie"]', '[id*="cookie"]', '[class*="consent"]', '[id*="consent"]', '[class*="gdpr"]',
+        '[class*="social"]', '[class*="share-bar"]', '[class*="share-button"]', '[class*="share-box"]',
+        '[class*="sharing"]', '[id*="social"]', '[id*="share"]',
+        '[class*="newsletter"]', '[class*="subscribe"]', '[id*="newsletter"]', '[id*="subscribe"]',
+        '[class*="logo"]', '[id*="logo"]', '[class*="brand"]', '[id*="brand"]',
+        '[class*="breadcrumb"]', '[class*="pagination"]',
+        '[role="banner"]', '[role="navigation"]', '[role="complementary"]',
+      ];
+
+      for (const selector of clutterSelectors) {
+        try {
+          doc.querySelectorAll(selector).forEach((el) => {
+            const tag = el.tagName.toLowerCase();
+            if (tag === 'article' || tag === 'main' || tag === 'body') return;
+            el.remove();
+          });
+        } catch {
+          // Ignore
+        }
+      }
+
+      // 4. Remove clutter images (logos, tracking pixels, social icons, ad images)
+      doc.querySelectorAll('img').forEach((img) => {
+        const src = img.getAttribute('src') || '';
+        const alt = img.getAttribute('alt') || '';
+        const cls = img.getAttribute('class') || '';
+        const id = img.getAttribute('id') || '';
+        const width = parseInt(img.getAttribute('width') || '100', 10);
+        const height = parseInt(img.getAttribute('height') || '100', 10);
+
+        if (width <= 2 || height <= 2) {
+          img.remove();
+          return;
+        }
+
+        const info = `${src} ${alt} ${cls} ${id}`.toLowerCase();
+        if (
+          info.includes('logo') ||
+          info.includes('favicon') ||
+          info.includes('avatar') ||
+          info.includes('ad-') ||
+          info.includes('ads') ||
+          info.includes('sponsor') ||
+          info.includes('banner') ||
+          info.includes('tracker') ||
+          info.includes('pixel') ||
+          info.includes('social') ||
+          info.includes('share') ||
+          info.includes('facebook') ||
+          info.includes('twitter') ||
+          info.includes('instagram') ||
+          info.includes('linkedin')
+        ) {
+          img.remove();
+        }
+      });
+
+      // Prefer substantial article / main element if present
+      const articleEl = doc.querySelector('article, main, [role="main"]');
+      if (articleEl && articleEl.textContent && articleEl.textContent.trim().length > 150) {
+        return articleEl.innerHTML;
+      }
+
+      return doc.body ? doc.body.innerHTML : doc.documentElement.innerHTML;
+    } catch (err) {
+      console.warn('DOMParser failed in cleanWebpageHtml, falling back to regex:', err);
+    }
+  }
+
+  // Fallback regex cleaning
+  return rawHtml
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
+    .replace(/<noscript\b[^<]*(?:(?!<\/noscript>)<[^<]*)*<\/noscript>/gi, '')
+    .replace(/<head\b[^<]*(?:(?!<\/head>)<[^<]*)*<\/head>/gi, '')
+    .replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, '')
+    .replace(/<nav\b[^<]*(?:(?!<\/nav>)<[^<]*)*<\/nav>/gi, '')
+    .replace(/<header\b[^<]*(?:(?!<\/header>)<[^<]*)*<\/header>/gi, '')
+    .replace(/<footer\b[^<]*(?:(?!<\/footer>)<[^<]*)*<\/footer>/gi, '')
+    .replace(/<aside\b[^<]*(?:(?!<\/aside>)<[^<]*)*<\/aside>/gi, '');
 }
 
 /**
@@ -305,10 +490,16 @@ export async function parseMhtmlFile(
 
   // 6. Decode Images and Build Mapping
   const extractedImages: MhtmlImage[] = [];
-  const imageKeyToDataUrl = new Map<string, string>();
+  const filesToSave: File[] = [];
 
   for (let i = 0; i < imageParts.length; i++) {
     const item = imageParts[i];
+
+    // Check if filename or location is clutter
+    if (isClutterImage(item.fileName, item.location, item.contentId)) {
+      continue;
+    }
+
     let dataUrl = '';
     let blob: Blob;
 
@@ -325,6 +516,11 @@ export async function parseMhtmlFile(
       dataUrl = `data:${item.mimeType};base64,${btoa(item.raw.body)}`;
     }
 
+    // Secondary size check: skip tiny tracking pixels (< 350 bytes)
+    if (isClutterImage(item.fileName, item.location, item.contentId, blob.size)) {
+      continue;
+    }
+
     const mhtmlImg: MhtmlImage = {
       id: `mhtml-img-${Date.now()}-${i + 1}`,
       fileName: item.fileName,
@@ -337,30 +533,46 @@ export async function parseMhtmlFile(
     };
 
     extractedImages.push(mhtmlImg);
+    filesToSave.push(new File([blob], item.fileName, { type: item.mimeType }));
+  }
 
-    // Register mapping aliases
-    if (item.contentId) {
-      imageKeyToDataUrl.set(`cid:${item.contentId}`, dataUrl);
-      imageKeyToDataUrl.set(item.contentId, dataUrl);
+  // Save valid extracted images to the user's settings folder via copyFilesToLocalFolder
+  // This physically stores them in the local folder chosen in settings (server API or DirectoryHandle),
+  // saves to IndexedDB media store, and registers blob URLs in memory cache
+  let savedFiles: SavedLocalMediaFile[] = [];
+  if (filesToSave.length > 0) {
+    try {
+      savedFiles = await copyFilesToLocalFolder(filesToSave);
+    } catch (err) {
+      console.warn('Failed saving MHTML images to settings folder:', err);
     }
-    if (item.location) {
-      imageKeyToDataUrl.set(item.location, dataUrl);
+  }
+
+  // Build mapping from MHTML references to local file paths or URLs
+  const imageKeyToUrl = new Map<string, string>();
+  for (let i = 0; i < extractedImages.length; i++) {
+    const item = extractedImages[i];
+    const saved = savedFiles.find((s) => s.fileName === item.fileName) || savedFiles[i];
+    const targetUrl = saved?.savedPath || saved?.serveUrl || item.dataUrl;
+
+    if (item.contentId) {
+      imageKeyToUrl.set(`cid:${item.contentId}`, targetUrl);
+      imageKeyToUrl.set(item.contentId, targetUrl);
+    }
+    if (item.contentLocation) {
+      imageKeyToUrl.set(item.contentLocation, targetUrl);
       try {
-        const parsedUrl = new URL(item.location, 'http://localhost');
-        imageKeyToDataUrl.set(parsedUrl.pathname, dataUrl);
+        const parsedUrl = new URL(item.contentLocation, 'http://localhost');
+        imageKeyToUrl.set(parsedUrl.pathname, targetUrl);
         const fileName = parsedUrl.pathname.split('/').filter(Boolean).pop();
-        if (fileName) {
-          imageKeyToDataUrl.set(fileName, dataUrl);
-        }
+        if (fileName) imageKeyToUrl.set(fileName, targetUrl);
       } catch {
-        const fileName = item.location.split('/').filter(Boolean).pop();
-        if (fileName) {
-          imageKeyToDataUrl.set(fileName, dataUrl);
-        }
+        const fileName = item.contentLocation.split('/').filter(Boolean).pop();
+        if (fileName) imageKeyToUrl.set(fileName, targetUrl);
       }
     }
     if (item.fileName) {
-      imageKeyToDataUrl.set(item.fileName, dataUrl);
+      imageKeyToUrl.set(item.fileName, targetUrl);
     }
   }
 
@@ -398,41 +610,28 @@ export async function parseMhtmlFile(
     .replace(/&nbsp;/g, ' ')
     .trim();
 
-  // 8. Replace image sources in HTML with decoded data URLs
+  // 8. Replace image sources in HTML with resolved local paths
   let htmlWithResolvedImages = decodedHtml;
 
   // Replace src="..."
   htmlWithResolvedImages = htmlWithResolvedImages.replace(
     /<img([^>]*)\ssrc=["']([^"']+)["']([^>]*)>/gi,
     (match, before, src, after) => {
-      const resolved = imageKeyToDataUrl.get(src) || imageKeyToDataUrl.get(decodeURIComponent(src));
+      const resolved = imageKeyToUrl.get(src) || imageKeyToUrl.get(decodeURIComponent(src));
       if (resolved) {
-        return `<img${before} src="${resolved}"${after}>`;
+        const cleanBefore = before.replace(/\ssrcset=["'][^"']*["']/gi, '');
+        const cleanAfter = after.replace(/\ssrcset=["'][^"']*["']/gi, '');
+        return `<img${cleanBefore} src="${resolved}"${cleanAfter}>`;
       }
-      return match;
+      return ''; // Strip ad or clutter images
     }
   );
 
-  // Replace srcset="..."
-  htmlWithResolvedImages = htmlWithResolvedImages.replace(
-    /<source([^>]*)\ssrcset=["']([^"']+)["']([^>]*)>/gi,
-    (match, before, srcset, after) => {
-      const firstSrc = srcset.split(',')[0].trim().split(' ')[0];
-      const resolved = imageKeyToDataUrl.get(firstSrc);
-      if (resolved) {
-        return `<source${before} srcset="${resolved}"${after}>`;
-      }
-      return match;
-    }
-  );
+  // Remove <source srcset="..."> elements
+  htmlWithResolvedImages = htmlWithResolvedImages.replace(/<source\b[^>]*>/gi, '');
 
-  // 9. Clean HTML prior to Markdown conversion
-  let cleanedHtml = htmlWithResolvedImages
-    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
-    .replace(/<noscript\b[^<]*(?:(?!<\/noscript>)<[^<]*)*<\/noscript>/gi, '')
-    .replace(/<head\b[^<]*(?:(?!<\/head>)<[^<]*)*<\/head>/gi, '')
-    .replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, '');
+  // 9. Clean HTML prior to Markdown conversion (removes ads, logos, trackers, nav, header, footer)
+  const cleanedHtml = cleanWebpageHtml(htmlWithResolvedImages);
 
   // 10. Convert HTML to Clean Markdown
   let markdown = convertHtmlToMarkdown(cleanedHtml);
@@ -460,10 +659,11 @@ export async function parseMhtmlFile(
   return {
     title: noteTitle,
     markdownContent: markdown,
-    htmlContent: decodedHtml,
+    htmlContent: cleanedHtml,
     sourceUrl,
     date: snapshotDate,
     images: extractedImages,
+    savedFiles,
   };
 }
 
@@ -479,8 +679,8 @@ export interface ImportMhtmlIntoNoteOptions {
 
 /**
  * Imports an MHTML file directly into the active note being edited.
- * Saves extracted images to IndexedDB & memory cache, updates title if empty,
- * adds image attachments, and inserts the formatted markdown/HTML into content.
+ * Saves extracted images to the user's settings folder via copyFilesToLocalFolder,
+ * converts HTML to clean Markdown, and inserts the content without cluttering the top image gallery.
  */
 export async function importMhtmlIntoNote({
   file,
@@ -491,7 +691,6 @@ export async function importMhtmlIntoNote({
   onInsertEditorContent,
 }: ImportMhtmlIntoNoteOptions): Promise<MhtmlParsedResult> {
   const parsed = await parseMhtmlFile(file);
-  const now = Date.now();
 
   // 1. If note title is blank or Untitled, update with webpage title
   if (
@@ -502,38 +701,9 @@ export async function importMhtmlIntoNote({
     onUpdateTitle(parsed.title);
   }
 
-  // 2. Save extracted images into IndexedDB media store & register memory blob cache
-  const extractedImageUrls: string[] = [];
-  for (const img of parsed.images) {
-    try {
-      await saveMediaToDB({
-        id: img.fileName,
-        fileName: img.fileName,
-        blob: img.blob,
-        mimeType: img.mimeType,
-        size: img.blob.size,
-        updatedAt: now,
-      });
-
-      const blobUrl = URL.createObjectURL(img.blob);
-      registerMediaBlobUrl(img.fileName, blobUrl);
-      if (img.contentId) {
-        registerMediaBlobUrl(`cid:${img.contentId}`, blobUrl);
-      }
-      if (img.contentLocation) {
-        registerMediaBlobUrl(img.contentLocation, blobUrl);
-      }
-      registerMediaBlobUrl(img.dataUrl, blobUrl);
-
-      extractedImageUrls.push(img.dataUrl);
-    } catch (err) {
-      console.warn('Failed to save extracted image from MHTML:', img.fileName, err);
-    }
-  }
-
-  if (onAddImages && extractedImageUrls.length > 0) {
-    onAddImages(extractedImageUrls);
-  }
+  // 2. Note: Images are already saved to the user's settings folder and embedded
+  // inline as clean Markdown/HTML directly where they appear in the content.
+  // We do NOT add them to the top gallery (note.images) per user request.
 
   // 3. Insert or append content
   if (onInsertEditorContent) {

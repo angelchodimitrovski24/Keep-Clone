@@ -673,16 +673,18 @@ export function convertHtmlToMarkdown(html: string): string {
   // 10. Line breaks: <br>
   md = md.replace(/<br\s*\/?>/gi, '\n');
 
-  // 11. Images: <img src="..." alt="...">
-  md = md.replace(/<img[^>]*src="([^"]+)"[^>]*alt="([^"]*)"[^>]*>/gi, (_m, src, alt) => {
-    return `![${alt || 'image'}](${src})`;
-  });
-  md = md.replace(/<img[^>]*alt="([^"]*)"[^>]*src="([^"]+)"[^>]*>/gi, (_m, alt, src) => {
-    return `![${alt || 'image'}](${src})`;
+  // 11. Images: <img ...>
+  md = md.replace(/<img\b([^>]*)>/gi, (_m, attrs) => {
+    const srcMatch = attrs.match(/\bsrc=["']([^"']+)["']/i);
+    if (!srcMatch || !srcMatch[1]) return '';
+    const src = srcMatch[1];
+    const altMatch = attrs.match(/\balt=["']([^"']*)["']/i);
+    const alt = altMatch ? altMatch[1] : '';
+    return `\n\n![${alt || 'image'}](${src})\n\n`;
   });
 
   // 12. Links: <a href="...">text</a>
-  md = md.replace(/<a[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi, (_m, href, text) => {
+  md = md.replace(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, (_m, href, text) => {
     const cleanText = text.replace(/<[^>]+>/g, '').trim();
     return `[${cleanText || href}](${href})`;
   });
