@@ -882,3 +882,134 @@ export function convertHtmlToMarkdown(html: string): string {
 
   return md;
 }
+
+/**
+ * Escapes characters for HTML entities.
+ */
+export function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/**
+ * Extracts plain text formatted title, checklist, and content for clipboard copying.
+ */
+export function extractNoteText(note: {
+  title?: string;
+  content?: string;
+  isList?: boolean;
+  todos?: { text: string; completed?: boolean }[];
+}): string {
+  const parts: string[] = [];
+
+  const trimmedTitle = (note.title || '').trim();
+  if (trimmedTitle) {
+    parts.push(trimmedTitle);
+  }
+
+  // Checklist items
+  if (note.isList && Array.isArray(note.todos) && note.todos.length > 0) {
+    const todosText = note.todos
+      .filter((t) => t.text && t.text.trim().length > 0)
+      .map((t) => `${t.completed ? '[x]' : '[ ]'} ${t.text.trim()}`)
+      .join('\n');
+    if (todosText) {
+      parts.push(todosText);
+    }
+  }
+
+  // Content (converted from HTML to readable Markdown/text if needed)
+  if (note.content && note.content.trim()) {
+    const textContent = convertHtmlToMarkdown(note.content).trim();
+    if (textContent) {
+      parts.push(textContent);
+    }
+  }
+
+  return parts.join('\n\n');
+}
+
+/**
+ * Copies note title and content to clipboard (supports both rich HTML and plain text).
+ */
+export async function copyNoteToClipboard(note: {
+  title?: string;
+  content?: string;
+  isList?: boolean;
+  todos?: { text: string; completed?: boolean }[];
+}): Promise<boolean> {
+  const plainText = extractNoteText(note);
+  if (!plainText) {
+    return false;
+  }
+
+  try {
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      if (typeof ClipboardItem !== 'undefined') {
+        try {
+          const htmlParts: string[] = [];
+          if (note.title?.trim()) {
+            htmlParts.push(`<h2>${escapeHtml(note.title.trim())}</h2>`);
+          }
+          if (note.isList && Array.isArray(note.todos) && note.todos.length > 0) {
+            const listItems = note.todos
+              .filter((t) => t.text && t.text.trim().length > 0)
+              .map(
+                (t) =>
+                  `<li><input type="checkbox" ${t.completed ? 'checked' : ''} disabled /> ${escapeHtml(t.text.trim())}</li>`
+              )
+              .join('');
+            if (listItems) {
+              htmlParts.push(`<ul>${listItems}</ul>`);
+            }
+          }
+          if (note.content?.trim()) {
+            htmlParts.push(note.content.trim());
+          }
+
+          const richHtml = htmlParts.join('\n');
+          const textBlob = new Blob([plainText], { type: 'text/plain' });
+          const htmlBlob = new Blob([richHtml], { type: 'text/html' });
+
+          await navigator.clipboard.write([
+            new ClipboardItem({
+              'text/plain': textBlob,
+              'text/html': htmlBlob,
+            }),
+          ]);
+          return true;
+        } catch {
+          await navigator.clipboard.writeText(plainText);
+          return true;
+        }
+      } else {
+        await navigator.clipboard.writeText(plainText);
+        return true;
+      }
+    }
+  } catch (err) {
+    console.error('Failed to copy to clipboard:', err);
+  }
+
+  // Fallback for older browsers
+  try {
+    const textArea = document.createElement('textarea');
+    textArea.value = plainText;
+    textArea.style.position = 'fixed';
+    textArea.style.left = '-9999px';
+    textArea.style.top = '-9999px';
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    const successful = document.execCommand('copy');
+    document.body.removeChild(textArea);
+    return successful;
+  } catch (err) {
+    console.error('Fallback execCommand copy failed:', err);
+    return false;
+  }
+}

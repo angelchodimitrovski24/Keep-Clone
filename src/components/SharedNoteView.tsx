@@ -6,6 +6,7 @@ import {
   Share2,
   Copy,
   Check,
+  ClipboardCopy,
   Download,
   Calendar,
   Tag,
@@ -26,7 +27,7 @@ import { getNoteColorClasses } from '@/lib/constants';
 import { NoteThemeArtwork } from './NoteThemeArtwork';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { saveNoteToDB } from '@/lib/db';
-import { resolveLocalMediaUrl } from '@/lib/formatUtils';
+import { resolveLocalMediaUrl, copyNoteToClipboard } from '@/lib/formatUtils';
 
 interface SharedNoteViewProps {
   note: SharedNoteData;
@@ -35,6 +36,7 @@ interface SharedNoteViewProps {
 
 export const SharedNoteView: React.FC<SharedNoteViewProps> = ({ note, shortId }) => {
   const [copied, setCopied] = useState(false);
+  const [copiedText, setCopiedText] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isDark, setIsDark] = useState(false);
@@ -54,6 +56,19 @@ export const SharedNoteView: React.FC<SharedNoteViewProps> = ({ note, shortId })
       // Fallback
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);
+    }
+  };
+
+  const handleCopyNoteText = async () => {
+    const success = await copyNoteToClipboard({
+      title: note.title,
+      content: note.content,
+      isList: note.isList,
+      todos,
+    });
+    if (success) {
+      setCopiedText(true);
+      setTimeout(() => setCopiedText(false), 2500);
     }
   };
 
@@ -183,6 +198,26 @@ export const SharedNoteView: React.FC<SharedNoteViewProps> = ({ note, shortId })
                   <>
                     <Copy className="w-4 h-4 text-stone-500" />
                     <span>Copy Link</span>
+                  </>
+                )}
+              </button>
+
+              {/* Copy Title & Content */}
+              <button
+                type="button"
+                onClick={handleCopyNoteText}
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs sm:text-sm font-medium rounded-xl border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-800 text-stone-700 dark:text-stone-200 hover:bg-stone-50 dark:hover:bg-stone-700 shadow-2xs transition-all"
+                title="Copy note title and content"
+              >
+                {copiedText ? (
+                  <>
+                    <Check className="w-4 h-4 text-emerald-500" />
+                    <span className="text-emerald-600 dark:text-emerald-400 font-semibold">Copied!</span>
+                  </>
+                ) : (
+                  <>
+                    <ClipboardCopy className="w-4 h-4 text-stone-500" />
+                    <span>Copy Text</span>
                   </>
                 )}
               </button>

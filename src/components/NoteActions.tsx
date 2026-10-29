@@ -29,10 +29,12 @@ import {
   Plus,
   FileText,
   Globe,
+  ClipboardCopy,
 } from 'lucide-react';
 import { Note, NoteColor, NoteBackgroundTheme } from '@/types/note';
 import { NOTE_COLORS, NOTE_THEMES } from '@/lib/constants';
 import { useKeep } from '@/context/KeepContext';
+import { copyNoteToClipboard } from '@/lib/formatUtils';
 
 interface NoteActionsProps {
   note: Partial<Note>;
@@ -54,6 +56,7 @@ interface NoteActionsProps {
   onOpenVersions?: () => void;
   onStartReading?: () => void;
   onPrint?: () => void;
+  onCopyContent?: () => void;
   onToggleSubpages?: () => void;
   hasSubpages?: boolean;
   showFormattingToggle?: boolean;
@@ -89,6 +92,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
   onOpenVersions,
   onStartReading,
   onPrint,
+  onCopyContent,
   onToggleSubpages,
   hasSubpages = false,
   showFormattingToggle = false,
@@ -110,6 +114,22 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
   const [newLabelText, setNewLabelText] = useState('');
   const [mounted, setMounted] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [copiedToast, setCopiedToast] = useState(false);
+
+  const handleCopyTitleAndContent = async () => {
+    if (onCopyContent) {
+      onCopyContent();
+      setCopiedToast(true);
+      setTimeout(() => setCopiedToast(false), 2500);
+      return;
+    }
+
+    const success = await copyNoteToClipboard(note);
+    if (success) {
+      setCopiedToast(true);
+      setTimeout(() => setCopiedToast(false), 2500);
+    }
+  };
 
   // Notify parent whenever any action menu / picker opens or closes
   useEffect(() => {
@@ -567,6 +587,21 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
         </button>
       )}
 
+      {/* Copy note title and content */}
+      {!compact && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            handleCopyTitleAndContent();
+          }}
+          className={`hidden md:inline-flex ${iconBtnClass}`}
+          title="Copy note title and content"
+        >
+          {copiedToast ? <Check className="w-4 h-4 text-emerald-500" /> : <ClipboardCopy className="w-4 h-4" />}
+        </button>
+      )}
+
       {/* Share Note action */}
       {!compact && onShare && (
         <button
@@ -779,6 +814,27 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
               </button>
             )}
 
+            <button
+              type="button"
+              onClick={() => {
+                handleCopyTitleAndContent();
+                setTimeout(() => setShowMenu(false), 300);
+              }}
+              className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
+            >
+              {copiedToast ? (
+                <>
+                  <Check className="w-4 h-4 text-emerald-500 shrink-0" />
+                  <span className="text-emerald-600 dark:text-emerald-400 font-medium">Copied!</span>
+                </>
+              ) : (
+                <>
+                  <ClipboardCopy className="w-4 h-4 text-stone-500 shrink-0" />
+                  <span>Copy title & content</span>
+                </>
+              )}
+            </button>
+
             {onDuplicate && (
               <button
                 type="button"
@@ -829,19 +885,19 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                 Share note (Short link)
               </button>
             )}
-                      {onImportMhtml && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setShowMenu(false);
-                            mhtmlInputRef.current?.click();
-                          }}
-                          className="w-full text-left px-6 py-3.5 flex items-center gap-4 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] active:bg-black/[0.08] dark:active:bg-white/[0.1] text-stone-800 dark:text-stone-200 text-[14.5px] font-normal tracking-[0.15px] transition-colors"
-                        >
-                          <Globe className="w-5 h-5 text-blue-500 shrink-0" />
-                          <span>Import MHTML into note</span>
-                        </button>
-                      )}
+            {onImportMhtml && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMenu(false);
+                  mhtmlInputRef.current?.click();
+                }}
+                className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
+              >
+                <Globe className="w-4 h-4 text-blue-500 shrink-0" />
+                <span>Import MHTML into note</span>
+              </button>
+            )}
 
 
             {onDelete && (
@@ -1170,6 +1226,27 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                           <span>Print note</span>
                         </button>
                       )}
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleCopyTitleAndContent();
+                          setTimeout(() => setShowMenu(false), 300);
+                        }}
+                        className="w-full text-left px-6 py-3.5 flex items-center gap-4 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] active:bg-black/[0.08] dark:active:bg-white/[0.1] text-stone-800 dark:text-stone-200 text-[14.5px] font-normal tracking-[0.15px] transition-colors"
+                      >
+                        {copiedToast ? (
+                          <>
+                            <Check className="w-5 h-5 text-emerald-500 shrink-0" />
+                            <span className="text-emerald-600 dark:text-emerald-400 font-medium">Copied!</span>
+                          </>
+                        ) : (
+                          <>
+                            <ClipboardCopy className="w-5 h-5 text-stone-500 shrink-0" />
+                            <span>Copy title & content</span>
+                          </>
+                        )}
+                      </button>
 
                       {onDuplicate && (
                         <button
@@ -1744,6 +1821,15 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
           </div>,
           document.body
         )}
+
+      {/* Floating Copied Toast */}
+      {mounted && copiedToast && typeof document !== 'undefined' && createPortal(
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[9999] px-4 py-2.5 rounded-2xl bg-stone-900/90 dark:bg-stone-100/90 backdrop-blur-md text-white dark:text-stone-900 shadow-2xl flex items-center gap-2.5 text-xs sm:text-sm font-medium animate-in fade-in slide-in-from-bottom-2 duration-200 border border-white/10 dark:border-black/10 pointer-events-none">
+          <Check className="w-4 h-4 text-emerald-400 dark:text-emerald-600 shrink-0" />
+          <span>Note title and content copied to clipboard</span>
+        </div>,
+        document.body
+      )}
     </div>
   );
 };

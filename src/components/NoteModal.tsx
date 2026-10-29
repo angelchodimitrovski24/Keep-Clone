@@ -28,6 +28,7 @@ import {
   Edit2,
   Printer,
   FileText,
+  ClipboardCopy,
 } from 'lucide-react';
 import { Note, NoteColor, NoteBackgroundTheme, TodoItem, NoteDrawing, NoteVersion } from '@/types/note';
 import { getNoteColorClasses } from '@/lib/constants';
@@ -37,7 +38,7 @@ import { KeepWysiwygEditor, KeepWysiwygEditorHandle } from './KeepWysiwygEditor'
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { useKeep } from '@/context/KeepContext';
 import { renderMarkdownTablesInHtml } from '@/lib/tableUtils';
-import { GoogleKeepFormatCommand, resolveLocalMediaUrl } from '@/lib/formatUtils';
+import { GoogleKeepFormatCommand, resolveLocalMediaUrl, copyNoteToClipboard } from '@/lib/formatUtils';
 import { extractClipboardPayload, copyFilesToLocalFolder } from '@/lib/localPaste';
 import { EncryptNoteModal } from './EncryptNoteModal';
 import { LinkNoteModal } from './LinkNoteModal';
@@ -138,6 +139,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
   const [isEditingReadingTime, setIsEditingReadingTime] = useState(false);
   const [stopwatchToast, setStopwatchToast] = useState<string | null>(null);
   const [copiedUrlToast, setCopiedUrlToast] = useState(false);
+  const [copiedContentToast, setCopiedContentToast] = useState(false);
 
   // Text selection and extract into new note
   const modalContentRef = useRef<HTMLDivElement | null>(null);
@@ -222,6 +224,21 @@ export const NoteModal: React.FC<NoteModalProps> = ({
     navigator.clipboard.writeText(fullUrl);
     setCopiedUrlToast(true);
     setTimeout(() => setCopiedUrlToast(false), 2000);
+  };
+
+  const handleCopyTitleAndContent = async () => {
+    const rawContent = editorRef.current?.getHTML() || content;
+    const noteData = {
+      title,
+      content: rawContent,
+      isList,
+      todos,
+    };
+    const success = await copyNoteToClipboard(noteData);
+    if (success) {
+      setCopiedContentToast(true);
+      setTimeout(() => setCopiedContentToast(false), 2000);
+    }
   };
 
   const editorRef = useRef<KeepWysiwygEditorHandle | null>(null);
@@ -1407,6 +1424,16 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
               {copiedUrlToast ? <Check className="w-5 h-5 text-emerald-500" /> : <Link2 className="w-5 h-5" />}
             </button>
 
+            {/* Copy Note Title & Content Button */}
+            <button
+              type="button"
+              onClick={handleCopyTitleAndContent}
+              className="p-2 rounded-full text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-black/10 transition-colors"
+              title="Copy note title and content"
+            >
+              {copiedContentToast ? <Check className="w-5 h-5 text-emerald-500" /> : <ClipboardCopy className="w-5 h-5" />}
+            </button>
+
             {/* Share Note Button */}
             <button
               type="button"
@@ -1825,12 +1852,24 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
         <div className="flex items-center justify-between px-2.5 sm:px-5 py-2 sm:py-3.5 pb-[max(0.6rem,env(safe-area-inset-bottom))] border-t border-black/5 dark:border-white/5 bg-black/2 dark:bg-white/2 shrink-0 gap-2 relative">
           <div className="flex-1 min-w-0">
             <NoteActions
-              note={{ color, theme, isList, labels, reminder, category }}
+              note={{
+                ...note,
+                title,
+                content: editorRef.current?.getHTML() || content,
+                isList,
+                todos,
+                color,
+                theme,
+                labels,
+                reminder,
+                category,
+              }}
               onColorChange={setColor}
               onThemeChange={setTheme}
               onSelectCategory={handleCategoryChange}
               onAddImage={handleAddImage}
               onImportMhtml={handleImportMhtml}
+              onCopyContent={handleCopyTitleAndContent}
               onArchiveToggle={() => {
                 toggleArchiveNote(note.id);
                 onClose();
