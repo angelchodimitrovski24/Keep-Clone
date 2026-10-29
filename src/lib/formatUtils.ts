@@ -354,7 +354,10 @@ export function convertMarkdownToHtml(content: string): string {
         const serveUrl = resolveLocalMediaUrl(rawPath.trim());
         return `<img src="${serveUrl}" alt="${alt || 'image'}" class="rounded-xl max-h-96 w-auto my-2 border border-black/10 dark:border-white/10 shadow-xs" loading="lazy" />`;
       })
-      .replace(/(?<!\!)\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-blue-600 dark:text-blue-400 underline hover:opacity-80">$1</a>');
+      .replace(/(?<!\!)\[([^\]]*)\]\(([^)]+)\)/g, (_m, text, url) => {
+        const linkText = text.trim() || 'link';
+        return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 dark:text-blue-400 underline hover:opacity-80">${linkText}</a>`;
+      });
   };
 
   let i = 0;
@@ -825,7 +828,12 @@ export function convertHtmlToMarkdown(html: string): string {
   // 12. Links: <a href="...">text</a>
   md = md.replace(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, (_m, href, text) => {
     const cleanText = text.replace(/<[^>]+>/g, '').trim();
-    return `[${cleanText || href}](${href})`;
+    const cleanHref = href.trim();
+    if (!cleanHref || cleanHref.startsWith('javascript:')) {
+      return cleanText || '';
+    }
+    const linkText = cleanText ? cleanText : 'link';
+    return `[${linkText}](${cleanHref})`;
   });
 
   // 13. Inline formatting

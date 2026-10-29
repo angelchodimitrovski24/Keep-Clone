@@ -77,16 +77,43 @@ export function isClutterImage(
     return true;
   }
 
-  // 4. Logo files (e.g. favicon.ico, logo.png, logo-dark.svg, brand-logo.png)
-  const baseName = (fileName || '').toLowerCase();
+  // 4. Logo files & site branding
   if (
-    baseName.includes('favicon') ||
-    baseName.includes('apple-touch-icon') ||
-    baseName.includes('site-logo') ||
-    baseName.includes('brand-logo') ||
-    baseName.includes('header-logo') ||
-    baseName.includes('footer-logo') ||
-    /^logo(?:[-_.]|$)|(?:[-_])logo\./i.test(baseName)
+    combined.includes('favicon') ||
+    combined.includes('apple-touch-icon') ||
+    combined.includes('site-logo') ||
+    combined.includes('brand-logo') ||
+    combined.includes('header-logo') ||
+    combined.includes('footer-logo') ||
+    combined.includes('nav-logo') ||
+    combined.includes('navbar-brand') ||
+    combined.includes('company-logo') ||
+    /(?:^|[\/\-_.\?&=])logo(?:[-_.]|$)/i.test(combined)
+  ) {
+    return true;
+  }
+
+  // 5. Avatars, user profile pictures, and initials badges (e.g. LP, AD)
+  if (
+    combined.includes('avatar') ||
+    combined.includes('gravatar') ||
+    combined.includes('profile-pic') ||
+    combined.includes('profile_pic') ||
+    combined.includes('profile-photo') ||
+    combined.includes('profile_photo') ||
+    combined.includes('user-photo') ||
+    combined.includes('user_photo') ||
+    combined.includes('user-avatar') ||
+    combined.includes('user_avatar') ||
+    combined.includes('user-image') ||
+    combined.includes('user_image') ||
+    combined.includes('initials') ||
+    combined.includes('user-icon') ||
+    combined.includes('agent-avatar') ||
+    combined.includes('author-avatar') ||
+    combined.includes('member-photo') ||
+    combined.includes('member-avatar') ||
+    /(?:^|[\/\-_.\?&=])(avatar|avatars|gravatar|profile-image|profile-icon|user-badge|user-initials)(?:[\/\-_.\?&=]|$)/i.test(combined)
   ) {
     return true;
   }
@@ -119,7 +146,7 @@ export function cleanWebpageHtml(rawHtml: string): string {
         }
       });
 
-      // 3. Remove known clutter containers (ads, sponsors, cookie banners, newsletter popups)
+      // 3. Remove known clutter containers (ads, sponsors, cookie banners, newsletter popups, logos, avatars)
       const clutterSelectors = [
         '[class*="adunit"]', '[class*="adserver"]', '[class*="advertisement"]',
         '[id*="adunit"]', '[id*="adserver"]', '[id*="advertisement"]',
@@ -128,6 +155,14 @@ export function cleanWebpageHtml(rawHtml: string): string {
         '[class*="share-bar"]', '[class*="share-button"]', '[class*="share-box"]',
         '[class*="newsletter"]', '[class*="subscribe"]', '[id*="newsletter"]', '[id*="subscribe"]',
         '[role="banner"]', '[role="navigation"]', '[role="complementary"]',
+        // Logos and branding
+        '[class*="site-logo"]', '[class*="brand-logo"]', '[class*="header-logo"]', '[class*="navbar-brand"]',
+        '[id*="site-logo"]', '[id*="brand-logo"]', '[id*="header-logo"]',
+        // Avatars and user profile icons (like in Zendesk, Supportbench, Jira, GitHub)
+        '[class*="avatar"]', '[class*="user-avatar"]', '[class*="profile-avatar"]', '[class*="agent-avatar"]',
+        '[class*="author-avatar"]', '[class*="comment-avatar"]', '[class*="user-image"]', '[class*="user-photo"]',
+        '[class*="profile-pic"]', '[class*="profile-photo"]', '[class*="user-badge"]', '[class*="initials"]',
+        '[id*="avatar"]', '[id*="user-avatar"]',
       ];
 
       for (const selector of clutterSelectors) {
@@ -142,11 +177,42 @@ export function cleanWebpageHtml(rawHtml: string): string {
         }
       }
 
-      // 4. Remove tiny 1x1 tracking pixels
+      // 4. Remove tracking pixels, avatars, user badges, and logos
       doc.querySelectorAll('img').forEach((img) => {
+        if (img.closest('pre')) return;
+
+        const src = (img.getAttribute('src') || '').toLowerCase();
+        const alt = (img.getAttribute('alt') || '').toLowerCase();
+        const cls = (img.getAttribute('class') || '').toLowerCase();
+        const id = (img.getAttribute('id') || '').toLowerCase();
         const width = parseInt(img.getAttribute('width') || '100', 10);
         const height = parseInt(img.getAttribute('height') || '100', 10);
+
         if (width <= 2 || height <= 2) {
+          img.remove();
+          return;
+        }
+
+        const combined = `${src} ${alt} ${cls} ${id}`;
+
+        if (
+          combined.includes('avatar') ||
+          combined.includes('gravatar') ||
+          combined.includes('profile-pic') ||
+          combined.includes('profile_pic') ||
+          combined.includes('profile-photo') ||
+          combined.includes('user-avatar') ||
+          combined.includes('user-photo') ||
+          combined.includes('agent-avatar') ||
+          combined.includes('initials') ||
+          combined.includes('site-logo') ||
+          combined.includes('brand-logo') ||
+          combined.includes('header-logo') ||
+          combined.includes('favicon') ||
+          /(?:^|[\/\-_.\?&=])logo(?:[-_.]|$)/i.test(combined) ||
+          /^[a-z]{1,3}$/i.test(alt.trim()) ||
+          (width === height && width <= 96 && (cls.includes('user') || cls.includes('profile') || cls.includes('circle') || cls.includes('rounded') || alt.includes('user') || alt.includes('agent') || alt.includes('profile')))
+        ) {
           img.remove();
         }
       });
@@ -639,6 +705,24 @@ export async function parseMhtmlFile(
       if (resolved) {
         const altMatch = attrs.match(/\balt=["']([^"']*)["']/i);
         const alt = altMatch ? altMatch[1] : '';
+        const clsMatch = attrs.match(/\bclass=["']([^"']*)["']/i);
+        const cls = clsMatch ? clsMatch[1] : '';
+
+        // Secondary check: skip avatars, user initials (e.g. LP, AD), badges, or logos
+        const altClean = alt.trim().toLowerCase();
+        const clsClean = cls.toLowerCase();
+        if (
+          altClean === 'logo' ||
+          altClean.includes('avatar') ||
+          /^[a-z]{1,3}$/i.test(altClean) ||
+          clsClean.includes('avatar') ||
+          clsClean.includes('initials') ||
+          clsClean.includes('site-logo') ||
+          clsClean.includes('brand-logo')
+        ) {
+          return '';
+        }
+
         return `<img src="${resolved}" alt="${alt}">`;
       }
       return ''; // Strip ad, tracker, or broken images
