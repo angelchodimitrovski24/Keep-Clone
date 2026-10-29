@@ -151,12 +151,6 @@ export function cleanWebpageHtml(rawHtml: string): string {
         }
       });
 
-      // Prefer substantial article / main element if present
-      const articleEl = doc.querySelector('article, main, [role="main"]');
-      if (articleEl && articleEl.textContent && articleEl.textContent.trim().length > 200) {
-        return articleEl.innerHTML;
-      }
-
       return doc.body ? doc.body.innerHTML : doc.documentElement.innerHTML;
     } catch (err) {
       console.warn('DOMParser failed in cleanWebpageHtml, falling back to regex:', err);

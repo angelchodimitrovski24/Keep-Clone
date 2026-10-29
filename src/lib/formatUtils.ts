@@ -490,7 +490,20 @@ export function convertMarkdownToHtml(content: string): string {
       continue;
     }
 
-    // 10. Existing HTML blocks
+    // 10. Existing multi-line <pre>...</pre> HTML block
+    if (trimmed.startsWith('<pre')) {
+      closeOpenLists();
+      let preBlock = rawLine;
+      while (!preBlock.includes('</pre>') && i + 1 < lines.length) {
+        i++;
+        preBlock += '\n' + lines[i];
+      }
+      result += preBlock;
+      i++;
+      continue;
+    }
+
+    // 11. Existing HTML blocks
     if (
       trimmed.startsWith('<div') ||
       trimmed.startsWith('<table') ||
@@ -501,8 +514,7 @@ export function convertMarkdownToHtml(content: string): string {
       trimmed.startsWith('<ul') ||
       trimmed.startsWith('<ol') ||
       trimmed.startsWith('<blockquote') ||
-      trimmed.startsWith('<hr') ||
-      trimmed.startsWith('<pre')
+      trimmed.startsWith('<hr')
     ) {
       closeOpenLists();
       result += trimmed;
@@ -510,7 +522,7 @@ export function convertMarkdownToHtml(content: string): string {
       continue;
     }
 
-    // 11. Normal paragraph
+    // 12. Normal paragraph
     closeOpenLists();
     result += `<p>${formatInline(trimmed)}</p>`;
     i++;
@@ -683,6 +695,12 @@ export function convertHtmlToMarkdown(html: string): string {
 
   const codeBlocks: string[] = [];
 
+  const addCodeBlock = (lang: string, codeText: string) => {
+    const blockIndex = codeBlocks.length;
+    codeBlocks.push(`\n\n\`\`\`${lang || ''}\n${codeText}\n\`\`\`\n\n`);
+    return `\n\n___KEEP_CODE_BLOCK_${blockIndex}___\n\n`;
+  };
+
   // 1. Code blocks: extract and protect all <pre>...</pre> blocks
   md = md.replace(/<pre\b([^>]*)>([\s\S]*?)<\/pre>/gi, (_match, preAttrs, inner) => {
     const codeTagMatch = inner.match(/<code\b([^>]*)>/i);
@@ -691,10 +709,31 @@ export function convertHtmlToMarkdown(html: string): string {
     const lang = detectCodeLanguage(preAttrs, codeAttrs);
     const cleanCode = cleanCodeContent(inner);
 
-    const blockIndex = codeBlocks.length;
-    codeBlocks.push(`\n\n\`\`\`${lang}\n${cleanCode}\n\`\`\`\n\n`);
+    return addCodeBlock(lang, cleanCode);
+  });
 
-    return `\n\n___KEEP_CODE_BLOCK_${blockIndex}___\n\n`;
+  // 2. Code containers with class (e.g. <div class="highlight"> or <div class="code-block"> or <figure class="highlight">)
+  md = md.replace(/<(?:div|figure|section)\b([^>]*(?:highlight|code-block|codeblock|syntaxhighlighter|code-container|sourceCode|prettyprint)[^>]*)>([\s\S]*?)<\/(?:div|figure|section)>/gi, (_match, divAttrs, inner) => {
+    if (/___KEEP_CODE_BLOCK_\d+___/.test(inner)) return inner;
+    const lang = detectCodeLanguage(divAttrs);
+    const cleanCode = cleanCodeContent(inner);
+    if (cleanCode.length > 0) {
+      return addCodeBlock(lang, cleanCode);
+    }
+    return inner;
+  });
+
+  // 3. Multi-line <code> tags or <code> tags with language class / <br>
+  md = md.replace(/<code\b([^>]*)>([\s\S]*?)<\/code>/gi, (match, codeAttrs, inner) => {
+    const lang = detectCodeLanguage('', codeAttrs);
+    const hasNewlines = inner.includes('\n') || /<br\s*\/?>/i.test(inner) || /<\/(?:p|div|li)>/i.test(inner);
+    const isMultiLine = cleanCodeContent(inner).includes('\n');
+
+    if (lang || hasNewlines || isMultiLine) {
+      const cleanCode = cleanCodeContent(inner);
+      return addCodeBlock(lang, cleanCode);
+    }
+    return match; // Leave single-line inline code for later step
   });
 
   // 2. Tables: <table>...</table> to Markdown table
@@ -818,10 +857,20 @@ export function convertHtmlToMarkdown(html: string): string {
   // 16. Clean up excess whitespace
   md = md.replace(/\n{3,}/g, '\n\n').trim();
 
+  // Merge consecutive inline code lines (e.g. when each line of a code block was wrapped in its own `code`)
+  md = md.replace(/(?:^|\n)(`[^`\n]+`(?:\n`[^`\n]+`)+)(?:\n|$)/g, (_match, group) => {
+    const rawLines = group.split('\n');
+    const unwrapped = rawLines.map((l: string) => l.trim().replace(/^`|`$/g, ''));
+    return `\n\n\`\`\`\n${unwrapped.join('\n')}\n\`\`\`\n\n`;
+  });
+
   // 17. Restore protected code blocks
   for (let idx = 0; idx < codeBlocks.length; idx++) {
     md = md.replace(new RegExp(`___KEEP_CODE_BLOCK_${idx}___`, 'g'), () => codeBlocks[idx].trim());
   }
+
+  // Final cleanup of extra whitespace
+  md = md.replace(/\n{3,}/g, '\n\n').trim();
 
   return md;
 }
