@@ -99,7 +99,7 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
         try {
           setIsCopyingFiles(true);
           // Synchronously starts FormData upload before any await
-          const savedFiles = await copyFilesToLocalFolder(files, undefined, imageUrls);
+          const savedFiles = await copyFilesToLocalFolder(regularFiles, undefined, imageUrls);
           const activeEditor = editorInstanceRef.current;
 
           if (savedFiles.length > 0 && activeEditor) {

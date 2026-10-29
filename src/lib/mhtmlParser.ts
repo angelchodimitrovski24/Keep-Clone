@@ -6,7 +6,12 @@
 
 import { convertHtmlToMarkdown, convertMarkdownToHtml } from './formatUtils';
 import { saveMediaToDB } from './db';
-import { registerMediaBlobUrl, copyFilesToLocalFolder, SavedLocalMediaFile } from './localPaste';
+import {
+  registerMediaBlobUrl,
+  copyFilesToLocalFolder,
+  getSyncLocalMediaFolder,
+  SavedLocalMediaFile,
+} from './localPaste';
 
 export interface MhtmlImage {
   id: string;
@@ -38,71 +43,51 @@ export function isClutterImage(
   contentId?: string,
   size?: number
 ): boolean {
-  const combined = `${fileName || ''} ${location || ''} ${contentId || ''}`.toLowerCase();
-
   // 1. Skip tiny tracking pixels (< 350 bytes)
   if (size !== undefined && size > 0 && size < 350) {
     return true;
   }
 
-  // 2. Clutter keywords in filename, path, or content-id
-  const clutterKeywords = [
-    'logo',
-    'favicon',
-    'apple-touch-icon',
-    'site-logo',
-    'header-logo',
-    'footer-logo',
-    'nav-logo',
-    'brand-logo',
-    'navbar-brand',
-    'avatar',
-    'badge',
-    'sponsor',
-    'sponsored',
-    'advert',
-    'ad-',
-    'ads-',
-    'ad_',
-    'ads_',
-    '/ads/',
-    '/ad/',
-    'banner',
-    'tracker',
-    'tracking',
-    'pixel',
-    'beacon',
+  const combined = `${fileName || ''} ${location || ''} ${contentId || ''}`.toLowerCase();
+
+  // 2. Specific tracking / ad network domains and known tracker URLs
+  const trackerPatterns = [
+    'doubleclick.net',
+    'googletagservices',
+    'google-analytics.com',
+    'adnxs.com',
+    'taboola.com',
+    'outbrain.com',
+    'quantserve.com',
+    'scorecardresearch.com',
+    'facebook.com/tr',
     'analytics',
     'telemetry',
-    'doubleclick',
-    'googletag',
-    'google-analytics',
-    'adnxs',
-    'taboola',
-    'outbrain',
-    'quantserve',
-    'scorecardresearch',
-    'facebook',
-    'twitter',
-    'instagram',
-    'linkedin',
-    'pinterest',
-    'social-share',
-    'share-button',
-    'social-icons',
-    'share-icon',
-    'close-btn',
-    'icon-share',
+    'beacon',
   ];
 
-  for (const kw of clutterKeywords) {
-    if (combined.includes(kw)) {
+  for (const pattern of trackerPatterns) {
+    if (combined.includes(pattern)) {
       return true;
     }
   }
 
-  // 3. Ad URL pattern regex (boundary matches)
-  if (/(?:^|[\/\-_.\?&=])(ad|ads|adunit|adsystem|promo|adserver|affiliate|marketing)(?:[\/\-_.\?&=]|$)/i.test(combined)) {
+  // 3. Specific ad path indicators (boundary matches only)
+  if (/(?:^|[\/\-_.\?&=])(adunit|adserver|affiliate|ad-banner)(?:[\/\-_.\?&=]|$)/i.test(combined)) {
+    return true;
+  }
+
+  // 4. Logo files (e.g. favicon.ico, logo.png, logo-dark.svg, brand-logo.png)
+  const baseName = (fileName || '').toLowerCase();
+  if (
+    baseName.includes('favicon') ||
+    baseName.includes('apple-touch-icon') ||
+    baseName.includes('site-logo') ||
+    baseName.includes('brand-logo') ||
+    baseName.includes('header-logo') ||
+    baseName.includes('footer-logo') ||
+    /^logo(?:[-_.]|$)|(?:[-_])logo\./i.test(baseName)
+  ) {
     return true;
   }
 
@@ -111,7 +96,7 @@ export function isClutterImage(
 
 /**
  * Cleans web page HTML by removing scripts, navigation, headers, footers,
- * sidebars, cookie notices, social sharing widgets, ad blocks, and logo images.
+ * sidebars, cookie notices, social sharing widgets, and ad blocks.
  */
 export function cleanWebpageHtml(rawHtml: string): string {
   if (!rawHtml) return '';
@@ -120,23 +105,28 @@ export function cleanWebpageHtml(rawHtml: string): string {
     try {
       const doc = new DOMParser().parseFromString(rawHtml, 'text/html');
 
-      // 1. Remove script, style, iframe, audio, video, svg, meta tags
-      doc.querySelectorAll('script, style, noscript, iframe, link, meta, svg, object, embed, canvas').forEach((el) => el.remove());
+      // 1. Remove script, style, iframe, audio, video, meta, object, embed tags (preserve anything in <pre>)
+      doc.querySelectorAll('script, style, noscript, iframe, link, meta, object, embed').forEach((el) => {
+        if (!el.closest('pre')) {
+          el.remove();
+        }
+      });
 
       // 2. Remove standard page chrome: navigation, header, footer, asides
-      doc.querySelectorAll('nav, header, footer, aside').forEach((el) => el.remove());
+      doc.querySelectorAll('nav, header, footer, aside').forEach((el) => {
+        if (!el.closest('pre')) {
+          el.remove();
+        }
+      });
 
-      // 3. Remove known clutter containers (ads, sponsors, banners, cookies, share widgets, logos)
+      // 3. Remove known clutter containers (ads, sponsors, cookie banners, newsletter popups)
       const clutterSelectors = [
-        '[class*="ad-"]', '[class*="ads-"]', '[class*="advert"]', '[class*="sponsor"]', '[class*="banner"]',
-        '[id*="ad-"]', '[id*="ads-"]', '[id*="advert"]', '[id*="sponsor"]', '[id*="banner"]',
+        '[class*="adunit"]', '[class*="adserver"]', '[class*="advertisement"]',
+        '[id*="adunit"]', '[id*="adserver"]', '[id*="advertisement"]',
         '[class*="google-ad"]', '[id*="google-ad"]', '[class*="taboola"]', '[class*="outbrain"]',
         '[class*="cookie"]', '[id*="cookie"]', '[class*="consent"]', '[id*="consent"]', '[class*="gdpr"]',
-        '[class*="social"]', '[class*="share-bar"]', '[class*="share-button"]', '[class*="share-box"]',
-        '[class*="sharing"]', '[id*="social"]', '[id*="share"]',
+        '[class*="share-bar"]', '[class*="share-button"]', '[class*="share-box"]',
         '[class*="newsletter"]', '[class*="subscribe"]', '[id*="newsletter"]', '[id*="subscribe"]',
-        '[class*="logo"]', '[id*="logo"]', '[class*="brand"]', '[id*="brand"]',
-        '[class*="breadcrumb"]', '[class*="pagination"]',
         '[role="banner"]', '[role="navigation"]', '[role="complementary"]',
       ];
 
@@ -144,7 +134,7 @@ export function cleanWebpageHtml(rawHtml: string): string {
         try {
           doc.querySelectorAll(selector).forEach((el) => {
             const tag = el.tagName.toLowerCase();
-            if (tag === 'article' || tag === 'main' || tag === 'body') return;
+            if (tag === 'article' || tag === 'main' || tag === 'body' || tag === 'pre' || el.closest('pre')) return;
             el.remove();
           });
         } catch {
@@ -152,45 +142,18 @@ export function cleanWebpageHtml(rawHtml: string): string {
         }
       }
 
-      // 4. Remove clutter images (logos, tracking pixels, social icons, ad images)
+      // 4. Remove tiny 1x1 tracking pixels
       doc.querySelectorAll('img').forEach((img) => {
-        const src = img.getAttribute('src') || '';
-        const alt = img.getAttribute('alt') || '';
-        const cls = img.getAttribute('class') || '';
-        const id = img.getAttribute('id') || '';
         const width = parseInt(img.getAttribute('width') || '100', 10);
         const height = parseInt(img.getAttribute('height') || '100', 10);
-
         if (width <= 2 || height <= 2) {
-          img.remove();
-          return;
-        }
-
-        const info = `${src} ${alt} ${cls} ${id}`.toLowerCase();
-        if (
-          info.includes('logo') ||
-          info.includes('favicon') ||
-          info.includes('avatar') ||
-          info.includes('ad-') ||
-          info.includes('ads') ||
-          info.includes('sponsor') ||
-          info.includes('banner') ||
-          info.includes('tracker') ||
-          info.includes('pixel') ||
-          info.includes('social') ||
-          info.includes('share') ||
-          info.includes('facebook') ||
-          info.includes('twitter') ||
-          info.includes('instagram') ||
-          info.includes('linkedin')
-        ) {
           img.remove();
         }
       });
 
       // Prefer substantial article / main element if present
       const articleEl = doc.querySelector('article, main, [role="main"]');
-      if (articleEl && articleEl.textContent && articleEl.textContent.trim().length > 150) {
+      if (articleEl && articleEl.textContent && articleEl.textContent.trim().length > 200) {
         return articleEl.innerHTML;
       }
 
@@ -539,10 +502,11 @@ export async function parseMhtmlFile(
   // Save valid extracted images to the user's settings folder via copyFilesToLocalFolder
   // This physically stores them in the local folder chosen in settings (server API or DirectoryHandle),
   // saves to IndexedDB media store, and registers blob URLs in memory cache
+  const syncFolder = getSyncLocalMediaFolder();
   let savedFiles: SavedLocalMediaFile[] = [];
   if (filesToSave.length > 0) {
     try {
-      savedFiles = await copyFilesToLocalFolder(filesToSave);
+      savedFiles = await copyFilesToLocalFolder(filesToSave, syncFolder || undefined, undefined, true);
     } catch (err) {
       console.warn('Failed saving MHTML images to settings folder:', err);
     }
@@ -555,9 +519,30 @@ export async function parseMhtmlFile(
     const saved = savedFiles.find((s) => s.fileName === item.fileName) || savedFiles[i];
     const targetUrl = saved?.savedPath || saved?.serveUrl || item.dataUrl;
 
+    // Register blob URLs in memory cache for offline/instant rendering
+    try {
+      const blobUrl = URL.createObjectURL(item.blob);
+      registerMediaBlobUrl(targetUrl, blobUrl);
+      registerMediaBlobUrl(item.fileName, blobUrl);
+      if (saved?.savedPath) {
+        registerMediaBlobUrl(saved.savedPath, blobUrl);
+      }
+      if (item.contentLocation) {
+        registerMediaBlobUrl(item.contentLocation, blobUrl);
+      }
+      if (item.contentId) {
+        registerMediaBlobUrl(`cid:${item.contentId}`, blobUrl);
+        registerMediaBlobUrl(item.contentId, blobUrl);
+      }
+    } catch {
+      // Ignore
+    }
+
     if (item.contentId) {
       imageKeyToUrl.set(`cid:${item.contentId}`, targetUrl);
       imageKeyToUrl.set(item.contentId, targetUrl);
+      imageKeyToUrl.set(`<${item.contentId}>`, targetUrl);
+      imageKeyToUrl.set(`cid:<${item.contentId}>`, targetUrl);
     }
     if (item.contentLocation) {
       imageKeyToUrl.set(item.contentLocation, targetUrl);
@@ -565,7 +550,10 @@ export async function parseMhtmlFile(
         const parsedUrl = new URL(item.contentLocation, 'http://localhost');
         imageKeyToUrl.set(parsedUrl.pathname, targetUrl);
         const fileName = parsedUrl.pathname.split('/').filter(Boolean).pop();
-        if (fileName) imageKeyToUrl.set(fileName, targetUrl);
+        if (fileName) {
+          imageKeyToUrl.set(fileName, targetUrl);
+          imageKeyToUrl.set(decodeURIComponent(fileName), targetUrl);
+        }
       } catch {
         const fileName = item.contentLocation.split('/').filter(Boolean).pop();
         if (fileName) imageKeyToUrl.set(fileName, targetUrl);
@@ -573,6 +561,7 @@ export async function parseMhtmlFile(
     }
     if (item.fileName) {
       imageKeyToUrl.set(item.fileName, targetUrl);
+      imageKeyToUrl.set(decodeURIComponent(item.fileName), targetUrl);
     }
   }
 
@@ -610,31 +599,63 @@ export async function parseMhtmlFile(
     .replace(/&nbsp;/g, ' ')
     .trim();
 
-  // 8. Replace image sources in HTML with resolved local paths
-  let htmlWithResolvedImages = decodedHtml;
+  // 8. Clean HTML structure prior to image resolution and Markdown conversion
+  const cleanedHtml = cleanWebpageHtml(decodedHtml);
 
-  // Replace src="..."
-  htmlWithResolvedImages = htmlWithResolvedImages.replace(
-    /<img([^>]*)\ssrc=["']([^"']+)["']([^>]*)>/gi,
-    (match, before, src, after) => {
-      const resolved = imageKeyToUrl.get(src) || imageKeyToUrl.get(decodeURIComponent(src));
-      if (resolved) {
-        const cleanBefore = before.replace(/\ssrcset=["'][^"']*["']/gi, '');
-        const cleanAfter = after.replace(/\ssrcset=["'][^"']*["']/gi, '');
-        return `<img${cleanBefore} src="${resolved}"${cleanAfter}>`;
+  // Helper function to resolve image sources against extracted images map
+  const resolveImageSrc = (rawSrc: string): string | undefined => {
+    if (!rawSrc) return undefined;
+    const clean = rawSrc.trim();
+    if (imageKeyToUrl.has(clean)) return imageKeyToUrl.get(clean);
+    try {
+      const decoded = decodeURIComponent(clean);
+      if (imageKeyToUrl.has(decoded)) return imageKeyToUrl.get(decoded);
+    } catch {}
+    if (clean.toLowerCase().startsWith('cid:')) {
+      const cidCore = clean.substring(4).replace(/^<|>$/g, '').trim();
+      if (imageKeyToUrl.has(cidCore)) return imageKeyToUrl.get(cidCore);
+      if (imageKeyToUrl.has(`cid:${cidCore}`)) return imageKeyToUrl.get(`cid:${cidCore}`);
+      if (imageKeyToUrl.has(`<${cidCore}>`)) return imageKeyToUrl.get(`<${cidCore}>`);
+      if (imageKeyToUrl.has(`cid:<${cidCore}>`)) return imageKeyToUrl.get(`cid:<${cidCore}>`);
+    }
+    try {
+      const parsed = new URL(clean, 'http://localhost');
+      if (imageKeyToUrl.has(parsed.pathname)) return imageKeyToUrl.get(parsed.pathname);
+      const last = parsed.pathname.split('/').filter(Boolean).pop();
+      if (last && imageKeyToUrl.has(last)) return imageKeyToUrl.get(last);
+      if (last) {
+        const decodedLast = decodeURIComponent(last);
+        if (imageKeyToUrl.has(decodedLast)) return imageKeyToUrl.get(decodedLast);
       }
-      return ''; // Strip ad or clutter images
+    } catch {
+      const last = clean.split('/').filter(Boolean).pop();
+      if (last && imageKeyToUrl.has(last)) return imageKeyToUrl.get(last);
+    }
+    return undefined;
+  };
+
+  // 9. Replace image sources in HTML with resolved local paths
+  let htmlWithResolvedImages = cleanedHtml.replace(
+    /<img\b([^>]*)>/gi,
+    (_match, attrs) => {
+      const srcMatch = attrs.match(/\bsrc=["']([^"']+)["']/i);
+      if (!srcMatch || !srcMatch[1]) return '';
+      const src = srcMatch[1];
+      const resolved = resolveImageSrc(src);
+      if (resolved) {
+        const altMatch = attrs.match(/\balt=["']([^"']*)["']/i);
+        const alt = altMatch ? altMatch[1] : '';
+        return `<img src="${resolved}" alt="${alt}">`;
+      }
+      return ''; // Strip ad, tracker, or broken images
     }
   );
 
   // Remove <source srcset="..."> elements
   htmlWithResolvedImages = htmlWithResolvedImages.replace(/<source\b[^>]*>/gi, '');
 
-  // 9. Clean HTML prior to Markdown conversion (removes ads, logos, trackers, nav, header, footer)
-  const cleanedHtml = cleanWebpageHtml(htmlWithResolvedImages);
-
   // 10. Convert HTML to Clean Markdown
-  let markdown = convertHtmlToMarkdown(cleanedHtml);
+  let markdown = convertHtmlToMarkdown(htmlWithResolvedImages);
 
   // 11. Prepend Source URL / Metadata header
   let metaHeader = '';
@@ -659,7 +680,7 @@ export async function parseMhtmlFile(
   return {
     title: noteTitle,
     markdownContent: markdown,
-    htmlContent: cleanedHtml,
+    htmlContent: htmlWithResolvedImages,
     sourceUrl,
     date: snapshotDate,
     images: extractedImages,
@@ -706,11 +727,12 @@ export async function importMhtmlIntoNote({
   // We do NOT add them to the top gallery (note.images) per user request.
 
   // 3. Insert or append content
+  if (onAppendContent) {
+    onAppendContent(parsed.markdownContent);
+  }
   if (onInsertEditorContent) {
     const html = convertMarkdownToHtml(parsed.markdownContent);
     onInsertEditorContent(html);
-  } else if (onAppendContent) {
-    onAppendContent(parsed.markdownContent);
   }
 
   return parsed;

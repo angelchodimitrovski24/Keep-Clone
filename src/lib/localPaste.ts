@@ -264,7 +264,8 @@ function convertImageUrlToClientMedia(url: string): SavedLocalMediaFile {
 export async function copyFilesToLocalFolder(
   files: File[],
   overrideFolderPath?: string,
-  imageUrls: string[] = []
+  imageUrls: string[] = [],
+  preserveName?: boolean
 ): Promise<SavedLocalMediaFile[]> {
   if ((!files || files.length === 0) && (!imageUrls || imageUrls.length === 0)) {
     return [];
@@ -276,6 +277,9 @@ export async function copyFilesToLocalFolder(
   const formData = new FormData();
   if (syncFolder) {
     formData.append('folderPath', syncFolder);
+  }
+  if (preserveName) {
+    formData.append('preserveName', 'true');
   }
   for (const file of files) {
     formData.append('files', file, file.name || 'image.png');

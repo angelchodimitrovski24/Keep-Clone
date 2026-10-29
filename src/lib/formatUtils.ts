@@ -350,7 +350,11 @@ export function convertMarkdownToHtml(content: string): string {
       .replace(/(^|[\s.,;:!?(])_([^_]+)_(?=[.,;:!?)\s]|$)/g, '$1<u>$2</u>')
       .replace(/~~([^~]+)~~/g, '<s>$1</s>')
       .replace(/`([^`]+)`/g, '<code>$1</code>')
-      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-blue-600 dark:text-blue-400 underline hover:opacity-80">$1</a>');
+      .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_m, alt, rawPath) => {
+        const serveUrl = resolveLocalMediaUrl(rawPath.trim());
+        return `<img src="${serveUrl}" alt="${alt || 'image'}" class="rounded-xl max-h-96 w-auto my-2 border border-black/10 dark:border-white/10 shadow-xs" loading="lazy" />`;
+      })
+      .replace(/(?<!\!)\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-blue-600 dark:text-blue-400 underline hover:opacity-80">$1</a>');
   };
 
   let i = 0;
@@ -577,6 +581,97 @@ export function toggleCheckboxInAnyContent(content: string, index: number, newCh
   });
 }
 
+function detectCodeLanguage(preAttrs: string, codeAttrs?: string): string {
+  const combined = `${preAttrs || ''} ${codeAttrs || ''}`;
+
+  // 1. Check language-* or lang-*
+  const langMatch = combined.match(/\b(?:language|lang)-([a-zA-Z0-9_#+-]+)\b/i);
+  if (langMatch) return langMatch[1].toLowerCase();
+
+  // 2. Check data-lang="..." or data-language="..."
+  const dataLangMatch = combined.match(/\bdata-lang(?:uage)?=["']([^"']+)["']/i);
+  if (dataLangMatch) return dataLangMatch[1].toLowerCase();
+
+  // 3. Check highlight-source-*
+  const hlMatch = combined.match(/\bhighlight-source-([a-zA-Z0-9_#+-]+)\b/i);
+  if (hlMatch) return hlMatch[1].toLowerCase();
+
+  // 4. Check brush:*
+  const brushMatch = combined.match(/\bbrush:\s*([a-zA-Z0-9_#+-]+)\b/i);
+  if (brushMatch) return brushMatch[1].toLowerCase();
+
+  // 5. Check standalone language class names
+  const knownLangs = [
+    'javascript', 'typescript', 'python', 'bash', 'shell', 'sh', 'zsh',
+    'html', 'css', 'scss', 'sass', 'json', 'yaml', 'yml', 'xml', 'sql',
+    'cpp', 'c', 'csharp', 'cs', 'java', 'kotlin', 'swift', 'rust', 'go',
+    'ruby', 'php', 'scala', 'r', 'dart', 'lua', 'perl', 'dockerfile',
+    'graphql', 'markdown', 'md', 'diff', 'powershell', 'ps1'
+  ];
+  const classMatch = combined.match(/\bclass=["']([^"']+)["']/i);
+  if (classMatch) {
+    const classes = classMatch[1].toLowerCase().split(/\s+/);
+    for (const cls of classes) {
+      const clean = cls.replace(/^(hljs-|language-|lang-)/, '');
+      if (knownLangs.includes(clean)) {
+        return clean;
+      }
+    }
+  }
+
+  return '';
+}
+
+function cleanCodeContent(inner: string): string {
+  let code = inner;
+
+  // Remove copy buttons or action toolbars
+  code = code.replace(/<button\b[\s\S]*?<\/button>/gi, '');
+  code = code.replace(/<div\b[^>]*\b(?:copy|toolbar|actions)[^>]*>[\s\S]*?<\/div>/gi, '');
+
+  // Remove line numbers
+  code = code.replace(/<span\b[^>]*\b(?:lineno|line-number|line-numbers-rows|gutter)[^>]*>[\s\S]*?<\/span>/gi, '');
+
+  // Unwrap <code> tag if present
+  const codeTagMatch = code.match(/<code\b[^>]*>([\s\S]*?)<\/code>/i);
+  if (codeTagMatch) {
+    code = codeTagMatch[1];
+  }
+
+  // Convert line breaks and paragraph/div line splits to \n
+  code = code.replace(/<br\s*\/?>/gi, '\n');
+  code = code.replace(/<\/(?:p|div|tr|li)>\s*<(?:p|div|tr|li)[^>]*>/gi, '\n');
+
+  // Strip all remaining HTML tags (syntax highlighting spans, etc.)
+  code = code.replace(/<[^>]+>/g, '');
+
+  // Decode HTML entities
+  code = code
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&#(\d+);/g, (_m, dec) => String.fromCharCode(Number(dec)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_m, hex) => String.fromCharCode(parseInt(hex, 16)));
+
+  // Normalize line breaks
+  code = code.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+  // Trim leading/trailing blank lines, but preserve indentation of each line!
+  const lines = code.split('\n');
+  while (lines.length > 0 && lines[0].trim() === '') {
+    lines.shift();
+  }
+  while (lines.length > 0 && lines[lines.length - 1].trim() === '') {
+    lines.pop();
+  }
+
+  return lines.join('\n');
+}
+
 /**
  * Converts raw HTML string into clean standard Markdown (headings, bold, italic,
  * lists, task checkboxes, tables, code blocks, links, and blockquotes).
@@ -586,15 +681,20 @@ export function convertHtmlToMarkdown(html: string): string {
 
   let md = html;
 
-  // 1. Code blocks: <pre><code...>...</code></pre>
-  md = md.replace(/<pre[^>]*><code(?: class="language-([^"]*)")?>([\s\S]*?)<\/code><\/pre>/gi, (_m, lang, code) => {
-    const cleanCode = code
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&amp;/g, '&')
-      .replace(/&quot;/g, '"')
-      .replace(/&#39;/g, "'");
-    return `\n\n\`\`\`${lang || ''}\n${cleanCode.trim()}\n\`\`\`\n\n`;
+  const codeBlocks: string[] = [];
+
+  // 1. Code blocks: extract and protect all <pre>...</pre> blocks
+  md = md.replace(/<pre\b([^>]*)>([\s\S]*?)<\/pre>/gi, (_match, preAttrs, inner) => {
+    const codeTagMatch = inner.match(/<code\b([^>]*)>/i);
+    const codeAttrs = codeTagMatch ? codeTagMatch[1] : '';
+
+    const lang = detectCodeLanguage(preAttrs, codeAttrs);
+    const cleanCode = cleanCodeContent(inner);
+
+    const blockIndex = codeBlocks.length;
+    codeBlocks.push(`\n\n\`\`\`${lang}\n${cleanCode}\n\`\`\`\n\n`);
+
+    return `\n\n___KEEP_CODE_BLOCK_${blockIndex}___\n\n`;
   });
 
   // 2. Tables: <table>...</table> to Markdown table
@@ -694,7 +794,14 @@ export function convertHtmlToMarkdown(html: string): string {
   md = md.replace(/<(?:em|i)[^>]*>([\s\S]*?)<\/(?:em|i)>/gi, '*$1*');
   md = md.replace(/<u>([\s\S]*?)<\/u>/gi, '_$1_');
   md = md.replace(/<(?:s|strike|del)[^>]*>([\s\S]*?)<\/(?:s|strike|del)>/gi, '~~$1~~');
-  md = md.replace(/<code[^>]*>([\s\S]*?)<\/code>/gi, '`$1`');
+  md = md.replace(/<code\b[^>]*>([\s\S]*?)<\/code>/gi, (_m, codeInner) => {
+    const clean = codeInner
+      .replace(/<[^>]+>/g, '')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&amp;/g, '&');
+    return `\`${clean.trim()}\``;
+  });
 
   // 14. Strip any leftover HTML tags
   md = md.replace(/<[^>]+>/g, '');
@@ -710,6 +817,11 @@ export function convertHtmlToMarkdown(html: string): string {
 
   // 16. Clean up excess whitespace
   md = md.replace(/\n{3,}/g, '\n\n').trim();
+
+  // 17. Restore protected code blocks
+  for (let idx = 0; idx < codeBlocks.length; idx++) {
+    md = md.replace(new RegExp(`___KEEP_CODE_BLOCK_${idx}___`, 'g'), () => codeBlocks[idx].trim());
+  }
 
   return md;
 }

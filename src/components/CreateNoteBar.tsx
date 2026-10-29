@@ -309,11 +309,25 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
     });
   };
 
-const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const fileList = e.target.files;
     if (!fileList || fileList.length === 0) return;
     const filesArray = Array.from(fileList);
     e.target.value = '';
+
+    const mhtmlFiles = filesArray.filter((f) =>
+      f.name.toLowerCase().endsWith('.mhtml') ||
+      f.name.toLowerCase().endsWith('.mht') ||
+      f.type.includes('message/rfc822') ||
+      f.type.includes('multipart/related')
+    );
+
+    if (mhtmlFiles.length > 0) {
+      for (const mf of mhtmlFiles) {
+        await handleImportMhtml(mf);
+      }
+      return;
+    }
 
     // Insert into WYSIWYG editor or append markdown links to note content
     if (editorRef.current) {
