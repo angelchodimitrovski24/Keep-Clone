@@ -308,6 +308,17 @@ export function renderMarkdownImagesInString(str: string): string {
   });
 }
 
+export function isDataviewCode(code: string, lang?: string): boolean {
+  if (lang && (lang.toLowerCase() === 'dataview' || lang.toLowerCase() === 'dataviewjs')) {
+    return true;
+  }
+  const trimmed = (code || '').trim();
+  if (/^\s*(?:TABLE|LIST|TASK|NOTION|GALLERY|CARDS|PAGES)\b/i.test(trimmed)) {
+    return true;
+  }
+  return false;
+}
+
 /**
  * Converts Markdown string, Tiptap HTML with embedded markdown, or plain text
  * to standard semantic Google Keep HTML with complete support for headings,
@@ -370,9 +381,17 @@ export function convertMarkdownToHtml(content: string): string {
           .replace(/&/g, '&amp;')
           .replace(/</g, '&lt;')
           .replace(/>/g, '&gt;');
-        const preHtml = `<pre><code${lang ? ` class="language-${lang}"` : ''}>${escaped}</code></pre>`;
-        const placeholder = addProtected(preHtml);
-        el.replaceWith(doc.createTextNode(`\n\n${placeholder}\n\n`));
+                const isDataview = isDataviewCode(cleanCode, lang);
+        if (isDataview) {
+          const rawQuery = cleanCode.replace(/"/g, '&quot;');
+          const dataviewHtml = `<div data-dataview-block="true" data-dataview-query="${rawQuery}"><pre class="hidden"><code class="language-dataview">${escaped}</code></pre></div>`;
+          const placeholder = addProtected(dataviewHtml);
+          el.replaceWith(doc.createTextNode(`\n\n${placeholder}\n\n`));
+        } else {
+          const preHtml = `<pre><code${lang ? ` class="language-${lang}"` : ''}>${escaped}</code></pre>`;
+          const placeholder = addProtected(preHtml);
+          el.replaceWith(doc.createTextNode(`\n\n${placeholder}\n\n`));
+        }
       });
 
       text = doc.body ? doc.body.innerHTML : doc.documentElement.innerHTML;
@@ -382,8 +401,19 @@ export function convertMarkdownToHtml(content: string): string {
   }
 
   // 2. Protect existing HTML <pre>...</pre> blocks (regex fallback)
-  text = text.replace(/<pre\b[^>]*>([\s\S]*?)<\/pre>/gi, (match, inner) => {
+  text = text.replace(/<pre\b([^>]*)>([\s\S]*?)<\/pre>/gi, (match, preAttrs, inner) => {
     if (inner.includes('___KEEP_PRE_BLOCK_')) return match;
+    const codeTagMatch = inner.match(/<code\b([^>]*)>([\s\S]*?)<\/code>/i);
+    const codeAttrs = codeTagMatch ? codeTagMatch[1] : '';
+    const codeInner = codeTagMatch ? codeTagMatch[2] : inner;
+    const lang = detectCodeLanguage(preAttrs, codeAttrs);
+    const clean = cleanCodeContent(codeInner);
+    if (isDataviewCode(clean, lang)) {
+      const escapedAttr = clean.replace(/"/g, '&quot;');
+      const escaped = clean.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const dataviewHtml = `<div data-dataview-block="true" data-dataview-query="${escapedAttr}"><pre class="hidden"><code class="language-dataview">${escaped}</code></pre></div>`;
+      return `\n\n${addProtected(dataviewHtml)}\n\n`;
+    }
     return `\n\n${addProtected(match)}\n\n`;
   });
 
@@ -465,7 +495,8 @@ export function convertMarkdownToHtml(content: string): string {
           .replace(/&/g, '&amp;')
           .replace(/</g, '&lt;')
           .replace(/>/g, '&gt;');
-        if (codeBlockLang.toLowerCase() === 'dataview' || codeBlockLang.toLowerCase() === 'dataviewjs') {
+        const isDataview = isDataviewCode(codeBlockLines.join('\n'), codeBlockLang);
+        if (isDataview) {
           const rawQuery = codeBlockLines.join('\n').replace(/"/g, '&quot;');
           result += `<div data-dataview-block="true" data-dataview-query="${rawQuery}"><pre class="hidden"><code class="language-dataview">${codeText}</code></pre></div>`;
         } else {
@@ -487,7 +518,7 @@ export function convertMarkdownToHtml(content: string): string {
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
-      if (lang.toLowerCase() === 'dataview' || lang.toLowerCase() === 'dataviewjs') {
+      if (isDataviewCode(singleLineBlockMatch[3], lang)) {
         const rawQuery = (singleLineBlockMatch[3] || '').replace(/"/g, '&quot;');
         result += `<div data-dataview-block="true" data-dataview-query="${rawQuery}"><pre class="hidden"><code class="language-dataview">${codeText}</code></pre></div>`;
       } else {
@@ -506,7 +537,7 @@ export function convertMarkdownToHtml(content: string): string {
         codeBlockLang = fenceMatch[2].trim();
         codeBlockLines = [];
       } else {
-        const isDataview = codeBlockLang.toLowerCase() === 'dataview' || codeBlockLang.toLowerCase() === 'dataviewjs';
+        const isDataview = isDataviewCode(codeBlockLines.join('\n'), codeBlockLang);
         const codeText = codeBlockLines
           .join('\n')
           .replace(/&/g, '&amp;')

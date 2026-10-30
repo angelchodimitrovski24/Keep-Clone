@@ -5,6 +5,7 @@ import {
   convertMarkdownToHtml,
   renderMarkdownImagesInString,
   toggleCheckboxInAnyContent,
+  isDataviewCode,
 } from '@/lib/formatUtils';
 import { formatWikiLinksInHtml } from '@/lib/noteLinks';
 import { renderMarkdownTablesInHtml } from '@/lib/tableUtils';
@@ -33,40 +34,58 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
   const withTables = renderMarkdownTablesInHtml(withImages);
   const renderedHtml = formatWikiLinksInHtml(withTables);
 
-  // Check if there are any Dataview blocks
-  const hasDataview = renderedHtml.includes('data-dataview-block="true"');
-
   const segments = useMemo(() => {
-    if (!hasDataview) return null;
-
+    const blockRegex = /(?:<div\b[^>]*data-dataview-(?:block|query)[^>]*>[\s\S]*?<\/div>|<pre\b[^>]*>[\s\S]*?<\/pre>)/gi;
     const segs: Array<{ type: 'html' | 'dataview'; content: string }> = [];
-    const dataviewRegex = /<div\b[^>]*data-dataview-block="true"[^>]*data-dataview-query=["']([^"']+)["'][^>]*>[\s\S]*?<\/div>/gi;
-
     let lastIndex = 0;
     let match: RegExpExecArray | null;
+    let hasAnyDataview = false;
 
-    while ((match = dataviewRegex.exec(renderedHtml)) !== null) {
+    while ((match = blockRegex.exec(renderedHtml)) !== null) {
+      const fullMatch = match[0];
       const start = match.index;
-      if (start > lastIndex) {
-        segs.push({
-          type: 'html',
-          content: renderedHtml.substring(lastIndex, start),
-        });
+
+      // 1. Explicit data-dataview-block / data-dataview-query
+      if (fullMatch.includes('data-dataview-')) {
+        hasAnyDataview = true;
+        if (start > lastIndex) {
+          segs.push({ type: 'html', content: renderedHtml.substring(lastIndex, start) });
+        }
+        const qMatch = fullMatch.match(/data-dataview-query=["']([^"']+)["']/i);
+        let query = qMatch ? qMatch[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&') : '';
+        if (!query) {
+          const codeMatch = fullMatch.match(/<code\b[^>]*>([\s\S]*?)<\/code>/i);
+          query = codeMatch ? codeMatch[1] : '';
+        }
+        segs.push({ type: 'dataview', content: query.trim() });
+        lastIndex = blockRegex.lastIndex;
+        continue;
       }
 
-      const rawQuery = match[1]
-        .replace(/&quot;/g, '"')
-        .replace(/&amp;/g, '&')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>');
+      // 2. <pre> block with Dataview code or language-dataview
+      if (fullMatch.startsWith('<pre')) {
+        const codeMatch = fullMatch.match(/<code\b([^>]*)>([\s\S]*?)<\/code>/i);
+        const codeAttrs = codeMatch ? codeMatch[1] : '';
+        const codeInner = (codeMatch ? codeMatch[2] : fullMatch.replace(/<\/?pre\b[^>]*>/gi, ''))
+          .replace(/&amp;/g, '&')
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>')
+          .trim();
 
-      segs.push({
-        type: 'dataview',
-        content: rawQuery,
-      });
-
-      lastIndex = dataviewRegex.lastIndex;
+        const isDv = codeAttrs.includes('language-dataview') || isDataviewCode(codeInner);
+        if (isDv) {
+          hasAnyDataview = true;
+          if (start > lastIndex) {
+            segs.push({ type: 'html', content: renderedHtml.substring(lastIndex, start) });
+          }
+          segs.push({ type: 'dataview', content: codeInner });
+          lastIndex = blockRegex.lastIndex;
+          continue;
+        }
+      }
     }
+
+    if (!hasAnyDataview) return null;
 
     if (lastIndex < renderedHtml.length) {
       segs.push({
@@ -76,7 +95,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
     }
 
     return segs;
-  }, [hasDataview, renderedHtml]);
+  }, [renderedHtml]);
 
   const handleContainerClick = (e: React.MouseEvent<HTMLDivElement>) => {
     // Handle note link clicks ([[Wiki Links]])

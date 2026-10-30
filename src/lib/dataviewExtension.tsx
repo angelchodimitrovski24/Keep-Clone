@@ -5,6 +5,12 @@ import { Node, mergeAttributes } from '@tiptap/core';
 import { ReactNodeViewRenderer, NodeViewWrapper, NodeViewProps } from '@tiptap/react';
 import { DataviewView } from '@/components/DataviewView';
 
+export function isDataviewText(text: string): boolean {
+  if (!text) return false;
+  const trimmed = text.trim();
+  return /^\s*(?:TABLE|LIST|TASK|NOTION|GALLERY|CARDS|PAGES)\b/i.test(trimmed);
+}
+
 const DataviewNodeView: React.FC<NodeViewProps> = ({ node, updateAttributes, deleteNode }) => {
   const query = (node.attrs.query as string) || 'NOTION\nWHERE !isArchived\nSORT updatedAt DESC';
 
@@ -47,15 +53,15 @@ export const DataviewExtension = Node.create({
     return [
       {
         tag: 'div[data-dataview-block]',
-        priority: 70,
+        priority: 100,
       },
       {
         tag: 'div[data-dataview-query]',
-        priority: 70,
+        priority: 100,
       },
       {
         tag: 'pre',
-        priority: 65,
+        priority: 90,
         getAttrs: (node) => {
           if (typeof node === 'string') return false;
           const el = node as HTMLElement;
@@ -67,8 +73,7 @@ export const DataviewExtension = Node.create({
             return { query: text };
           }
 
-          // If text clearly starts with a Dataview keyword block
-          if (/^(?:TABLE|LIST|TASK|NOTION|GALLERY|CARDS)\s*(?:\r?\n|FROM|WHERE|SORT|$)/i.test(text)) {
+          if (isDataviewText(text)) {
             return { query: text };
           }
 

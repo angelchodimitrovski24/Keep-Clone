@@ -378,20 +378,33 @@ export function parseDataviewQuery(queryText: string): DataviewParsedQuery {
  * Executes a parsed Dataview query over the provided notes collection.
  */
 export function executeDataviewQuery(
-  query: DataviewParsedQuery,
+  queryInput: DataviewParsedQuery | string,
   allNotes: Note[],
   currentNoteId?: string
 ): DataviewQueryResult {
-  let filtered = allNotes.filter((note) => {
+  const query: DataviewParsedQuery =
+    typeof queryInput === 'string'
+      ? parseDataviewQuery(queryInput)
+      : (queryInput || parseDataviewQuery('NOTION'));
+
+  const conditions = query.conditions || [];
+  const fromTags = query.fromTags || [];
+  const excludeTags = query.excludeTags || [];
+  const fromCategories = query.fromCategories || [];
+  const excludeCategories = query.excludeCategories || [];
+  const sortField = query.sortField || 'updatedAt';
+  const sortDirection = query.sortDirection || 'desc';
+
+  let filtered = (allNotes || []).filter((note) => {
     // 0. Exclude self note (to avoid infinite recursion) and trash by default unless requested
     if (currentNoteId && note.id === currentNoteId) return false;
 
     // Check if trash explicitly requested in conditions
-    const checksTrash = query.conditions.some((c) => c.field === 'isTrash' && c.value === true);
+    const checksTrash = conditions.some((c) => c.field === 'isTrash' && c.value === true);
     if (!checksTrash && note.isTrash) return false;
 
     // 1. Evaluate FROM Tags
-    if (query.fromTags.length > 0) {
+    if (fromTags.length > 0) {
       const noteLabelsLower = (note.labels || []).map((l) => l.toLowerCase());
       const hasMatch = query.fromTags.some((tag) =>
         noteLabelsLower.includes(tag) || noteLabelsLower.some((nl) => nl.includes(tag))
