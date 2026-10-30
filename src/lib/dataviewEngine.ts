@@ -6,6 +6,7 @@ export interface DataviewCondition {
   field: string;
   operator: '=' | '!=' | 'contains' | '!contains' | '>' | '<' | '>=' | '<=' | 'is' | 'is_not';
   value: any;
+  orConditions?: DataviewCondition[];
 }
 
 export interface DataviewParsedQuery {
@@ -103,7 +104,8 @@ function normalizeFieldName(raw: string): string {
   if (lower === 'trash' || lower === 'istrash') return 'isTrash';
   if (lower === 'checklist' || lower === 'islist' || lower === 'tasks' || lower === 'todos') return 'isList';
   if (lower === 'reminder' || lower === 'hasreminder') return 'reminder';
-  if (lower === 'content' || lower === 'text' || lower === 'file.text') return 'content';
+  if (lower === 'search' || lower === 'keyword' || lower === 'both' || lower === 'query' || lower === 'q' || lower === 'all') return 'search';
+  if (lower === 'content' || lower === 'text' || lower === 'file.text' || lower === 'body' || lower === 'note') return 'content';
   if (lower === 'completed' || lower === 'iscompleted' || lower === 'done') return 'completed';
   return lower;
 }
@@ -125,6 +127,89 @@ function normalizeFieldName(raw: string): string {
  * TASK
  * WHERE !completed
  */
+function parseSingleCondition(str: string): DataviewCondition | null {
+  const trimmed = str.trim();
+  if (!trimmed) return null;
+
+  // #tag or !#tag shorthand
+  if (/^!?#[a-zA-Z0-9_\u00C0-\u024F\u0400-\u04FF\/-]+/.test(trimmed)) {
+    const isNeg = trimmed.startsWith('!');
+    const tag = trimmed.replace(/^!?#/, '').toLowerCase();
+    return {
+      field: 'labels',
+      operator: isNeg ? '!contains' : 'contains',
+      value: tag,
+    };
+  }
+
+  // contains(field, "value") or !contains(...)
+  const containsMatch = trimmed.match(/^(!)?contains\(([^,]+),\s*["']?([^"')]+)["']?\)$/i);
+  if (containsMatch) {
+    const isNeg = containsMatch[1] === '!';
+    const field = normalizeFieldName(containsMatch[2]);
+    const value = containsMatch[3].trim().toLowerCase();
+    return {
+      field,
+      operator: isNeg ? '!contains' : 'contains',
+      value,
+    };
+  }
+
+  // field contains "value"
+  const infixContainsMatch = trimmed.match(/^([a-zA-Z0-9_.-]+)\s+contains\s+["']?([^"']+)["']?$/i);
+  if (infixContainsMatch) {
+    return {
+      field: normalizeFieldName(infixContainsMatch[1]),
+      operator: 'contains',
+      value: infixContainsMatch[2].trim().toLowerCase(),
+    };
+  }
+
+  // Binary operator comparison: field (=, !=, >=, <=, >, <) value
+  const opMatch = trimmed.match(/^([a-zA-Z0-9_.-]+)\s*(=|!=|>=|<=|>|<)\s*(.+)$/);
+  if (opMatch) {
+    const field = normalizeFieldName(opMatch[1]);
+    const op = opMatch[2] as DataviewCondition['operator'];
+    let rawVal = opMatch[3].trim().replace(/^["']|["']$/g, '');
+    let parsedVal: any = rawVal;
+
+    if (rawVal.toLowerCase() === 'true') parsedVal = true;
+    else if (rawVal.toLowerCase() === 'false') parsedVal = false;
+    else if (rawVal.toLowerCase() === 'null') parsedVal = null;
+    else if (!isNaN(Number(rawVal))) parsedVal = Number(rawVal);
+    else {
+      const dateMs = parseDateValue(rawVal);
+      if (dateMs !== null && (field === 'updatedAt' || field === 'createdAt')) {
+        parsedVal = dateMs;
+      }
+    }
+
+    return {
+      field,
+      operator: op,
+      value: parsedVal,
+    };
+  }
+
+  // Negated boolean: !isPinned, !isArchived, !completed
+  if (trimmed.startsWith('!')) {
+    const field = normalizeFieldName(trimmed.substring(1));
+    return {
+      field,
+      operator: '=',
+      value: false,
+    };
+  }
+
+  // Positive boolean flag: isPinned, isArchived, completed, reminder
+  const field = normalizeFieldName(trimmed);
+  return {
+    field,
+    operator: '=',
+    value: true,
+  };
+}
+
 export function parseDataviewQuery(queryText: string): DataviewParsedQuery {
   const clean = queryText.replace(/```(?:dataview)?/gi, '').trim();
   const lines = clean.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
@@ -140,50 +225,36 @@ export function parseDataviewQuery(queryText: string): DataviewParsedQuery {
   let sortDirection: 'asc' | 'desc' = 'desc';
   let limit: number | undefined = undefined;
 
-  let currentClause = '';
-  let clauseBuffers: Record<string, string[]> = {
-    view: [],
-    from: [],
-    where: [],
-    sort: [],
-    limit: [],
+  // Extract clauses across lines or inline: VIEW, FROM, WHERE, SORT, LIMIT
+  const clauseRegex = /\b(FROM|WHERE|SORT|LIMIT)\b/gi;
+  const matches: Array<{ keyword: string; index: number; length: number }> = [];
+  let m: RegExpExecArray | null;
+  while ((m = clauseRegex.exec(clean)) !== null) {
+    matches.push({ keyword: m[1].toUpperCase(), index: m.index, length: m[0].length });
+  }
+
+  const clauseBuffers = {
+    view: matches.length > 0 ? clean.substring(0, matches[0].index).trim() : clean,
+    from: '',
+    where: '',
+    sort: '',
+    limit: '',
   };
 
-  for (const line of lines) {
-    const upper = line.toUpperCase();
-    if (upper.startsWith('TABLE') || upper.startsWith('LIST') || upper.startsWith('TASK') || upper.startsWith('NOTION') || upper.startsWith('GALLERY') || upper.startsWith('CARDS') || upper.startsWith('PAGES')) {
-      currentClause = 'view';
-      clauseBuffers.view.push(line);
-    } else if (upper.startsWith('FROM ') || upper === 'FROM') {
-      currentClause = 'from';
-      clauseBuffers.from.push(line.replace(/^FROM\s*/i, ''));
-    } else if (upper.startsWith('WHERE ') || upper === 'WHERE') {
-      currentClause = 'where';
-      clauseBuffers.where.push(line.replace(/^WHERE\s*/i, ''));
-    } else if (upper.startsWith('SORT ') || upper === 'SORT') {
-      currentClause = 'sort';
-      clauseBuffers.sort.push(line.replace(/^SORT\s*/i, ''));
-    } else if (upper.startsWith('LIMIT ') || upper === 'LIMIT') {
-      currentClause = 'limit';
-      clauseBuffers.limit.push(line.replace(/^LIMIT\s*/i, ''));
-    } else if (currentClause) {
-      clauseBuffers[currentClause].push(line);
-    } else {
-      // Default line: check if contains FROM or WHERE
-      if (/^from\s+/i.test(line)) {
-        currentClause = 'from';
-        clauseBuffers.from.push(line.replace(/^FROM\s*/i, ''));
-      } else if (/^where\s+/i.test(line)) {
-        currentClause = 'where';
-        clauseBuffers.where.push(line.replace(/^WHERE\s*/i, ''));
-      } else {
-        clauseBuffers.where.push(line);
-      }
-    }
+  for (let i = 0; i < matches.length; i++) {
+    const cur = matches[i];
+    const next = matches[i + 1];
+    const start = cur.index + cur.length;
+    const end = next ? next.index : clean.length;
+    const body = clean.substring(start, end).trim();
+    if (cur.keyword === 'FROM') clauseBuffers.from = body;
+    else if (cur.keyword === 'WHERE') clauseBuffers.where = body;
+    else if (cur.keyword === 'SORT') clauseBuffers.sort = body;
+    else if (cur.keyword === 'LIMIT') clauseBuffers.limit = body;
   }
 
   // 1. Process VIEW Clause
-  const viewLine = clauseBuffers.view.join(' ').trim();
+  const viewLine = clauseBuffers.view.trim();
   if (viewLine) {
     const viewUpper = viewLine.toUpperCase();
     if (viewUpper.startsWith('TABLE')) {
@@ -210,7 +281,7 @@ export function parseDataviewQuery(queryText: string): DataviewParsedQuery {
   }
 
   // 2. Process FROM Clause
-  const fromRaw = clauseBuffers.from.join(' ').trim();
+  const fromRaw = clauseBuffers.from.trim();
   if (fromRaw) {
     // Extract tags #tag or !#tag
     const tagMatches = fromRaw.matchAll(/(!)?#([a-zA-Z0-9_\u00C0-\u024F\u0400-\u04FF\/-]+)/g);
@@ -245,90 +316,40 @@ export function parseDataviewQuery(queryText: string): DataviewParsedQuery {
   }
 
   // 3. Process WHERE Clause
-  const whereRaw = clauseBuffers.where.join(' ').trim();
-  if (whereRaw) {
-    // Split by AND / && (OR handled within conditions)
-    const conditionStrings = whereRaw.split(/\s+(?:AND|&&)\s+/i);
+  const whereJoined = clauseBuffers.where.trim();
+  if (whereJoined) {
+    const rawTokens = whereJoined
+      .split(/\r?\n|\s+(?:AND|&&)\s+/i)
+      .map((s) => s.trim())
+      .filter(Boolean);
 
-    for (const cStr of conditionStrings) {
-      const trimmed = cStr.trim();
-      if (!trimmed) continue;
-
-      // contains(field, "value") or !contains(...)
-      const containsMatch = trimmed.match(/^(!)?contains\(([^,]+),\s*["']?([^"')]+)["']?\)$/i);
-      if (containsMatch) {
-        const isNeg = containsMatch[1] === '!';
-        const field = normalizeFieldName(containsMatch[2]);
-        const value = containsMatch[3].trim().toLowerCase();
-        conditions.push({
-          field,
-          operator: isNeg ? '!contains' : 'contains',
-          value,
-        });
-        continue;
-      }
-
-      // field contains "value"
-      const infixContainsMatch = trimmed.match(/^([a-zA-Z0-9_.-]+)\s+contains\s+["']?([^"']+)["']?$/i);
-      if (infixContainsMatch) {
-        conditions.push({
-          field: normalizeFieldName(infixContainsMatch[1]),
-          operator: 'contains',
-          value: infixContainsMatch[2].trim().toLowerCase(),
-        });
-        continue;
-      }
-
-      // Binary operator comparison: field (=, !=, >=, <=, >, <) value
-      const opMatch = trimmed.match(/^([a-zA-Z0-9_.-]+)\s*(=|!=|>=|<=|>|<)\s*(.+)$/);
-      if (opMatch) {
-        const field = normalizeFieldName(opMatch[1]);
-        const op = opMatch[2] as DataviewCondition['operator'];
-        let rawVal = opMatch[3].trim().replace(/^["']|["']$/g, '');
-        let parsedVal: any = rawVal;
-
-        if (rawVal.toLowerCase() === 'true') parsedVal = true;
-        else if (rawVal.toLowerCase() === 'false') parsedVal = false;
-        else if (rawVal.toLowerCase() === 'null') parsedVal = null;
-        else if (!isNaN(Number(rawVal))) parsedVal = Number(rawVal);
-        else {
-          const dateMs = parseDateValue(rawVal);
-          if (dateMs !== null && (field === 'updatedAt' || field === 'createdAt')) {
-            parsedVal = dateMs;
-          }
+    for (const rawToken of rawTokens) {
+      if (/\s+(?:OR|\|\|)\s+/i.test(rawToken)) {
+        const orParts = rawToken.split(/\s+(?:OR|\|\|)\s+/i).map((s) => s.trim()).filter(Boolean);
+        const parsedOrs: DataviewCondition[] = [];
+        for (const part of orParts) {
+          const parsed = parseSingleCondition(part);
+          if (parsed) parsedOrs.push(parsed);
         }
-
-        conditions.push({
-          field,
-          operator: op,
-          value: parsedVal,
-        });
+        if (parsedOrs.length > 0) {
+          const primary = parsedOrs[0];
+          if (parsedOrs.length > 1) {
+            primary.orConditions = parsedOrs.slice(1);
+          }
+          conditions.push(primary);
+        }
         continue;
       }
 
-      // Negated boolean: !isPinned, !isArchived, !completed
-      if (trimmed.startsWith('!')) {
-        const field = normalizeFieldName(trimmed.substring(1));
-        conditions.push({
-          field,
-          operator: '=',
-          value: false,
-        });
-        continue;
+      const single = parseSingleCondition(rawToken);
+      if (single) {
+        conditions.push(single);
       }
-
-      // Positive boolean flag: isPinned, isArchived, completed, reminder
-      const field = normalizeFieldName(trimmed);
-      conditions.push({
-        field,
-        operator: '=',
-        value: true,
-      });
     }
   }
 
   // 4. Process SORT Clause
-  const sortRaw = clauseBuffers.sort.join(' ').trim();
+  const sortRaw = clauseBuffers.sort.trim();
   if (sortRaw) {
     const parts = sortRaw.split(/\s+/);
     if (parts[0]) {
@@ -351,7 +372,7 @@ export function parseDataviewQuery(queryText: string): DataviewParsedQuery {
   }
 
   // 5. Process LIMIT Clause
-  const limitRaw = clauseBuffers.limit.join(' ').trim();
+  const limitRaw = clauseBuffers.limit.trim();
   if (limitRaw) {
     const num = parseInt(limitRaw, 10);
     if (!isNaN(num) && num > 0) {
@@ -436,85 +457,77 @@ export function executeDataviewQuery(
     }
 
     // 5. Evaluate WHERE Conditions
-    for (const cond of query.conditions) {
-      const { field, operator, value } = cond;
+    function testSingleCond(c: DataviewCondition, n: Note): boolean {
+      const { field, operator, value } = c;
 
       // Boolean conditions
-      if (field === 'isPinned') {
-        const matches = Boolean(note.isPinned) === Boolean(value);
-        if (!matches) return false;
-        continue;
-      }
+      if (field === 'isPinned') return Boolean(n.isPinned) === Boolean(value);
+      if (field === 'isArchived') return Boolean(n.isArchived) === Boolean(value);
+      if (field === 'isTrash') return Boolean(n.isTrash) === Boolean(value);
+      if (field === 'isList') return Boolean(n.isList) === Boolean(value);
+      if (field === 'reminder') return Boolean(n.reminder) === Boolean(value);
 
-      if (field === 'isArchived') {
-        const matches = Boolean(note.isArchived) === Boolean(value);
-        if (!matches) return false;
-        continue;
-      }
-
-      if (field === 'isTrash') {
-        const matches = Boolean(note.isTrash) === Boolean(value);
-        if (!matches) return false;
-        continue;
-      }
-
-      if (field === 'isList') {
-        const matches = Boolean(note.isList) === Boolean(value);
-        if (!matches) return false;
-        continue;
-      }
-
-      if (field === 'reminder') {
-        const hasRem = Boolean(note.reminder);
-        const matches = hasRem === Boolean(value);
-        if (!matches) return false;
-        continue;
+      // Search / Keyword across title, content, category, and labels
+      if (field === 'search') {
+        const titleLower = (n.title || '').toLowerCase();
+        const contentLower = (n.content || '').toLowerCase();
+        const catLower = (n.category || '').toLowerCase();
+        const labelsLower = (n.labels || []).map((l) => l.toLowerCase()).join(' ');
+        const targetVal = String(value).toLowerCase();
+        const matches =
+          titleLower.includes(targetVal) ||
+          contentLower.includes(targetVal) ||
+          catLower.includes(targetVal) ||
+          labelsLower.includes(targetVal);
+        if ((operator === 'contains' || operator === '=') && !matches) return false;
+        if ((operator === '!contains' || operator === '!=') && matches) return false;
+        return true;
       }
 
       // Title
       if (field === 'title') {
-        const titleLower = (note.title || '').toLowerCase();
+        const titleLower = (n.title || '').toLowerCase();
         const targetVal = String(value).toLowerCase();
         if (operator === '=' && titleLower !== targetVal) return false;
         if (operator === '!=' && titleLower === targetVal) return false;
         if (operator === 'contains' && !titleLower.includes(targetVal)) return false;
         if (operator === '!contains' && titleLower.includes(targetVal)) return false;
-        continue;
+        return true;
+      }
+
+      // Content / Note body
+      if (field === 'content') {
+        const contentLower = (n.content || '').toLowerCase();
+        const targetVal = String(value).toLowerCase();
+        if (operator === 'contains' && !contentLower.includes(targetVal)) return false;
+        if (operator === '!contains' && contentLower.includes(targetVal)) return false;
+        return true;
       }
 
       // Category
       if (field === 'category') {
-        const catLower = (note.category || '').toLowerCase();
+        const catLower = (n.category || '').toLowerCase();
         const targetVal = String(value).toLowerCase();
         if (operator === '=' && catLower !== targetVal) return false;
         if (operator === '!=' && catLower === targetVal) return false;
         if (operator === 'contains' && !catLower.includes(targetVal)) return false;
         if (operator === '!contains' && catLower.includes(targetVal)) return false;
-        continue;
+        return true;
       }
 
       // Labels / Tags
       if (field === 'labels') {
-        const noteLabelsLower = (note.labels || []).map((l) => l.toLowerCase());
+        const noteLabelsLower = (n.labels || []).map((l) => l.toLowerCase());
         const targetVal = String(value).toLowerCase();
         const has = noteLabelsLower.includes(targetVal) || noteLabelsLower.some((l) => l.includes(targetVal));
         if ((operator === '=' || operator === 'contains') && !has) return false;
         if ((operator === '!=' || operator === '!contains') && has) return false;
-        continue;
-      }
-
-      // Content text
-      if (field === 'content') {
-        const contentLower = (note.content || '').toLowerCase();
-        const targetVal = String(value).toLowerCase();
-        if (operator === 'contains' && !contentLower.includes(targetVal)) return false;
-        if (operator === '!contains' && contentLower.includes(targetVal)) return false;
-        continue;
+        return true;
       }
 
       // Dates (updatedAt / createdAt)
       if (field === 'updatedAt' || field === 'createdAt') {
-        const noteDate = Number(note[field] || 0);
+        const noteDate = Number(n[field] || 0);
         const compareVal = typeof value === 'number' ? value : parseDateValue(String(value));
         if (compareVal !== null) {
           if (operator === '>' && !(noteDate > compareVal)) return false;
@@ -522,16 +535,26 @@ export function executeDataviewQuery(
           if (operator === '<' && !(noteDate < compareVal)) return false;
           if (operator === '<=' && !(noteDate <= compareVal)) return false;
         }
-        continue;
+        return true;
       }
 
-      // Completed (for notes with checklist)
+      // Completed
       if (field === 'completed') {
-        if (!note.isList || !note.todos || note.todos.length === 0) return false;
-        const allDone = note.todos.every((t) => t.completed);
-        if (Boolean(value) !== allDone) return false;
+        if (!n.isList || !n.todos || n.todos.length === 0) return false;
+        const allDone = n.todos.every((t) => t.completed);
+        return Boolean(value) === allDone;
+      }
+
+      return true;
+    }
+
+    for (const cond of conditions) {
+      if (cond.orConditions && cond.orConditions.length > 0) {
+        const anyMatch = [cond, ...cond.orConditions].some((sc) => testSingleCond(sc, note));
+        if (!anyMatch) return false;
         continue;
       }
+      if (!testSingleCond(cond, note)) return false;
     }
 
     return true;
