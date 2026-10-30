@@ -13,6 +13,7 @@ export type GoogleKeepFormatCommand =
   | 'checkbox-list'
   | 'code'
   | 'code-block'
+  | 'dataview'
   | 'clear';
 
 export function applyKeepFormatting(
@@ -107,6 +108,11 @@ export function applyKeepFormatting(
       prefix = '```\n';
       suffix = '\n```';
       replacement = selectedText || 'code here';
+      break;
+    case 'dataview':
+      prefix = '```dataview\n';
+      suffix = '\n```';
+      replacement = selectedText || 'NOTION\nWHERE !isArchived\nSORT updatedAt DESC\nLIMIT 10';
       break;
     case 'clear':
       replacement = selectedText
@@ -459,7 +465,12 @@ export function convertMarkdownToHtml(content: string): string {
           .replace(/&/g, '&amp;')
           .replace(/</g, '&lt;')
           .replace(/>/g, '&gt;');
-        result += `<pre><code${codeBlockLang ? ` class="language-${codeBlockLang}"` : ''}>${codeText}</code></pre>`;
+        if (codeBlockLang.toLowerCase() === 'dataview' || codeBlockLang.toLowerCase() === 'dataviewjs') {
+          const rawQuery = codeBlockLines.join('\n').replace(/"/g, '&quot;');
+          result += `<div data-dataview-block="true" data-dataview-query="${rawQuery}"><pre class="hidden"><code class="language-dataview">${codeText}</code></pre></div>`;
+        } else {
+          result += `<pre><code${codeBlockLang ? ` class="language-${codeBlockLang}"` : ''}>${codeText}</code></pre>`;
+        }
         inCodeBlock = false;
       }
       result += trimmed;
@@ -476,7 +487,12 @@ export function convertMarkdownToHtml(content: string): string {
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
-      result += `<pre><code${lang ? ` class="language-${lang}"` : ''}>${codeText}</code></pre>`;
+      if (lang.toLowerCase() === 'dataview' || lang.toLowerCase() === 'dataviewjs') {
+        const rawQuery = (singleLineBlockMatch[3] || '').replace(/"/g, '&quot;');
+        result += `<div data-dataview-block="true" data-dataview-query="${rawQuery}"><pre class="hidden"><code class="language-dataview">${codeText}</code></pre></div>`;
+      } else {
+        result += `<pre><code${lang ? ` class="language-${lang}"` : ''}>${codeText}</code></pre>`;
+      }
       i++;
       continue;
     }
@@ -490,13 +506,19 @@ export function convertMarkdownToHtml(content: string): string {
         codeBlockLang = fenceMatch[2].trim();
         codeBlockLines = [];
       } else {
-        inCodeBlock = false;
+        const isDataview = codeBlockLang.toLowerCase() === 'dataview' || codeBlockLang.toLowerCase() === 'dataviewjs';
         const codeText = codeBlockLines
           .join('\n')
           .replace(/&/g, '&amp;')
           .replace(/</g, '&lt;')
           .replace(/>/g, '&gt;');
-        result += `<pre><code${codeBlockLang ? ` class="language-${codeBlockLang}"` : ''}>${codeText}</code></pre>`;
+        if (isDataview) {
+          const rawQuery = codeBlockLines.join('\n').replace(/"/g, '&quot;');
+          result += `<div data-dataview-block="true" data-dataview-query="${rawQuery}"><pre class="hidden"><code class="language-dataview">${codeText}</code></pre></div>`;
+        } else {
+          result += `<pre><code${codeBlockLang ? ` class="language-${codeBlockLang}"` : ''}>${codeText}</code></pre>`;
+        }
+        inCodeBlock = false;
       }
       i++;
       continue;
@@ -888,6 +910,17 @@ export function convertHtmlToMarkdown(html: string): string {
       // Fallback to regex below if DOMParser is unavailable or fails
     }
   }
+
+    // 1.5. Dataview blocks fallback
+  md = md.replace(/<div\b[^>]*data-dataview-[^>]*>([\s\S]*?)<\/div>/gi, (match, inner) => {
+    const queryMatch = match.match(/data-dataview-query=["']([^"']+)["']/i);
+    let q = queryMatch ? queryMatch[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&') : '';
+    if (!q) {
+      const codeMatch = inner.match(/<code\b[^>]*>([\s\S]*?)<\/code>/i);
+      q = codeMatch ? codeMatch[1] : inner;
+    }
+    return addCodeBlock('dataview', cleanCodeContent(q).trim() || 'NOTION');
+  });
 
   // 2. Regex fallback for server-side or non-DOMParser environments
   md = md.replace(/<pre\b([^>]*)>([\s\S]*?)<\/pre>/gi, (_match, preAttrs, inner) => {

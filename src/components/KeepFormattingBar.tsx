@@ -7,6 +7,7 @@ import {
   Underline,
   Code,
   SquareCode,
+  Database,
   List,
   ListOrdered,
   CheckSquare,
@@ -57,6 +58,14 @@ export const KeepFormattingBar: React.FC<KeepFormattingBarProps> = ({
         title="Normal text"
       >
         Aa
+            <button
+        type="button"
+        onClick={() => onFormat('dataview')}
+        className="p-1.5 rounded-md hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors text-purple-600 dark:text-purple-400"
+        title="Insert Dataview query (Notion-style notes like in Obsidian)"
+      >
+        <Database className="w-4 h-4" />
+      </button>
       </button>
 
       {/* Divider */}

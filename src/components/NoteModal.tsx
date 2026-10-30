@@ -843,7 +843,16 @@ export const NoteModal: React.FC<NoteModalProps> = ({
     editorRef.current?.handleFormat(cmd);
   };
 
-  const handleImportMhtml = async (file: File) => {
+    const handleInsertDataview = () => {
+    if (editorRef.current) {
+      editorRef.current.handleFormat('dataview');
+    } else {
+      const snippet = '\n\n```dataview\nNOTION\nWHERE !isArchived\nSORT updatedAt DESC\nLIMIT 10\n```\n\n';
+      setContent((prev) => (prev ? `${prev}${snippet}` : snippet.trim()));
+    }
+  };
+
+const handleImportMhtml = async (file: File) => {
     await importMhtmlIntoNote({
       file,
       currentTitle: title,
@@ -1869,6 +1878,7 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
               onSelectCategory={handleCategoryChange}
               onAddImage={handleAddImage}
               onImportMhtml={handleImportMhtml}
+              onInsertDataview={handleInsertDataview}
               onCopyContent={handleCopyTitleAndContent}
               onArchiveToggle={() => {
                 toggleArchiveNote(note.id);

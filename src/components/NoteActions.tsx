@@ -29,6 +29,7 @@ import {
   Plus,
   FileText,
   Globe,
+  Database,
   ClipboardCopy,
 } from 'lucide-react';
 import { Note, NoteColor, NoteBackgroundTheme } from '@/types/note';
@@ -69,6 +70,7 @@ interface NoteActionsProps {
   menuAlign?: 'left' | 'right';
   onMenuOpenChange?: (open: boolean) => void;
   onImportMhtml?: (file: File) => void;
+  onInsertDataview?: () => void;
 }
 
 export const NoteActions: React.FC<NoteActionsProps> = ({
@@ -83,6 +85,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
   onShare,
   onAddImage,
   onImportMhtml,
+  onInsertDataview,
   onToggleChecklist,
   onAddReminder,
   onToggleLabel,
@@ -729,6 +732,20 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                 Import MHTML into note
               </button>
             )}
+            {onInsertDataview && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMenu(false);
+                  onInsertDataview();
+                }}
+                className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
+              >
+                <Database className="w-4 h-4 text-purple-500" />
+                Insert Dataview (Notion query)
+              </button>
+            )}
+
 
 
             <div className="my-1 border-t border-black/[0.06] dark:border-white/[0.08]" />

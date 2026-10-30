@@ -298,7 +298,17 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
   };
 
   // Copy selected files & images to note content
-  const handleImportMhtml = async (file: File) => {
+    const handleInsertDataview = () => {
+    setIsExpanded(true);
+    if (editorRef.current) {
+      editorRef.current.handleFormat('dataview');
+    } else {
+      const snippet = '\n\n```dataview\nNOTION\nWHERE !isArchived\nSORT updatedAt DESC\nLIMIT 10\n```\n\n';
+      setContent((prev) => (prev ? `${prev}${snippet}` : snippet.trim()));
+    }
+  };
+
+const handleImportMhtml = async (file: File) => {
     setIsExpanded(true);
     await importMhtmlIntoNote({
       file,
@@ -821,6 +831,7 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
             onSelectCategory={setCategory}
             onAddImage={handleAddImage}
             onImportMhtml={handleImportMhtml}
+            onInsertDataview={handleInsertDataview}
             onToggleChecklist={() => setIsList(!isList)}
             onToggleSubpages={() => setIsNotionMode(!isNotionMode)}
             hasSubpages={isNotionMode || childNoteIds.length > 0}

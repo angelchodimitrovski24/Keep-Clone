@@ -20,6 +20,7 @@ import { Table, TableRow, TableHeader, TableCell } from '@tiptap/extension-table
 import { KeepFormattingBar } from './KeepFormattingBar';
 import { GoogleKeepFormatCommand, convertMarkdownToHtml, convertHtmlToMarkdown } from '@/lib/formatUtils';
 import { KeepMediaExtension } from '@/lib/keepMediaExtension';
+import { DataviewExtension } from '@/lib/dataviewExtension';
 import { importMhtmlIntoNote } from '@/lib/mhtmlParser';
 import {
   extractClipboardPayload,
@@ -318,6 +319,7 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
           },
         }),
         KeepMediaExtension,
+        DataviewExtension,
         Placeholder.configure({
           placeholder,
         }),
@@ -349,6 +351,19 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
               if (match) {
                 event.preventDefault();
                 const lang = match[2] || '';
+                if (lang.toLowerCase() === 'dataview' || lang.toLowerCase() === 'dataviewjs' || lang.toLowerCase() === 'notion') {
+                  const dataviewType = view.state.schema.nodes.dataview;
+                  if (dataviewType) {
+                    const from = $from.start();
+                    const to = $from.end();
+                    view.dispatch(
+                      view.state.tr
+                        .replaceWith(from, to, dataviewType.create({ query: 'NOTION\nWHERE !isArchived\nSORT updatedAt DESC\nLIMIT 10' }))
+                    );
+                    return true;
+                  }
+                }
+
                 const codeBlockType = view.state.schema.nodes.codeBlock;
                 if (codeBlockType) {
                   const from = $from.start();
@@ -474,6 +489,14 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
           break;
         case 'code-block':
           editor.chain().focus().toggleCodeBlock().run();
+          break;
+        case 'dataview':
+          editor.chain().focus().insertContent({
+            type: 'dataview',
+            attrs: {
+              query: 'NOTION\nWHERE !isArchived\nSORT updatedAt DESC\nLIMIT 10',
+            },
+          }).run();
           break;
         case 'clear':
           editor.chain().focus().unsetAllMarks().clearNodes().run();
