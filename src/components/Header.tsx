@@ -29,6 +29,7 @@ import {
   CalendarRange,
   Sparkles,
   GitMerge,
+  Globe,
 } from 'lucide-react';
 import { useKeep } from '@/context/KeepContext';
 import { NOTE_COLORS } from '@/lib/constants';
@@ -68,6 +69,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
     setIsDateCompileModalOpen,
     setIsNotionTemplateModalOpen,
     setIsMergeNotesModalOpen,
+    setIsWebExportModalOpen,
     isInstallModalOpen,
     setIsInstallModalOpen,
     canInstallPwa,
@@ -185,6 +187,15 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
               >
                 <GitMerge className="w-5 h-5" />
                 <span className="text-xs font-bold hidden md:inline">Merge</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsWebExportModalOpen(true)}
+                className="p-2 rounded-full flex items-center gap-1.5 transition-colors hover:bg-amber-100 dark:hover:bg-amber-900/40 text-amber-700 dark:text-amber-400 cursor-pointer"
+                title={`Export ${selectedNoteIds.length} selected notes as Web Page (Table of Contents + separate note pages)`}
+              >
+                <Globe className="w-5 h-5" />
+                <span className="text-xs font-bold hidden md:inline">Export Web Page</span>
               </button>
               <button
                 type="button"
@@ -471,6 +482,16 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
           title="Google Drive Cloud Backup & Restore (Export & Import)"
         >
           <Cloud className="w-5 h-5" />
+        </button>
+
+        {/* Export Notes as Web Page */}
+        <button
+          type="button"
+          onClick={() => setIsWebExportModalOpen(true)}
+          className="p-2.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors text-amber-600 dark:text-amber-400 hidden sm:flex"
+          title="Export notes as Web Page (Table of Contents + separate note pages)"
+        >
+          <Globe className="w-5 h-5" />
         </button>
 
         {/* Export Notes to PDF (NotebookLM Ready) */}
