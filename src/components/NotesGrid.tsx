@@ -1,11 +1,26 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useKeep } from '@/context/KeepContext';
 import { NoteCard } from './NoteCard';
 import { NotionNotesList } from './NotionNotesList';
 import { Note } from '@/types/note';
-import { Trash2, Lock } from 'lucide-react';
+import { Trash2, Lock, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
+
+const PAGE_SIZE = 20;
+
+function getPageNumbers(current: number, total: number): (number | string)[] {
+  if (total <= 7) {
+    return Array.from({ length: total }, (_, i) => i + 1);
+  }
+  if (current <= 4) {
+    return [1, 2, 3, 4, 5, '...', total];
+  }
+  if (current >= total - 3) {
+    return [1, '...', total - 4, total - 3, total - 2, total - 1, total];
+  }
+  return [1, '...', current - 1, current, current + 1, '...', total];
+}
 
 interface NotesGridProps {
   onSelectNote: (note: Note) => void;
@@ -28,6 +43,13 @@ export const NotesGrid: React.FC<NotesGridProps> = ({
     unlockedCategoryNames,
     setUnlockCategoryModalTarget,
   } = useKeep();
+
+  const [currentPage, setCurrentPage] = useState<number>(1);
+
+  // Reset to page 1 whenever search query, filter view, label, or category changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [currentFilter, selectedLabel, selectedCategory, searchQuery]);
 
   // Filter notes based on current view & search query, and sort by updatedAt descending
   const filteredNotes = useMemo(() => {
@@ -82,15 +104,46 @@ export const NotesGrid: React.FC<NotesGridProps> = ({
 
   // Separate pinned vs unpinned notes (relevant for notes and category view)
   const isNotesOrCategory = currentFilter === 'notes' || currentFilter === 'category';
-  const pinnedNotes = useMemo(
-    () => (isNotesOrCategory ? filteredNotes.filter((n) => n.isPinned) : []),
-    [filteredNotes, isNotesOrCategory]
-  );
 
-  const unpinnedNotes = useMemo(
-    () => (isNotesOrCategory ? filteredNotes.filter((n) => !n.isPinned) : filteredNotes),
-    [filteredNotes, isNotesOrCategory]
-  );
+  // Order notes so pinned appear first, followed by others
+  const orderedNotes = useMemo(() => {
+    if (!isNotesOrCategory) return filteredNotes;
+    const pinned = filteredNotes.filter((n) => n.isPinned);
+    const unpinned = filteredNotes.filter((n) => !n.isPinned);
+    return [...pinned, ...unpinned];
+  }, [filteredNotes, isNotesOrCategory]);
+
+  const totalNotes = orderedNotes.length;
+  const totalPages = Math.max(1, Math.ceil(totalNotes / PAGE_SIZE));
+  const effectivePage = Math.min(currentPage, totalPages);
+
+  const startIndex = (effectivePage - 1) * PAGE_SIZE;
+  const endIndex = Math.min(startIndex + PAGE_SIZE, totalNotes);
+
+  // Exact 20 notes slice for the current page
+  const pagedNotes = useMemo(() => {
+    return orderedNotes.slice(startIndex, endIndex);
+  }, [orderedNotes, startIndex, endIndex]);
+
+  const pagedPinnedNotes = useMemo(() => {
+    return isNotesOrCategory ? pagedNotes.filter((n) => n.isPinned) : [];
+  }, [pagedNotes, isNotesOrCategory]);
+
+  const pagedUnpinnedNotes = useMemo(() => {
+    return isNotesOrCategory ? pagedNotes.filter((n) => !n.isPinned) : pagedNotes;
+  }, [pagedNotes, isNotesOrCategory]);
+
+  const handlePageChange = (newPage: number) => {
+    if (newPage < 1 || newPage > totalPages || newPage === effectivePage) return;
+    setCurrentPage(newPage);
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  const pageNumbers = useMemo(() => {
+    return getPageNumbers(effectivePage, totalPages);
+  }, [effectivePage, totalPages]);
 
   const gridLayoutClasses =
     layoutMode === 'grid'
@@ -154,11 +207,82 @@ export const NotesGrid: React.FC<NotesGridProps> = ({
             )}
           </div>
         )}
+
+        {/* Top Paging Info Bar if multiple pages */}
+        {totalPages > 1 && (
+          <div className="max-w-3xl mx-auto flex items-center justify-between pb-3 mb-3 border-b border-stone-200 dark:border-stone-800 text-xs text-stone-500">
+            <span>
+              Showing <strong className="text-stone-800 dark:text-stone-200">{startIndex + 1}–{endIndex}</strong> of{' '}
+              <strong className="text-stone-800 dark:text-stone-200">{totalNotes}</strong> notes
+            </span>
+            <span>Page {effectivePage} of {totalPages} (20 per page)</span>
+          </div>
+        )}
+
         <NotionNotesList
-          notes={filteredNotes}
+          notes={pagedNotes}
           onSelectNote={onSelectNote}
           onOpenDrawingModal={onOpenDrawingModal}
         />
+
+        {/* Bottom Pagination Controls */}
+        {totalPages > 1 && (
+          <div className="max-w-3xl mx-auto mt-6 flex flex-col sm:flex-row items-center justify-between gap-3 p-3 rounded-2xl bg-stone-100 dark:bg-stone-800/60 border border-stone-200 dark:border-stone-700 shadow-2xs">
+            <span className="text-xs text-stone-600 dark:text-stone-300">
+              Page <strong>{effectivePage}</strong> of <strong>{totalPages}</strong> ({PAGE_SIZE} notes per page)
+            </span>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => handlePageChange(effectivePage - 1)}
+                disabled={effectivePage <= 1}
+                className={`p-1.5 rounded-lg text-xs font-medium flex items-center gap-1 transition-colors ${
+                  effectivePage <= 1
+                    ? 'text-stone-400 dark:text-stone-600 cursor-not-allowed'
+                    : 'text-stone-700 dark:text-stone-200 hover:bg-stone-200 dark:hover:bg-stone-700 cursor-pointer'
+                }`}
+              >
+                <ChevronLeft className="w-4 h-4" />
+                <span>Prev</span>
+              </button>
+              <div className="flex items-center gap-1">
+                {pageNumbers.map((p, idx) =>
+                  p === '...' ? (
+                    <span key={`dots-${idx}`} className="px-1.5 text-stone-400 select-none text-xs">
+                      ...
+                    </span>
+                  ) : (
+                    <button
+                      key={`page-${p}`}
+                      type="button"
+                      onClick={() => handlePageChange(Number(p))}
+                      className={`min-w-8 h-8 px-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                        effectivePage === p
+                          ? 'bg-amber-500 text-stone-950 font-bold shadow-xs'
+                          : 'text-stone-700 dark:text-stone-200 hover:bg-stone-200 dark:hover:bg-stone-700'
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  )
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => handlePageChange(effectivePage + 1)}
+                disabled={effectivePage >= totalPages}
+                className={`p-1.5 rounded-lg text-xs font-medium flex items-center gap-1 transition-colors ${
+                  effectivePage >= totalPages
+                    ? 'text-stone-400 dark:text-stone-600 cursor-not-allowed'
+                    : 'text-stone-700 dark:text-stone-200 hover:bg-stone-200 dark:hover:bg-stone-700 cursor-pointer'
+                }`}
+              >
+                <span>Next</span>
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -202,14 +326,57 @@ export const NotesGrid: React.FC<NotesGridProps> = ({
         </div>
       )}
 
+      {/* Top Page Status Indicator when multiple pages */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between pb-3 mb-4 px-2 text-xs text-stone-500 border-b border-stone-200/60 dark:border-stone-800/60">
+          <span className="flex items-center gap-1.5">
+            Showing <strong className="text-stone-800 dark:text-stone-200">{startIndex + 1}–{endIndex}</strong> of{' '}
+            <strong className="text-stone-800 dark:text-stone-200">{totalNotes}</strong> notes
+          </span>
+          <div className="flex items-center gap-3">
+            <span className="hidden sm:inline">Page {effectivePage} of {totalPages} (20 notes/page)</span>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => handlePageChange(effectivePage - 1)}
+                disabled={effectivePage <= 1}
+                className={`p-1 rounded-md transition-colors ${
+                  effectivePage <= 1
+                    ? 'text-stone-300 dark:text-stone-700 cursor-not-allowed'
+                    : 'text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700 cursor-pointer'
+                }`}
+                title="Previous page"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <span className="font-semibold text-stone-700 dark:text-stone-300 px-1 text-xs">{effectivePage}/{totalPages}</span>
+              <button
+                type="button"
+                onClick={() => handlePageChange(effectivePage + 1)}
+                disabled={effectivePage >= totalPages}
+                className={`p-1 rounded-md transition-colors ${
+                  effectivePage >= totalPages
+                    ? 'text-stone-300 dark:text-stone-700 cursor-not-allowed'
+                    : 'text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700 cursor-pointer'
+                }`}
+                title="Next page"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Pinned Section */}
-      {pinnedNotes.length > 0 && (
+      {pagedPinnedNotes.length > 0 && (
         <div className="mb-8">
-          <p className="text-xs font-semibold uppercase tracking-wider text-stone-500 mb-3 px-2">
-            Pinned
+          <p className="text-xs font-semibold uppercase tracking-wider text-stone-500 mb-3 px-2 flex items-center justify-between">
+            <span>📌 Pinned</span>
+            <span className="text-[11px] font-normal normal-case text-stone-400">{pagedPinnedNotes.length} pinned</span>
           </p>
           <div className={gridLayoutClasses}>
-            {pinnedNotes.map((note) => (
+            {pagedPinnedNotes.map((note) => (
               <NoteCard
                 key={note.id}
                 note={note}
@@ -222,15 +389,15 @@ export const NotesGrid: React.FC<NotesGridProps> = ({
       )}
 
       {/* Unpinned / Other Section */}
-      {unpinnedNotes.length > 0 && (
+      {pagedUnpinnedNotes.length > 0 && (
         <div>
-          {pinnedNotes.length > 0 && (
+          {pagedPinnedNotes.length > 0 && (
             <p className="text-xs font-semibold uppercase tracking-wider text-stone-500 mb-3 px-2">
               Others
             </p>
           )}
           <div className={gridLayoutClasses}>
-            {unpinnedNotes.map((note) => (
+            {pagedUnpinnedNotes.map((note) => (
               <NoteCard
                 key={note.id}
                 note={note}
@@ -238,6 +405,100 @@ export const NotesGrid: React.FC<NotesGridProps> = ({
                 onOpenDrawingModal={onOpenDrawingModal}
               />
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Bottom Pagination Bar */}
+      {totalPages > 1 && (
+        <div className="mt-10 mb-6 flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 rounded-2xl bg-stone-100/90 dark:bg-stone-800/80 border border-stone-200 dark:border-stone-700 shadow-2xs backdrop-blur-xs">
+          <div className="text-xs font-medium text-stone-500 dark:text-stone-400">
+            Showing <span className="font-semibold text-stone-800 dark:text-stone-200">{startIndex + 1}–{endIndex}</span> of{' '}
+            <span className="font-semibold text-stone-800 dark:text-stone-200">{totalNotes}</span> notes
+            <span className="mx-2 text-stone-300 dark:text-stone-600">•</span>
+            Page <span className="font-semibold text-stone-800 dark:text-stone-200">{effectivePage}</span> of {totalPages}
+          </div>
+
+          <div className="flex items-center gap-1">
+            {/* First Page */}
+            {effectivePage > 2 && (
+              <button
+                type="button"
+                onClick={() => handlePageChange(1)}
+                className="p-1.5 rounded-lg text-xs font-medium text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700 cursor-pointer"
+                title="First page"
+              >
+                <ChevronsLeft className="w-4 h-4" />
+              </button>
+            )}
+
+            {/* Prev Page */}
+            <button
+              type="button"
+              onClick={() => handlePageChange(effectivePage - 1)}
+              disabled={effectivePage <= 1}
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1 transition-colors ${
+                effectivePage <= 1
+                  ? 'text-stone-400 dark:text-stone-600 cursor-not-allowed'
+                  : 'text-stone-700 dark:text-stone-200 hover:bg-stone-200 dark:hover:bg-stone-700 cursor-pointer'
+              }`}
+              title="Previous page"
+            >
+              <ChevronLeft className="w-4 h-4" />
+              <span>Prev</span>
+            </button>
+
+            {/* Page Number Buttons */}
+            <div className="flex items-center gap-1 mx-1">
+              {pageNumbers.map((p, idx) =>
+                p === '...' ? (
+                  <span key={`dots-${idx}`} className="px-1.5 text-stone-400 select-none text-xs">
+                    ...
+                  </span>
+                ) : (
+                  <button
+                    key={`page-${p}`}
+                    type="button"
+                    onClick={() => handlePageChange(Number(p))}
+                    className={`min-w-8 h-8 px-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                      effectivePage === p
+                        ? 'bg-amber-500 text-stone-950 font-bold shadow-xs'
+                        : 'text-stone-700 dark:text-stone-200 hover:bg-stone-200 dark:hover:bg-stone-700'
+                    }`}
+                  >
+                    {p}
+                  </button>
+                )
+              )}
+            </div>
+
+            {/* Next Page */}
+            <button
+              type="button"
+              onClick={() => handlePageChange(effectivePage + 1)}
+              disabled={effectivePage >= totalPages}
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1 transition-colors ${
+                effectivePage >= totalPages
+                  ? 'text-stone-400 dark:text-stone-600 cursor-not-allowed'
+                  : 'text-stone-700 dark:text-stone-200 hover:bg-stone-200 dark:hover:bg-stone-700 cursor-pointer'
+              }`}
+              title="Next page"
+            >
+              <span>Next</span>
+              <ChevronRight className="w-4 h-4" />
+            </button>
+
+            {/* Last Page */}
+            {effectivePage < totalPages - 1 && (
+              <button
+                type="button"
+                onClick={() => handlePageChange(totalPages)}
+                className="p-1.5 rounded-lg text-xs font-medium text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700 cursor-pointer"
+                title="Last page"
+              >
+                <ChevronsRight className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
       )}

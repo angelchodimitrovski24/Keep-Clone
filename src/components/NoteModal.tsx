@@ -385,7 +385,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
       content,
       linkedNoteIds,
     }),
-    [note, title, content, linkedNoteIds]
+    [note?.id, linkedNoteIds]
   );
 
   const { outgoing, backlinks } = useMemo(

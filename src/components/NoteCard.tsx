@@ -36,7 +36,7 @@ interface NoteCardProps {
   onOpenDrawingModal?: (noteId: string) => void;
 }
 
-export const NoteCard: React.FC<NoteCardProps> = ({
+const NoteCardComponent: React.FC<NoteCardProps> = ({
   note,
   onClick,
 }) => {
@@ -195,8 +195,15 @@ export const NoteCard: React.FC<NoteCardProps> = ({
     updateNote(note.id, { labels: newLabels });
   };
 
-  const completedTodos = note.todos?.filter((t) => t.completed) || [];
-  const activeTodos = note.todos?.filter((t) => !t.completed) || [];
+  const completedTodos = useMemo(() => note.todos?.filter((t) => t.completed) || [], [note.todos]);
+  const activeTodos = useMemo(() => note.todos?.filter((t) => !t.completed) || [], [note.todos]);
+
+  // Truncate ultra-long content preview on grid cards to avoid rendering thousands of DOM nodes
+  const cardPreviewContent = useMemo(() => {
+    if (!activeNote.content) return '';
+    if (activeNote.content.length <= 2500) return activeNote.content;
+    return activeNote.content.slice(0, 2500) + '\n\n*(Click note to view full content...)*';
+  }, [activeNote.content]);
 
   return (
     <>
@@ -444,7 +451,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
                   activeNote.isList && (activeTodos.length > 0 || completedTodos.length > 0) ? 'pt-2 mt-2 border-t border-black/5 dark:border-white/5' : ''
                 }`}>
                   <MarkdownRenderer
-                    content={activeNote.content}
+                    content={cardPreviewContent}
                     onOpenLinkedNote={handleOpenLinkedNote}
                     onToggleCheckbox={(idx, checked) => {
                       const updated = toggleMarkdownCheckbox(activeNote.content, idx, checked);
@@ -701,3 +708,5 @@ export const NoteCard: React.FC<NoteCardProps> = ({
     </>
   );
 };
+
+export const NoteCard = React.memo(NoteCardComponent);

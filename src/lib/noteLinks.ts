@@ -10,11 +10,24 @@ export interface BidirectionalLinksResult {
   backlinks: NoteLinkTarget[];
 }
 
+// Bounded in-memory cache for extracted note links
+const linkExtractionCache = new Map<string, string[]>();
+const MAX_CACHE_SIZE = 1000;
+
 /**
  * Extracts note titles or note IDs referenced inside content via [[Title]] or [[id|Title]]
  */
 export function extractNoteLinksFromContent(content: string): string[] {
   if (!content) return [];
+
+  // FAST PATH: If content doesn't even contain '[[' or 'data-note-', return empty immediately
+  if (!content.includes('[[') && !content.includes('data-note-')) {
+    return [];
+  }
+
+  const cached = linkExtractionCache.get(content);
+  if (cached) return cached;
+
   const matches: string[] = [];
 
   // 1. Matches [[Note Title]] or [[id|Note Title]]
@@ -35,7 +48,14 @@ export function extractNoteLinksFromContent(content: string): string[] {
     }
   }
 
-  return Array.from(new Set(matches));
+  const result = Array.from(new Set(matches));
+
+  if (linkExtractionCache.size >= MAX_CACHE_SIZE) {
+    linkExtractionCache.clear();
+  }
+  linkExtractionCache.set(content, result);
+
+  return result;
 }
 
 /**
@@ -61,7 +81,7 @@ export function getBidirectionalLinks(
     const otherTitleLower = (other.title || '').trim().toLowerCase();
     const otherIdLower = other.id.toLowerCase();
 
-    const isMentionedByTitle = otherTitleLower && currentExtracted.includes(otherTitleLower);
+    const isMentionedByTitle = Boolean(otherTitleLower && currentExtracted.includes(otherTitleLower));
     const isMentionedById = currentExtracted.includes(otherIdLower) || currentLinkedIds.has(other.id);
 
     if (isMentionedByTitle || isMentionedById) {
@@ -77,13 +97,33 @@ export function getBidirectionalLinks(
   const currentIdLower = currentNote.id.toLowerCase();
 
   for (const other of activeNotes) {
-    const otherExtracted = extractNoteLinksFromContent(other.content);
-    const otherLinkedIds = new Set(other.linkedNoteIds || []);
+    const otherLinkedIds = other.linkedNoteIds ? new Set(other.linkedNoteIds) : null;
+    const directIdLink = Boolean(otherLinkedIds?.has(currentNote.id));
 
-    const mentionsCurrentTitle =
-      currentTitleLower && otherExtracted.includes(currentTitleLower);
-    const mentionsCurrentId =
-      otherExtracted.includes(currentIdLower) || otherLinkedIds.has(currentNote.id);
+    // FAST PATH: If other note does not contain links and has no direct id link, skip!
+    const otherHasLinkSyntax = Boolean(
+      other.content && (other.content.includes('[[') || other.content.includes('data-note-'))
+    );
+
+    if (!directIdLink && !otherHasLinkSyntax) {
+      continue;
+    }
+
+    // FAST PATH: Substring check before parsing
+    if (!directIdLink && other.content) {
+      const contentLower = other.content.toLowerCase();
+      const hasTitle = Boolean(currentTitleLower && contentLower.includes(currentTitleLower));
+      const hasId = contentLower.includes(currentIdLower);
+      if (!hasTitle && !hasId) {
+        continue;
+      }
+    }
+
+    const otherExtracted = extractNoteLinksFromContent(other.content || '');
+    const mentionsCurrentTitle = Boolean(
+      currentTitleLower && otherExtracted.includes(currentTitleLower)
+    );
+    const mentionsCurrentId = directIdLink || otherExtracted.includes(currentIdLower);
 
     if (mentionsCurrentTitle || mentionsCurrentId) {
       backlinksMap.set(other.id, {
@@ -103,7 +143,7 @@ export function getBidirectionalLinks(
  * Replaces [[Title]] with interactive HTML links inside rendered markdown or HTML
  */
 export function formatWikiLinksInHtml(html: string): string {
-  if (!html) return '';
+  if (!html || !html.includes('[[')) return html || '';
   return html.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_match, raw1, raw2) => {
     const title = (raw2 || raw1).trim();
     return `<span class="inline-flex items-center gap-1 px-1.5 py-0.5 my-0.5 rounded-md bg-amber-500/15 text-amber-800 dark:text-amber-200 font-medium text-xs border border-amber-500/20 cursor-pointer hover:bg-amber-500/25 transition-colors select-none keep-note-link" data-note-link-title="${title}" title="Open linked note: ${title}">🔗 ${title}</span>`;
