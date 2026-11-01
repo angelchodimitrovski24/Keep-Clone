@@ -236,17 +236,23 @@ function htmlToCleanMarkdown(html: string, imageMap: Map<string, ExtractedImageI
 
   // Pre-process code blocks
   const codeBlocks: string[] = [];
-  text = text.replace(/<pre\b[^>]*>([\s\S]*?)<\/pre>/gi, (_match, inner) => {
+  text = text.replace(/<pre\b([^>]*)>([\s\S]*?)<\/pre>/gi, (_match, preAttrs, inner) => {
     const codeTagMatch = inner.match(/<code\b([^>]*)>([\s\S]*?)<\/code>/i);
     const codeInner = codeTagMatch ? codeTagMatch[2] : inner;
+    const combinedAttrs = `${preAttrs} ${codeTagMatch ? codeTagMatch[1] : ''}`;
+    const langMatch = combinedAttrs.match(/(?:class|data-language)=["'][^"']*(?:lang(?:uage)?-|code-)([a-zA-Z0-9_-]+)/i);
+    const lang = langMatch ? langMatch[1] : '';
+
     const clean = codeInner
       .replace(/<br\s*\/?>/gi, '\n')
       .replace(/<[^>]+>/g, '')
       .replace(/&lt;/g, '<')
       .replace(/&gt;/g, '>')
-      .replace(/&amp;/g, '&');
+      .replace(/&amp;/g, '&')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'");
     const idx = codeBlocks.length;
-    codeBlocks.push(`\n\n\`\`\`\n${clean.trim()}\n\`\`\`\n\n`);
+    codeBlocks.push(`\n\n\`\`\`${lang}\n${clean.trim()}\n\`\`\`\n\n`);
     return `___EXTRACT_CODE_BLOCK_${idx}___`;
   });
 
@@ -420,24 +426,10 @@ function extractJiraInfo(urlStr: string): { baseUrl: string; issueKey: string } 
 function parseJiraCommentBody(c: any): string {
   if (!c) return '';
 
-  // 1. If renderedBody HTML is provided
+  // 1. If renderedBody HTML is provided (standard in Jira with expand=renderedBody)
   if (c.renderedBody && typeof c.renderedBody === 'string') {
-    return c.renderedBody
-      .replace(/<br\s*\/?>/gi, '\n')
-      .replace(/<\/p>/gi, '\n\n')
-      .replace(/<li\b[^>]*>([\s\S]*?)<\/li>/gi, '\n- $1')
-      .replace(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, '[$2]($1)')
-      .replace(/<(?:strong|b)\b[^>]*>([\s\S]*?)<\/(?:strong|b)>/gi, '**$1**')
-      .replace(/<(?:em|i)\b[^>]*>([\s\S]*?)<\/(?:em|i)>/gi, '*$1*')
-      .replace(/<code\b[^>]*>([\s\S]*?)<\/code>/gi, '`$1`')
-      .replace(/<[^>]+>/g, '')
-      .replace(/&quot;/g, '"')
-      .replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&#39;/g, "'")
-      .replace(/&nbsp;/g, ' ')
-      .trim();
+    const md = htmlToCleanMarkdown(c.renderedBody, new Map(), 'relative').trim();
+    if (md) return md;
   }
 
   // 2. If ADF object (Jira Cloud v3)
@@ -566,16 +558,15 @@ function formatJiraCommentsMarkdown(comments: any[]): string {
     const cDate = c.created ? new Date(c.created).toLocaleString() : '';
     const body = parseJiraCommentBody(c);
 
-    md += `> 💬 **${author}** *(${cDate})*:\n`;
+    md += `#### 💬 **${author}** · *${cDate}*\n\n`;
     if (body) {
-      const lines = body.split('\n');
-      for (const line of lines) {
-        md += `> ${line}\n`;
-      }
+      md += `${body}\n\n`;
     } else {
-      md += `> *(empty comment or attachment)*\n`;
+      md += `*(empty comment or attachment)*\n\n`;
     }
-    md += `\n`;
+    if (i < comments.length - 1) {
+      md += `---\n\n`;
+    }
   }
   return md;
 }

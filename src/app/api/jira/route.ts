@@ -200,28 +200,102 @@ function jiraWikiMarkupToMarkdown(wikiText: string): string {
 }
 
 /**
+ * Converts HTML to clean Markdown with code blocks, tables, lists, and formatting.
+ */
+function htmlToCleanMarkdown(html: string): string {
+  if (!html) return '';
+  let text = html;
+
+  text = text.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+  text = text.replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '');
+  text = text.replace(/<!--[\s\S]*?-->/g, '');
+
+  const codeBlocks: string[] = [];
+  text = text.replace(/<pre\b([^>]*)>([\s\S]*?)<\/pre>/gi, (_match, preAttrs, inner) => {
+    const codeTagMatch = inner.match(/<code\b([^>]*)>([\s\S]*?)<\/code>/i);
+    const codeInner = codeTagMatch ? codeTagMatch[2] : inner;
+    const combinedAttrs = `${preAttrs} ${codeTagMatch ? codeTagMatch[1] : ''}`;
+    const langMatch = combinedAttrs.match(/(?:class|data-language)=["'][^"']*(?:lang(?:uage)?-|code-)([a-zA-Z0-9_-]+)/i);
+    const lang = langMatch ? langMatch[1] : '';
+
+    const clean = codeInner
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&amp;/g, '&')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'");
+    const idx = codeBlocks.length;
+    codeBlocks.push(`\n\n\`\`\`${lang}\n${clean.trim()}\n\`\`\`\n\n`);
+    return `___EXTRACT_CODE_BLOCK_${idx}___`;
+  });
+
+  text = text.replace(/<h1\b[^>]*>([\s\S]*?)<\/h1>/gi, '\n\n# $1\n\n');
+  text = text.replace(/<h2\b[^>]*>([\s\S]*?)<\/h2>/gi, '\n\n## $1\n\n');
+  text = text.replace(/<h3\b[^>]*>([\s\S]*?)<\/h3>/gi, '\n\n### $1\n\n');
+  text = text.replace(/<h4\b[^>]*>([\s\S]*?)<\/h4>/gi, '\n\n#### $1\n\n');
+  text = text.replace(/<h5\b[^>]*>([\s\S]*?)<\/h5>/gi, '\n\n##### $1\n\n');
+  text = text.replace(/<h6\b[^>]*>([\s\S]*?)<\/h6>/gi, '\n\n###### $1\n\n');
+
+  text = text.replace(/<blockquote\b[^>]*>([\s\S]*?)<\/blockquote>/gi, (_match, inner) => {
+    const clean = inner.replace(/<[^>]+>/g, '').trim();
+    return `\n\n> ${clean.replace(/\n/g, '\n> ')}\n\n`;
+  });
+
+  text = text.replace(/<hr\b[^>]*\/?>/gi, '\n\n---\n\n');
+
+  // Lists
+  text = text.replace(/<li\b[^>]*>([\s\S]*?)<\/li>/gi, (_match, inner) => {
+    const hasChecked = /type=["']checkbox["'][^>]*checked/i.test(inner);
+    const hasUnchecked = /type=["']checkbox["']/i.test(inner);
+    const cleanText = inner.replace(/<input\b[^>]*>/gi, '').replace(/<[^>]+>/g, '').trim();
+    if (hasChecked) return `\n- [x] ${cleanText}`;
+    if (hasUnchecked) return `\n- [ ] ${cleanText}`;
+    return `\n- ${cleanText}`;
+  });
+
+  text = text.replace(/<p\b[^>]*>([\s\S]*?)<\/p>/gi, '\n\n$1\n\n');
+  text = text.replace(/<br\s*\/?>/gi, '\n');
+
+  // Links
+  text = text.replace(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, (_match, href, linkText) => {
+    const cleanLink = linkText.replace(/<[^>]+>/g, '').trim();
+    if (!cleanLink) return '';
+    return `[${cleanLink}](${href})`;
+  });
+
+  text = text.replace(/<(?:strong|b)\b[^>]*>([\s\S]*?)<\/(?:strong|b)>/gi, '**$1**');
+  text = text.replace(/<(?:em|i)\b[^>]*>([\s\S]*?)<\/(?:em|i)>/gi, '*$1*');
+  text = text.replace(/<(?:del|s|strike)\b[^>]*>([\s\S]*?)<\/(?:del|s|strike)>/gi, '~~$1~~');
+  text = text.replace(/<code\b[^>]*>([\s\S]*?)<\/code>/gi, '`$1`');
+
+  text = text.replace(/<[^>]+>/g, '');
+
+  text = text.replace(/___EXTRACT_CODE_BLOCK_(\d+)___/g, (_match, idx) => {
+    return codeBlocks[parseInt(idx, 10)] || '';
+  });
+
+  text = text
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, ' ');
+
+  return text.replace(/\n{3,}/g, '\n\n').trim();
+}
+
+/**
  * Parses any Jira comment body (rendered HTML, ADF object, or Wiki markup string)
  */
 function parseJiraCommentBody(c: any): string {
   if (!c) return '';
 
   if (c.renderedBody && typeof c.renderedBody === 'string') {
-    return c.renderedBody
-      .replace(/<br\s*\/?>/gi, '\n')
-      .replace(/<\/p>/gi, '\n\n')
-      .replace(/<li\b[^>]*>([\s\S]*?)<\/li>/gi, '\n- $1')
-      .replace(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, '[$2]($1)')
-      .replace(/<(?:strong|b)\b[^>]*>([\s\S]*?)<\/(?:strong|b)>/gi, '**$1**')
-      .replace(/<(?:em|i)\b[^>]*>([\s\S]*?)<\/(?:em|i)>/gi, '*$1*')
-      .replace(/<code\b[^>]*>([\s\S]*?)<\/code>/gi, '`$1`')
-      .replace(/<[^>]+>/g, '')
-      .replace(/&quot;/g, '"')
-      .replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&#39;/g, "'")
-      .replace(/&nbsp;/g, ' ')
-      .trim();
+    const md = htmlToCleanMarkdown(c.renderedBody).trim();
+    if (md) return md;
   }
 
   if (c.body && typeof c.body === 'object') {
@@ -346,16 +420,15 @@ function formatJiraCommentsMarkdown(comments: any[]): string {
     const cDate = c.created ? new Date(c.created).toLocaleString() : '';
     const body = parseJiraCommentBody(c);
 
-    md += `> 💬 **${author}** *(${cDate})*:\n`;
+    md += `#### 💬 **${author}** · *${cDate}*\n\n`;
     if (body) {
-      const lines = body.split('\n');
-      for (const line of lines) {
-        md += `> ${line}\n`;
-      }
+      md += `${body}\n\n`;
     } else {
-      md += `> *(empty comment or attachment)*\n`;
+      md += `*(empty comment or attachment)*\n\n`;
     }
-    md += `\n`;
+    if (i < comments.length - 1) {
+      md += `---\n\n`;
+    }
   }
   return md;
 }

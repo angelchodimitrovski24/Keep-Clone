@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Globe,
   Lock,
@@ -18,7 +18,14 @@ import {
   Settings2,
   Sparkles,
   X,
+  Layers,
+  Clock,
+  StopCircle,
+  ListPlus,
+  Play,
 } from 'lucide-react';
+import { useKeep } from '@/context/KeepContext';
+import { convertMarkdownToHtml } from '@/lib/formatUtils';
 import {
   UrlAuthType,
   extractFromUrl,
@@ -43,7 +50,42 @@ export const ExtractUrlModal: React.FC<ExtractUrlModalProps> = ({
   initialUrl = '',
   isInsertMode = false,
 }) => {
+  const { addNote, selectedCategory } = useKeep();
+
+  const [extractionMode, setExtractionMode] = useState<'single' | 'batch'>('single');
   const [url, setUrl] = useState(initialUrl);
+
+  // Multi-URL Batch Scraping State
+  const [batchUrlsText, setBatchUrlsText] = useState('');
+  const [batchDelaySeconds, setBatchDelaySeconds] = useState(15);
+  const [batchItems, setBatchItems] = useState<
+    Array<{
+      url: string;
+      status: 'pending' | 'scraping' | 'waiting' | 'done' | 'error';
+      title?: string;
+      error?: string;
+    }>
+  >([]);
+  const [batchProgress, setBatchProgress] = useState<{
+    current: number;
+    total: number;
+    countdown: number;
+    active: boolean;
+    completed: boolean;
+    successCount: number;
+    failCount: number;
+  }>({
+    current: 0,
+    total: 0,
+    countdown: 0,
+    active: false,
+    completed: false,
+    successCount: 0,
+    failCount: 0,
+  });
+
+  const cancelBatchRef = useRef<boolean>(false);
+
   const [authType, setAuthType] = useState<UrlAuthType>('none');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -61,6 +103,11 @@ export const ExtractUrlModal: React.FC<ExtractUrlModalProps> = ({
   const [statusMessage, setStatusMessage] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [extractedPreview, setExtractedPreview] = useState<ExtractUrlResult | null>(null);
+
+  const parsedBatchUrls = batchUrlsText
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l.startsWith('http://') || l.startsWith('https://'));
 
   // Detect domain & auto-fill saved credentials
   useEffect(() => {
@@ -122,6 +169,166 @@ export const ExtractUrlModal: React.FC<ExtractUrlModalProps> = ({
     } catch {
       // Ignore
     }
+  };
+
+  const handlePasteBatchClipboard = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) {
+        setBatchUrlsText((prev) => (prev ? `${prev}\n${text.trim()}` : text.trim()));
+      }
+    } catch {
+      // Ignore clipboard permission errors
+    }
+  };
+
+  const handleStopBatch = () => {
+    cancelBatchRef.current = true;
+    setStatusMessage('Stopping batch scraping after current request completes...');
+  };
+
+  const handleStartBatch = async () => {
+    if (parsedBatchUrls.length === 0) {
+      setError('Please enter at least one valid URL in the text area.');
+      return;
+    }
+
+    setError(null);
+    cancelBatchRef.current = false;
+
+    const initialItems = parsedBatchUrls.map((u) => ({
+      url: u,
+      status: 'pending' as const,
+    }));
+    setBatchItems(initialItems);
+
+    setBatchProgress({
+      current: 0,
+      total: parsedBatchUrls.length,
+      countdown: 0,
+      active: true,
+      completed: false,
+      successCount: 0,
+      failCount: 0,
+    });
+
+    let customHeaders: Record<string, string> | undefined = undefined;
+    if (authType === 'custom' && customHeadersJson.trim()) {
+      try {
+        customHeaders = JSON.parse(customHeadersJson.trim());
+      } catch {
+        // ignore
+      }
+    }
+
+    let success = 0;
+    let failed = 0;
+
+    for (let i = 0; i < parsedBatchUrls.length; i++) {
+      if (cancelBatchRef.current) break;
+
+      const currentUrl = parsedBatchUrls[i];
+
+      // Update current item status to scraping
+      setBatchItems((prev) =>
+        prev.map((item, idx) => (idx === i ? { ...item, status: 'scraping' } : item))
+      );
+      setBatchProgress((prev) => ({ ...prev, current: i + 1, countdown: 0 }));
+
+      // Resolve auth for this specific URL if domain has saved auth
+      let currentAuthType = authType;
+      let currentUsername = username;
+      let currentPassword = password;
+      let currentToken = token;
+      let currentCookie = cookie;
+      let currentHeaders = customHeaders;
+
+      try {
+        const uParsed = new URL(currentUrl);
+        const domain = uParsed.hostname;
+        const saved = getDomainAuth(domain);
+        if (saved && authType === 'none') {
+          currentAuthType = saved.authType;
+          if (saved.username) currentUsername = saved.username;
+          if (saved.password) currentPassword = saved.password;
+          if (saved.token) currentToken = saved.token;
+          if (saved.cookie) currentCookie = saved.cookie;
+          if (saved.customHeaders) currentHeaders = saved.customHeaders;
+        }
+      } catch {
+        // Ignore URL parse error
+      }
+
+      try {
+        const result = await extractFromUrl({
+          url: currentUrl,
+          authType: currentAuthType,
+          username: currentUsername.trim() || undefined,
+          password: currentPassword.trim() || undefined,
+          token: currentToken.trim() || undefined,
+          cookie: currentCookie.trim() || undefined,
+          customHeaders: currentHeaders,
+          downloadImages,
+          imagePathStyle,
+        });
+
+        const htmlContent = convertMarkdownToHtml(result.markdown);
+        const imagePaths = (result.images || []).map((img) => img.savedPath || img.serveUrl);
+        const newLabels = Array.from(new Set([...(result.labels || []), 'clipped']));
+
+        // Automatically create individual note for this URL!
+        await addNote({
+          id: `note-url-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          title: result.title || `Extracted Note (${i + 1})`,
+          content: htmlContent,
+          isList: false,
+          todos: [],
+          color: 'default',
+          theme: 'none',
+          category: selectedCategory || (result.isJira ? 'Work' : null),
+          labels: newLabels,
+          isPinned: false,
+          images: imagePaths,
+          drawings: [],
+        });
+
+        success++;
+        setBatchItems((prev) =>
+          prev.map((item, idx) =>
+            idx === i ? { ...item, status: 'done', title: result.title } : item
+          )
+        );
+        setBatchProgress((prev) => ({ ...prev, successCount: success }));
+      } catch (err: any) {
+        failed++;
+        setBatchItems((prev) =>
+          prev.map((item, idx) =>
+            idx === i ? { ...item, status: 'error', error: err?.message || 'Extraction failed' } : item
+          )
+        );
+        setBatchProgress((prev) => ({ ...prev, failCount: failed }));
+      }
+
+      // If more URLs remain and not cancelled, wait the specified delay (default 15 seconds)
+      if (i < parsedBatchUrls.length - 1 && !cancelBatchRef.current) {
+        setBatchItems((prev) =>
+          prev.map((item, idx) => (idx === i + 1 ? { ...item, status: 'waiting' } : item))
+        );
+
+        for (let s = batchDelaySeconds; s > 0; s--) {
+          if (cancelBatchRef.current) break;
+          setBatchProgress((prev) => ({ ...prev, countdown: s }));
+          await new Promise((r) => setTimeout(r, 1000));
+        }
+      }
+    }
+
+    setBatchProgress((prev) => ({
+      ...prev,
+      active: false,
+      completed: true,
+      countdown: 0,
+    }));
   };
 
   const handleExtract = async () => {
@@ -238,59 +445,266 @@ export const ExtractUrlModal: React.FC<ExtractUrlModalProps> = ({
           </button>
         </div>
 
+        {/* Mode Tabs */}
+        <div className="flex items-center px-5 pt-2.5 border-b border-black/10 dark:border-white/10 bg-stone-50/70 dark:bg-stone-850/70 gap-2">
+          <button
+            type="button"
+            onClick={() => setExtractionMode('single')}
+            disabled={batchProgress.active}
+            className={`pb-2.5 px-3 text-xs font-semibold border-b-2 flex items-center gap-1.5 transition-colors cursor-pointer ${
+              extractionMode === 'single'
+                ? 'border-blue-600 text-blue-600 dark:text-blue-400'
+                : 'border-transparent text-stone-500 hover:text-stone-800 dark:hover:text-stone-300'
+            }`}
+          >
+            <Globe className="w-3.5 h-3.5" />
+            Single URL
+          </button>
+          <button
+            type="button"
+            onClick={() => setExtractionMode('batch')}
+            className={`pb-2.5 px-3 text-xs font-semibold border-b-2 flex items-center gap-1.5 transition-colors cursor-pointer ${
+              extractionMode === 'batch'
+                ? 'border-blue-600 text-blue-600 dark:text-blue-400'
+                : 'border-transparent text-stone-500 hover:text-stone-800 dark:hover:text-stone-300'
+            }`}
+          >
+            <Layers className="w-3.5 h-3.5" />
+            Multi URLs Scraping
+            {parsedBatchUrls.length > 0 && (
+              <span className="px-1.5 py-0.2 rounded-full text-2xs bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 font-mono font-bold">
+                {parsedBatchUrls.length}
+              </span>
+            )}
+          </button>
+        </div>
+
         {/* Modal Body */}
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
-          {/* URL Input */}
-          <div>
-            <label className="block text-xs font-semibold text-stone-700 dark:text-stone-300 mb-1.5">
-              Webpage or Ticket URL
-            </label>
-            <div className="flex items-center gap-2">
-              <div className="relative flex-1">
-                <input
-                  type="url"
-                  placeholder="https://company.atlassian.net/browse/PROJ-123 or https://example.com/article"
-                  value={url}
-                  onChange={(e) => setUrl(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !loading && url.trim()) {
-                      handleExtract();
-                    }
-                  }}
-                  className="w-full px-3.5 py-2.5 text-sm rounded-xl border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100 placeholder-stone-400 dark:placeholder-stone-500 focus:outline-hidden focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 font-mono text-xs sm:text-sm"
-                  autoFocus
-                />
-              </div>
-              <button
-                type="button"
-                onClick={handlePasteClipboard}
-                className="px-3 py-2.5 text-xs font-medium rounded-xl border border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-800 text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-700 transition-colors flex items-center gap-1.5 shrink-0"
-                title="Paste from clipboard"
-              >
-                <Clipboard className="w-4 h-4" />
-                <span className="hidden sm:inline">Paste</span>
-              </button>
-            </div>
-
-            {/* Saved Credentials Hint */}
-            {hasSavedCreds && parsedDomain && (
-              <div className="flex items-center justify-between mt-2 px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-800 dark:text-emerald-300">
-                <span className="flex items-center gap-1.5">
-                  <ShieldCheck className="w-3.5 h-3.5" />
-                  Using saved credentials for <strong>{parsedDomain}</strong>
-                </span>
+          {/* Mode 1: Single URL Input */}
+          {extractionMode === 'single' && (
+            <div>
+              <label className="block text-xs font-semibold text-stone-700 dark:text-stone-300 mb-1.5">
+                Webpage or Ticket URL
+              </label>
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <input
+                    type="url"
+                    placeholder="https://company.atlassian.net/browse/PROJ-123 or https://example.com/article"
+                    value={url}
+                    onChange={(e) => setUrl(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !loading && url.trim()) {
+                        handleExtract();
+                      }
+                    }}
+                    className="w-full px-3.5 py-2.5 text-sm rounded-xl border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100 placeholder-stone-400 dark:placeholder-stone-500 focus:outline-hidden focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 font-mono text-xs sm:text-sm"
+                    autoFocus
+                  />
+                </div>
                 <button
                   type="button"
-                  onClick={handleClearSavedAuth}
-                  className="text-stone-400 hover:text-red-500 flex items-center gap-1 transition-colors"
-                  title="Forget saved credentials for this domain"
+                  onClick={handlePasteClipboard}
+                  className="px-3 py-2.5 text-xs font-medium rounded-xl border border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-800 text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-700 transition-colors flex items-center gap-1.5 shrink-0 cursor-pointer"
+                  title="Paste from clipboard"
                 >
-                  <Trash2 className="w-3 h-3" />
-                  Forget
+                  <Clipboard className="w-4 h-4" />
+                  <span className="hidden sm:inline">Paste</span>
                 </button>
               </div>
-            )}
-          </div>
+
+              {/* Saved Credentials Hint */}
+              {hasSavedCreds && parsedDomain && (
+                <div className="flex items-center justify-between mt-2 px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-800 dark:text-emerald-300">
+                  <span className="flex items-center gap-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    Using saved credentials for <strong>{parsedDomain}</strong>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleClearSavedAuth}
+                    className="text-stone-400 hover:text-red-500 flex items-center gap-1 transition-colors cursor-pointer"
+                    title="Forget saved credentials for this domain"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    Forget
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Mode 2: Multi URLs Scraping Input */}
+          {extractionMode === 'batch' && (
+            <div className="space-y-3">
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-semibold text-stone-700 dark:text-stone-300 flex items-center gap-1.5">
+                    <ListPlus className="w-4 h-4 text-blue-500" />
+                    URLs to Scrape (one per line, 20+ URLs supported)
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <span className="text-2xs px-2 py-0.5 rounded-full bg-stone-100 dark:bg-stone-800 font-mono text-stone-600 dark:text-stone-400 font-semibold">
+                      {parsedBatchUrls.length} URL{parsedBatchUrls.length === 1 ? '' : 's'} detected
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handlePasteBatchClipboard}
+                      disabled={batchProgress.active}
+                      className="text-2xs text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                    >
+                      <Clipboard className="w-3 h-3" /> Paste
+                    </button>
+                    {batchUrlsText && !batchProgress.active && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setBatchUrlsText('');
+                          setBatchItems([]);
+                          setBatchProgress((prev) => ({ ...prev, active: false, completed: false }));
+                        }}
+                        className="text-2xs text-stone-400 hover:text-red-500 cursor-pointer"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <textarea
+                  rows={5}
+                  value={batchUrlsText}
+                  onChange={(e) => setBatchUrlsText(e.target.value)}
+                  disabled={batchProgress.active}
+                  placeholder={`https://company.atlassian.net/browse/CA-101\nhttps://company.atlassian.net/browse/CA-102\nhttps://company.atlassian.net/browse/CA-103\nhttps://example.com/article...`}
+                  className="w-full p-3 text-xs rounded-xl border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100 placeholder-stone-400 dark:placeholder-stone-500 font-mono focus:outline-hidden focus:ring-2 focus:ring-blue-500 resize-y leading-relaxed"
+                />
+                <p className="text-2xs text-stone-500 dark:text-stone-400 mt-1">
+                  Each URL will automatically create an individual note with its title, markdown content, comments, and media.
+                </p>
+              </div>
+
+              {/* Delay Configuration */}
+              <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-xl border border-stone-200 dark:border-stone-800 bg-stone-50/50 dark:bg-stone-850/50 text-xs">
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-amber-500 shrink-0" />
+                  <div>
+                    <span className="font-semibold text-stone-800 dark:text-stone-200">
+                      Delay between each scrape:
+                    </span>
+                    <p className="text-2xs text-stone-500 dark:text-stone-400">
+                      Default 15 seconds pause between requests to prevent Jira API rate limits & blocks
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="number"
+                    min={1}
+                    max={120}
+                    value={batchDelaySeconds}
+                    onChange={(e) => setBatchDelaySeconds(Math.max(1, parseInt(e.target.value, 10) || 15))}
+                    disabled={batchProgress.active}
+                    className="w-16 px-2.5 py-1 text-center text-xs font-bold rounded-lg border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100 font-mono"
+                  />
+                  <span className="text-xs font-medium text-stone-600 dark:text-stone-400">seconds</span>
+                </div>
+              </div>
+
+              {/* Batch Scraping Progress Card */}
+              {batchItems.length > 0 && (
+                <div className="p-3.5 rounded-xl border border-stone-200 dark:border-stone-800 bg-stone-50/40 dark:bg-stone-850/40 space-y-3">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-stone-800 dark:text-stone-200 flex items-center gap-2">
+                      {batchProgress.active ? (
+                        <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
+                      ) : batchProgress.completed ? (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                      ) : (
+                        <Layers className="w-4 h-4 text-stone-400" />
+                      )}
+                      Progress: {batchProgress.current} / {batchProgress.total} processed
+                    </span>
+                    <span className="font-mono text-2xs text-stone-500 dark:text-stone-400">
+                      <strong className="text-emerald-600 dark:text-emerald-400">{batchProgress.successCount}</strong> notes created · <strong className="text-red-500">{batchProgress.failCount}</strong> failed
+                    </span>
+                  </div>
+
+                  {/* Progress Bar */}
+                  <div className="w-full h-2 rounded-full bg-stone-200 dark:bg-stone-800 overflow-hidden">
+                    <div
+                      className="h-full bg-blue-600 transition-all duration-300"
+                      style={{
+                        width: `${(batchProgress.current / Math.max(batchProgress.total, 1)) * 100}%`,
+                      }}
+                    />
+                  </div>
+
+                  {/* Live Countdown Banner */}
+                  {batchProgress.countdown > 0 && (
+                    <div className="px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/80 text-amber-800 dark:text-amber-300 text-xs flex items-center justify-between animate-pulse">
+                      <span className="flex items-center gap-2">
+                        <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+                        Pausing <strong>{batchProgress.countdown}s</strong> before scraping next URL to avoid rate limiting...
+                      </span>
+                      <span className="text-xs font-mono font-black bg-amber-200 dark:bg-amber-900/80 px-2 py-0.5 rounded-md text-amber-900 dark:text-amber-200">
+                        {batchProgress.countdown}s
+                      </span>
+                    </div>
+                  )}
+
+                  {/* URL Items Status List */}
+                  <div className="max-h-44 overflow-y-auto space-y-1.5 pr-1 divide-y divide-stone-100 dark:divide-stone-800">
+                    {batchItems.map((item, idx) => (
+                      <div key={idx} className="pt-1.5 flex items-center justify-between gap-2 text-2xs font-mono">
+                        <div className="flex items-center gap-2 truncate flex-1 min-w-0">
+                          <span className="text-stone-400 shrink-0">#{idx + 1}</span>
+                          <span className="truncate text-stone-700 dark:text-stone-300" title={item.url}>
+                            {item.url}
+                          </span>
+                        </div>
+                        <div className="shrink-0 flex items-center gap-1.5">
+                          {item.status === 'pending' && (
+                            <span className="px-2 py-0.5 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-500">
+                              Queued
+                            </span>
+                          )}
+                          {item.status === 'scraping' && (
+                            <span className="px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 flex items-center gap-1 font-semibold">
+                              <Loader2 className="w-2.5 h-2.5 animate-spin" /> Scraping...
+                            </span>
+                          )}
+                          {item.status === 'waiting' && (
+                            <span className="px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 font-medium">
+                              Waiting...
+                            </span>
+                          )}
+                          {item.status === 'done' && (
+                            <span
+                              className="px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 font-semibold flex items-center gap-1 truncate max-w-[200px]"
+                              title={item.title}
+                            >
+                              <CheckCircle2 className="w-2.5 h-2.5 shrink-0" />
+                              <span className="truncate">{item.title || 'Note Created'}</span>
+                            </span>
+                          )}
+                          {item.status === 'error' && (
+                            <span
+                              className="px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 font-semibold truncate max-w-[180px]"
+                              title={item.error}
+                            >
+                              Error: {item.error || 'Failed'}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Authentication Selector */}
           <div className="p-3.5 rounded-xl border border-stone-200 dark:border-stone-800 bg-stone-50/50 dark:bg-stone-850/50 space-y-3">
@@ -556,18 +970,37 @@ export const ExtractUrlModal: React.FC<ExtractUrlModalProps> = ({
         {/* Modal Footer */}
         <div className="flex items-center justify-between px-5 py-3.5 border-t border-black/10 dark:border-white/10 bg-stone-50 dark:bg-stone-850">
           <div className="text-xs text-stone-500 dark:text-stone-400">
-            {loading ? (
-              <span className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
+            {extractionMode === 'single' ? (
+              loading ? (
+                <span className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  {statusMessage}
+                </span>
+              ) : extractedPreview ? (
+                <span className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  Preview ready
+                </span>
+              ) : (
+                <span>Supports Jira, Confluence, GitHub & any web page</span>
+              )
+            ) : batchProgress.active ? (
+              <span className="flex items-center gap-2 text-blue-600 dark:text-blue-400 font-medium">
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                {statusMessage}
+                Scraping URL {batchProgress.current} of {batchProgress.total}...
               </span>
-            ) : extractedPreview ? (
-              <span className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5" />
-                Preview ready
+            ) : batchProgress.completed ? (
+              <span className="text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                Completed: Created {batchProgress.successCount} note{batchProgress.successCount === 1 ? '' : 's'}
+                {batchProgress.failCount > 0 ? ` (${batchProgress.failCount} failed)` : ''}!
               </span>
             ) : (
-              <span>Supports Jira, Confluence, GitHub & any web page</span>
+              <span>
+                {parsedBatchUrls.length > 0
+                  ? `${parsedBatchUrls.length} note${parsedBatchUrls.length === 1 ? '' : 's'} will be created with ${batchDelaySeconds}s delay`
+                  : 'Enter URLs above to start batch scraping'}
+              </span>
             )}
           </div>
 
@@ -575,39 +1008,60 @@ export const ExtractUrlModal: React.FC<ExtractUrlModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              disabled={loading}
-              className="px-3.5 py-2 text-xs font-semibold rounded-xl text-stone-600 dark:text-stone-300 hover:bg-stone-200/50 dark:hover:bg-stone-750 transition-colors"
+              disabled={loading || batchProgress.active}
+              className="px-3.5 py-2 text-xs font-semibold rounded-xl text-stone-600 dark:text-stone-300 hover:bg-stone-200/50 dark:hover:bg-stone-750 transition-colors disabled:opacity-50 cursor-pointer"
             >
-              Cancel
+              {batchProgress.completed ? 'Close' : 'Cancel'}
             </button>
 
-            {extractedPreview ? (
+            {extractionMode === 'single' ? (
+              extractedPreview ? (
+                <button
+                  type="button"
+                  onClick={handleConfirmApply}
+                  className="px-4 py-2 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  {isInsertMode ? 'Insert into Note' : 'Create Note'}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleExtract}
+                  disabled={loading || !url.trim()}
+                  className="px-4 py-2 text-xs font-bold rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      Extracting...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-3.5 h-3.5" />
+                      Extract Content
+                    </>
+                  )}
+                </button>
+              )
+            ) : batchProgress.active ? (
               <button
                 type="button"
-                onClick={handleConfirmApply}
-                className="px-4 py-2 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-md transition-all flex items-center gap-1.5"
+                onClick={handleStopBatch}
+                className="px-4 py-2 text-xs font-bold rounded-xl bg-red-600 hover:bg-red-700 text-white shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
               >
-                <CheckCircle2 className="w-4 h-4" />
-                {isInsertMode ? 'Insert into Note' : 'Create Note'}
+                <StopCircle className="w-4 h-4" />
+                Stop Scraping
               </button>
             ) : (
               <button
                 type="button"
-                onClick={handleExtract}
-                disabled={loading || !url.trim()}
-                className="px-4 py-2 text-xs font-bold rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white shadow-md transition-all flex items-center gap-1.5"
+                onClick={handleStartBatch}
+                disabled={parsedBatchUrls.length === 0}
+                className="px-4 py-2 text-xs font-bold rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
               >
-                {loading ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    Extracting...
-                  </>
-                ) : (
-                  <>
-                    <Download className="w-3.5 h-3.5" />
-                    Extract Content
-                  </>
-                )}
+                <Play className="w-3.5 h-3.5 fill-current" />
+                Start Scraping ({parsedBatchUrls.length} Notes)
               </button>
             )}
           </div>
