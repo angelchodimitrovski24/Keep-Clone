@@ -107,6 +107,8 @@ interface KeepContextType {
   setIsDateCompileModalOpen: (open: boolean) => void;
   isNotionTemplateModalOpen: boolean;
   setIsNotionTemplateModalOpen: (open: boolean) => void;
+  isMergeNotesModalOpen: boolean;
+  setIsMergeNotesModalOpen: (open: boolean) => void;
 
   // Android & Mobile PWA Installation
   isInstallModalOpen: boolean;
@@ -237,6 +239,7 @@ export function KeepProvider({
   const [isJiraModalOpen, setIsJiraModalOpen] = useState(false);
   const [isDateCompileModalOpen, setIsDateCompileModalOpen] = useState(false);
   const [isNotionTemplateModalOpen, setIsNotionTemplateModalOpen] = useState(false);
+  const [isMergeNotesModalOpen, setIsMergeNotesModalOpen] = useState(false);
   const [sharingNote, setSharingNote] = useState<Note | null>(null);
 
   // Android & Mobile PWA Installation states
@@ -1738,6 +1741,8 @@ export function KeepProvider({
       setIsDateCompileModalOpen,
       isNotionTemplateModalOpen,
       setIsNotionTemplateModalOpen,
+      isMergeNotesModalOpen,
+      setIsMergeNotesModalOpen,
       isInstallModalOpen,
       setIsInstallModalOpen,
       canInstallPwa,
@@ -1853,6 +1858,8 @@ export function KeepProvider({
       setIsDateCompileModalOpen,
       isNotionTemplateModalOpen,
       setIsNotionTemplateModalOpen,
+      isMergeNotesModalOpen,
+      setIsMergeNotesModalOpen,
       isInstallModalOpen,
       canInstallPwa,
       isPwaInstalled,

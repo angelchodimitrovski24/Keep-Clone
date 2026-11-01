@@ -28,6 +28,7 @@ import { AndroidInstallBanner } from '@/components/AndroidInstallBanner';
 import { ActiveStopwatchDock } from '@/components/ActiveStopwatchDock';
 import { CreateNoteByDateModal } from '@/components/CreateNoteByDateModal';
 import { NotionTemplateModal } from '@/components/NotionTemplateModal';
+import { MergeNotesModal } from '@/components/MergeNotesModal';
 import { JiraModal } from '@/components/JiraModal';
 import { Note, NoteDrawing } from '@/types/note';
 
@@ -418,6 +419,7 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
 
       {/* Notion Template Hub Modal (Today's Notes, Days, Per Keyword) */}
       <NotionTemplateModal />
+      <MergeNotesModal />
 
       {/* Floating Calendar & Note Reminder Alerts */}
       <CalendarReminderToast />

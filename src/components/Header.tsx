@@ -28,6 +28,7 @@ import {
   BarChart2,
   CalendarRange,
   Sparkles,
+  GitMerge,
 } from 'lucide-react';
 import { useKeep } from '@/context/KeepContext';
 import { NOTE_COLORS } from '@/lib/constants';
@@ -66,6 +67,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
     setIsJiraModalOpen,
     setIsDateCompileModalOpen,
     setIsNotionTemplateModalOpen,
+    setIsMergeNotesModalOpen,
     isInstallModalOpen,
     setIsInstallModalOpen,
     canInstallPwa,
@@ -165,6 +167,25 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
 
           {currentFilter !== 'trash' ? (
             <>
+              {/* Merge Notes into a new one */}
+              <button
+                type="button"
+                onClick={() => setIsMergeNotesModalOpen(true)}
+                disabled={selectedNoteIds.length < 2}
+                className={`p-2 rounded-full flex items-center gap-1.5 transition-colors ${
+                  selectedNoteIds.length >= 2
+                    ? 'hover:bg-blue-100 dark:hover:bg-blue-900/40 text-blue-600 dark:text-blue-400 cursor-pointer'
+                    : 'opacity-40 cursor-not-allowed text-stone-400'
+                }`}
+                title={
+                  selectedNoteIds.length >= 2
+                    ? `Merge ${selectedNoteIds.length} notes into a new one`
+                    : 'Select at least 2 notes to merge'
+                }
+              >
+                <GitMerge className="w-5 h-5" />
+                <span className="text-xs font-bold hidden md:inline">Merge</span>
+              </button>
               <button
                 type="button"
                 onClick={batchDuplicate}
