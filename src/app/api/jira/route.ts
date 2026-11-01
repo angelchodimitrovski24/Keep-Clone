@@ -110,6 +110,105 @@ function adfToMarkdown(node: any): string {
 /**
  * Formats full Jira issue object into Note payload with Markdown & downloaded attachments
  */
+/**
+ * Fetches up to maxToFetch comments for a Jira issue with pagination support.
+ */
+async function fetchAllJiraComments(
+  baseUrl: string,
+  issueKey: string,
+  headers: Record<string, string>,
+  maxToFetch: number = 100
+): Promise<any[]> {
+  const allComments: any[] = [];
+  let startAt = 0;
+  const pageSize = 100;
+
+  while (allComments.length < maxToFetch) {
+    const limit = Math.min(pageSize, maxToFetch - allComments.length);
+    let commentRes: Response | null = null;
+
+    try {
+      commentRes = await fetch(
+        `${baseUrl}/rest/api/3/issue/${issueKey}/comment?startAt=${startAt}&maxResults=${limit}&orderBy=created&expand=renderedBody`,
+        { headers }
+      );
+    } catch {
+      // Ignore network errors
+    }
+
+    if (!commentRes || !commentRes.ok) {
+      // Fallback to API v2
+      try {
+        commentRes = await fetch(
+          `${baseUrl}/rest/api/2/issue/${issueKey}/comment?startAt=${startAt}&maxResults=${limit}&orderBy=created&expand=renderedBody`,
+          { headers }
+        );
+      } catch {
+        // Ignore
+      }
+    }
+
+    if (!commentRes || !commentRes.ok) {
+      break;
+    }
+
+    try {
+      const data = await commentRes.json();
+      const batch = Array.isArray(data.comments) ? data.comments : [];
+      if (batch.length === 0) break;
+
+      allComments.push(...batch);
+      startAt += batch.length;
+
+      if (allComments.length >= (data.total || 0) || batch.length < limit) {
+        break;
+      }
+    } catch {
+      break;
+    }
+  }
+
+  return allComments;
+}
+
+/**
+ * Formats Jira comments array into readable Markdown block
+ */
+function formatJiraCommentsMarkdown(comments: any[]): string {
+  if (!comments || comments.length === 0) return '';
+  let md = `### Comments (${comments.length})\n\n`;
+  for (let i = 0; i < comments.length; i++) {
+    const c = comments[i];
+    const author = c.author?.displayName || 'Unknown';
+    const cDate = c.created ? new Date(c.created).toLocaleString() : '';
+    let body = '';
+
+    if (c.renderedBody) {
+      body = c.renderedBody
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<\/p>/gi, '\n\n')
+        .replace(/<[^>]+>/g, '')
+        .replace(/&quot;/g, '"')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .trim();
+    } else if (c.body && typeof c.body === 'object') {
+      body = adfToMarkdown(c.body).trim();
+    } else if (typeof c.body === 'string') {
+      body = c.body.trim();
+    }
+
+    md += `> 💬 **${author}** *(${cDate})*:\n`;
+    const lines = body.split('\n');
+    for (const line of lines) {
+      md += `> ${line}\n`;
+    }
+    md += `\n`;
+  }
+  return md;
+}
+
 async function processJiraIssueToNote(
   issue: any,
   baseUrl: string,
@@ -181,20 +280,26 @@ async function processJiraIssueToNote(
     }
   }
 
-  // Parse Comments if requested
+  // Parse Comments if requested (fetch up to 100 comments)
   let commentsMd = '';
-  if (includeComments && fields.comment?.comments && Array.isArray(fields.comment.comments) && fields.comment.comments.length > 0) {
-    commentsMd += `### Comments (${fields.comment.comments.length})\n\n`;
-    for (const c of fields.comment.comments) {
-      const author = c.author?.displayName || 'Unknown';
-      const cDate = c.created ? new Date(c.created).toLocaleString() : '';
-      let cBody = '';
-      if (c.body && typeof c.body === 'object') {
-        cBody = adfToMarkdown(c.body).trim();
-      } else if (typeof c.body === 'string') {
-        cBody = c.body;
+  if (includeComments) {
+    try {
+      const allComments = await fetchAllJiraComments(
+        baseUrl,
+        key,
+        { Authorization: authHeader, 'X-Atlassian-Token': 'no-check', Accept: 'application/json' },
+        100
+      );
+      if (allComments.length > 0) {
+        commentsMd = formatJiraCommentsMarkdown(allComments);
+      } else if (fields.comment?.comments && Array.isArray(fields.comment.comments) && fields.comment.comments.length > 0) {
+        commentsMd = formatJiraCommentsMarkdown(fields.comment.comments);
       }
-      commentsMd += `> **${author}** (${cDate}):\n> ${cBody.replace(/\n/g, '\n> ')}\n\n`;
+    } catch (cErr) {
+      console.warn('Failed fetching Jira comments:', cErr);
+      if (fields.comment?.comments && Array.isArray(fields.comment.comments) && fields.comment.comments.length > 0) {
+        commentsMd = formatJiraCommentsMarkdown(fields.comment.comments);
+      }
     }
   }
 

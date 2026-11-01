@@ -225,7 +225,7 @@ export const ExtractUrlModal: React.FC<ExtractUrlModalProps> = ({
                 )}
               </h2>
               <p className="text-xs text-stone-500 dark:text-stone-400">
-                Extract webpage or Jira tickets as Markdown with local downloaded images
+                Extract webpage or Jira tickets (including up to 100 comments, subtasks &amp; local attachments) as Markdown
               </p>
             </div>
           </div>

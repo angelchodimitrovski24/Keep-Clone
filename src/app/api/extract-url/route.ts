@@ -268,6 +268,105 @@ function htmlToCleanMarkdown(html: string, imageMap: Map<string, ExtractedImageI
   return text;
 }
 
+/**
+ * Fetches up to maxToFetch comments for a Jira issue with pagination support.
+ */
+async function fetchAllJiraComments(
+  baseUrl: string,
+  issueKey: string,
+  headers: Record<string, string>,
+  maxToFetch: number = 100
+): Promise<any[]> {
+  const allComments: any[] = [];
+  let startAt = 0;
+  const pageSize = 100;
+
+  while (allComments.length < maxToFetch) {
+    const limit = Math.min(pageSize, maxToFetch - allComments.length);
+    let commentRes: Response | null = null;
+
+    try {
+      commentRes = await fetch(
+        `${baseUrl}/rest/api/3/issue/${issueKey}/comment?startAt=${startAt}&maxResults=${limit}&orderBy=created&expand=renderedBody`,
+        { headers }
+      );
+    } catch {
+      // Ignore network errors
+    }
+
+    if (!commentRes || !commentRes.ok) {
+      // Fallback to API v2
+      try {
+        commentRes = await fetch(
+          `${baseUrl}/rest/api/2/issue/${issueKey}/comment?startAt=${startAt}&maxResults=${limit}&orderBy=created&expand=renderedBody`,
+          { headers }
+        );
+      } catch {
+        // Ignore
+      }
+    }
+
+    if (!commentRes || !commentRes.ok) {
+      break;
+    }
+
+    try {
+      const data = await commentRes.json();
+      const batch = Array.isArray(data.comments) ? data.comments : [];
+      if (batch.length === 0) break;
+
+      allComments.push(...batch);
+      startAt += batch.length;
+
+      if (allComments.length >= (data.total || 0) || batch.length < limit) {
+        break;
+      }
+    } catch {
+      break;
+    }
+  }
+
+  return allComments;
+}
+
+/**
+ * Formats Jira comments array into readable Markdown block
+ */
+function formatJiraCommentsMarkdown(comments: any[]): string {
+  if (!comments || comments.length === 0) return '';
+  let md = `### Comments (${comments.length})\n\n`;
+  for (let i = 0; i < comments.length; i++) {
+    const c = comments[i];
+    const author = c.author?.displayName || 'Unknown';
+    const cDate = c.created ? new Date(c.created).toLocaleString() : '';
+    let body = '';
+
+    if (c.renderedBody) {
+      body = c.renderedBody
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<\/p>/gi, '\n\n')
+        .replace(/<[^>]+>/g, '')
+        .replace(/&quot;/g, '"')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .trim();
+    } else if (c.body && typeof c.body === 'object') {
+      body = adfToMarkdown(c.body).trim();
+    } else if (typeof c.body === 'string') {
+      body = c.body.trim();
+    }
+
+    md += `> 💬 **${author}** *(${cDate})*:\n`;
+    const lines = body.split('\n');
+    for (const line of lines) {
+      md += `> ${line}\n`;
+    }
+    md += `\n`;
+  }
+  return md;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -333,8 +432,11 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Check for Jira Issue URL (e.g. https://company.atlassian.net/browse/PROJ-123)
-    const jiraIssueMatch = parsedUrl.pathname.match(/(?:\/jira)?\/browse\/([A-Z0-9]+-[0-9]+)/i);
+    // Check for Jira Issue URL (e.g. https://company.atlassian.net/browse/PROJ-123 or /issues/PROJ-123)
+    const jiraIssueMatch =
+      parsedUrl.pathname.match(/(?:\/jira)?\/(?:browse|issues|projects\/[^/]+\/issues)\/([A-Z0-9]+-[0-9]+)/i) ||
+      parsedUrl.pathname.match(/\/rest\/api\/[23]\/issue\/([A-Z0-9]+-[0-9]+)/i) ||
+      parsedUrl.pathname.match(/\/([A-Z0-9]+-[0-9]+)$/i);
     if (jiraIssueMatch && (headers['Authorization'] || headers['Cookie'])) {
       const issueKey = jiraIssueMatch[1].toUpperCase();
       const origin = parsedUrl.origin;
@@ -426,6 +528,37 @@ export async function POST(req: NextRequest) {
               const link = imagePathStyle === 'api' ? img.serveUrl : img.relativeMarkdownPath;
               jiraMarkdown += `![${img.fileName}](${link})\n\n`;
             }
+          }
+
+          // Subtasks
+          const subtasks = Array.isArray(fields.subtasks) ? fields.subtasks : [];
+          if (subtasks.length > 0) {
+            jiraMarkdown += `### Subtasks (${subtasks.length})\n\n`;
+            for (const st of subtasks) {
+              const isDone = st.fields?.status?.statusCategory?.key === 'done';
+              jiraMarkdown += `- [${isDone ? 'x' : ' '}] **${st.key}**: ${st.fields?.summary || ''} *(${st.fields?.status?.name || ''})*\n`;
+            }
+            jiraMarkdown += '\n';
+          }
+
+          // Fetch up to 100 comments from dedicated Jira comments API
+          let commentsMd = '';
+          try {
+            const comments = await fetchAllJiraComments(origin, issueKey, headers, 100);
+            if (comments.length > 0) {
+              commentsMd = formatJiraCommentsMarkdown(comments);
+            } else if (fields.comment?.comments && Array.isArray(fields.comment.comments) && fields.comment.comments.length > 0) {
+              commentsMd = formatJiraCommentsMarkdown(fields.comment.comments);
+            }
+          } catch (cErr) {
+            console.warn('Failed fetching Jira comments:', cErr);
+            if (fields.comment?.comments && Array.isArray(fields.comment.comments) && fields.comment.comments.length > 0) {
+              commentsMd = formatJiraCommentsMarkdown(fields.comment.comments);
+            }
+          }
+
+          if (commentsMd) {
+            jiraMarkdown += commentsMd;
           }
 
           return NextResponse.json({
