@@ -68,10 +68,38 @@ function adfToMarkdown(node: any): string {
         else if (mark.type === 'em') text = `*${text}*`;
         else if (mark.type === 'code') text = `\`${text}\``;
         else if (mark.type === 'strike') text = `~~${text}~~`;
+        else if (mark.type === 'underline') text = `<u>${text}</u>`;
         else if (mark.type === 'link' && mark.attrs?.href) text = `[${text}](${mark.attrs.href})`;
       }
     }
     return text;
+  }
+
+  // Handle inline non-text ADF nodes
+  if (node.type === 'mention') {
+    const name = node.attrs?.text || node.attrs?.displayName || node.attrs?.id || 'user';
+    return `@${name.replace(/^@/, '')}`;
+  }
+  if (node.type === 'emoji') {
+    return node.attrs?.text || node.attrs?.shortName || '';
+  }
+  if (node.type === 'hardBreak') {
+    return '\n';
+  }
+  if (node.type === 'inlineCard') {
+    const cardUrl = node.attrs?.url || '';
+    return cardUrl ? `[${cardUrl}](${cardUrl})` : '';
+  }
+  if (node.type === 'blockCard') {
+    const cardUrl = node.attrs?.url || '';
+    return cardUrl ? `\n\n[${cardUrl}](${cardUrl})\n\n` : '';
+  }
+  if (node.type === 'date') {
+    const ts = node.attrs?.timestamp;
+    return ts ? new Date(Number(ts)).toLocaleDateString() : '';
+  }
+  if (node.type === 'status') {
+    return ` \`[${node.attrs?.text || 'STATUS'}]\` `;
   }
 
   const children = Array.isArray(node.content) ? node.content.map(adfToMarkdown).join('') : '';
@@ -97,6 +125,10 @@ function adfToMarkdown(node: any): string {
     }
     case 'blockquote':
       return `\n\n> ${children.trim().replace(/\n/g, '\n> ')}\n\n`;
+    case 'panel': {
+      const panelType = node.attrs?.panelType || 'info';
+      return `\n\n> **[${panelType.toUpperCase()}]**\n> ${children.trim().replace(/\n/g, '\n> ')}\n\n`;
+    }
     case 'rule':
       return '\n\n---\n\n';
     case 'table':
@@ -107,11 +139,83 @@ function adfToMarkdown(node: any): string {
     case 'tableCell':
       return `${children.trim()} | `;
     case 'mediaSingle':
+    case 'mediaGroup':
+      return `\n\n${children}\n\n`;
     case 'media':
-      return node.attrs?.id ? `\n\n[Attachment: ${node.attrs.id}]\n\n` : '';
+      return node.attrs?.id ? `[Attachment: ${node.attrs.id}]` : '';
     default:
       return children;
   }
+}
+
+/**
+ * Fallback to extract any plain text from an ADF tree if adfToMarkdown yields empty.
+ */
+function extractAllTextFromADF(node: any): string {
+  if (!node) return '';
+  if (typeof node === 'string') return node;
+  if (node.text) return node.text;
+  if (node.attrs?.text) return node.attrs.text;
+  if (Array.isArray(node.content)) {
+    return node.content.map(extractAllTextFromADF).join(' ');
+  }
+  return '';
+}
+
+/**
+ * Converts Jira Wiki Markup (used on Jira Server & Data Center) to standard Markdown.
+ */
+function jiraWikiMarkupToMarkdown(wikiText: string): string {
+  if (!wikiText) return '';
+  let text = wikiText;
+
+  // Code blocks: {code:lang}...{code} or {code}...{code}
+  text = text.replace(/\{code(?::([a-zA-Z0-9_-]+))?\}([\s\S]*?)\{code\}/gi, (_m, lang, code) => {
+    return `\n\`\`\`${lang || ''}\n${code.trim()}\n\`\`\`\n`;
+  });
+
+  // Noformat blocks: {noformat}...{noformat}
+  text = text.replace(/\{noformat\}([\s\S]*?)\{noformat\}/gi, (_m, content) => {
+    return `\n\`\`\`\n${content.trim()}\n\`\`\`\n`;
+  });
+
+  // Quotes: {quote}...{quote}
+  text = text.replace(/\{quote\}([\s\S]*?)\{quote\}/gi, (_m, quote) => {
+    return `\n> ${quote.trim().replace(/\n/g, '\n> ')}\n`;
+  });
+
+  // Panels: {panel:title=...}...{panel}
+  text = text.replace(/\{panel(?::title=([^}]+))?\}([\s\S]*?)\{panel\}/gi, (_m, title, content) => {
+    const titleHeader = title ? `**${title}**\n> ` : '';
+    return `\n> ${titleHeader}${content.trim().replace(/\n/g, '\n> ')}\n`;
+  });
+
+  // Headings: h1. text to h6. text
+  text = text.replace(/^h([1-6])\.\s+(.*)$/gim, (_m, level, content) => {
+    return `${'#'.repeat(parseInt(level, 10))} ${content}`;
+  });
+
+  // Links: [title|url] or [url]
+  text = text.replace(/\[([^|\]]+)\|([^\]]+)\]/g, '[$1]($2)');
+  text = text.replace(/\[([^\]]+)\]/g, (match, inner) => {
+    if (inner.startsWith('http://') || inner.startsWith('https://')) {
+      return `[${inner}](${inner})`;
+    }
+    return match;
+  });
+
+  // Lists: * item or # item
+  text = text.replace(/^(\s*)\*\s+(.*)$/gm, '$1- $2');
+  text = text.replace(/^(\s*)#\s+(.*)$/gm, '$11. $2');
+
+  // Inline formatting
+  text = text.replace(/\{\{([^{}\n]+)\}\}/g, '`$1`');
+  text = text.replace(/(^|[\s(])\*([^*\n]+)\*([\s).,!?:;]|$)/g, '$1**$2**$3');
+  text = text.replace(/(^|[\s(])_([_\n]+)_([\s).,!?:;]|$)/g, '$1*$2*$3');
+  text = text.replace(/(^|[\s(])-([-\n]+)-([\s).,!?:;]|$)/g, '$1~~$2~~$3');
+  text = text.replace(/(^|[\s(])\+([+\n]+)\+([\s).,!?:;]|$)/g, '$1<u>$2</u>$3');
+
+  return text;
 }
 
 /**
@@ -269,7 +373,101 @@ function htmlToCleanMarkdown(html: string, imageMap: Map<string, ExtractedImageI
 }
 
 /**
+ * Extracts Jira base URL and issue key from arbitrary Jira URLs (Cloud, Server, Board, Browse, Rest)
+ */
+function extractJiraInfo(urlStr: string): { baseUrl: string; issueKey: string } | null {
+  try {
+    const parsed = new URL(urlStr);
+    let issueKey = '';
+    let prefix = '';
+
+    // Check query params (e.g. Jira Agile boards: ?selectedIssue=CA-123)
+    const selectedIssue = parsed.searchParams.get('selectedIssue');
+    if (selectedIssue && /^[A-Za-z0-9]+-[0-9]+$/.test(selectedIssue)) {
+      issueKey = selectedIssue.toUpperCase();
+      const boardMatch = parsed.pathname.match(/^(.*?)\/(?:jira|secure|boards|software)/i);
+      prefix = boardMatch ? boardMatch[1] : '';
+    } else {
+      const browseMatch = parsed.pathname.match(/^(.*?)(?:\/jira)?\/(?:browse|issues|projects\/[^/]+\/issues)\/([A-Za-z0-9]+-[0-9]+)/i);
+      const restMatch = parsed.pathname.match(/^(.*?)(?:\/jira)?\/rest\/api\/[23]\/issue\/([A-Za-z0-9]+-[0-9]+)/i);
+      const endMatch = parsed.pathname.match(/^(.*?)\/([A-Za-z0-9]+-[0-9]+)$/i);
+
+      if (browseMatch) {
+        prefix = browseMatch[1];
+        issueKey = browseMatch[2].toUpperCase();
+      } else if (restMatch) {
+        prefix = restMatch[1];
+        issueKey = restMatch[2].toUpperCase();
+      } else if (endMatch && /^[A-Za-z0-9]+-[0-9]+$/.test(endMatch[2])) {
+        prefix = endMatch[1];
+        issueKey = endMatch[2].toUpperCase();
+      }
+    }
+
+    if (!issueKey) return null;
+
+    prefix = prefix.replace(/\/+$/, '');
+    const baseUrl = `${parsed.origin}${prefix}`;
+    return { baseUrl, issueKey };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Parses any Jira comment body (renderedBody HTML, ADF object, or Wiki Markup string) into clean Markdown.
+ */
+function parseJiraCommentBody(c: any): string {
+  if (!c) return '';
+
+  // 1. If renderedBody HTML is provided
+  if (c.renderedBody && typeof c.renderedBody === 'string') {
+    return c.renderedBody
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/p>/gi, '\n\n')
+      .replace(/<li\b[^>]*>([\s\S]*?)<\/li>/gi, '\n- $1')
+      .replace(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, '[$2]($1)')
+      .replace(/<(?:strong|b)\b[^>]*>([\s\S]*?)<\/(?:strong|b)>/gi, '**$1**')
+      .replace(/<(?:em|i)\b[^>]*>([\s\S]*?)<\/(?:em|i)>/gi, '*$1*')
+      .replace(/<code\b[^>]*>([\s\S]*?)<\/code>/gi, '`$1`')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&quot;/g, '"')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&#39;/g, "'")
+      .replace(/&nbsp;/g, ' ')
+      .trim();
+  }
+
+  // 2. If ADF object (Jira Cloud v3)
+  if (c.body && typeof c.body === 'object') {
+    const md = adfToMarkdown(c.body).trim();
+    if (md) return md;
+    // Deep fallback extraction if adfToMarkdown missed complex nodes
+    const deep = extractAllTextFromADF(c.body).trim();
+    if (deep) return deep;
+  }
+
+  // 3. If string (Jira Server / Data Center / v2 Wiki markup)
+  if (typeof c.body === 'string') {
+    return jiraWikiMarkupToMarkdown(c.body.trim());
+  }
+
+  if (c.body) {
+    try {
+      return JSON.stringify(c.body);
+    } catch {
+      return String(c.body);
+    }
+  }
+
+  return '';
+}
+
+/**
  * Fetches up to maxToFetch comments for a Jira issue with pagination support.
+ * Resilient against Jira Cloud API v3 and Jira Server/Data Center API v2 variations.
  */
 async function fetchAllJiraComments(
   baseUrl: string,
@@ -279,49 +477,76 @@ async function fetchAllJiraComments(
 ): Promise<any[]> {
   const allComments: any[] = [];
   let startAt = 0;
-  const pageSize = 100;
+  const pageSize = 50;
+  const cleanBase = baseUrl.replace(/\/+$/, '');
+
+  const apiHeaders: Record<string, string> = {
+    ...headers,
+    Accept: 'application/json',
+    'Content-Type': 'application/json',
+    'X-Atlassian-Token': 'no-check',
+  };
+
+  let chosenApi: { version: '3' | '2'; expand: boolean } | null = null;
 
   while (allComments.length < maxToFetch) {
     const limit = Math.min(pageSize, maxToFetch - allComments.length);
-    let commentRes: Response | null = null;
+    let batch: any[] = [];
+    let total: number | null = null;
 
-    try {
-      commentRes = await fetch(
-        `${baseUrl}/rest/api/3/issue/${issueKey}/comment?startAt=${startAt}&maxResults=${limit}&orderBy=created&expand=renderedBody`,
-        { headers }
-      );
-    } catch {
-      // Ignore network errors
-    }
+    if (!chosenApi) {
+      // Test endpoints to find the active API on this Jira instance (omitting orderBy to prevent 400 Bad Request)
+      const candidates: Array<{ version: '3' | '2'; expand: boolean }> = [
+        { version: '3', expand: true },
+        { version: '3', expand: false },
+        { version: '2', expand: true },
+        { version: '2', expand: false },
+      ];
 
-    if (!commentRes || !commentRes.ok) {
-      // Fallback to API v2
+      for (const cand of candidates) {
+        try {
+          const testUrl = `${cleanBase}/rest/api/${cand.version}/issue/${issueKey}/comment?startAt=0&maxResults=${limit}${cand.expand ? '&expand=renderedBody' : ''}`;
+          const r = await fetch(testUrl, { headers: apiHeaders });
+          if (r.ok) {
+            const data = await r.json();
+            if (Array.isArray(data.comments)) {
+              batch = data.comments;
+              total = typeof data.total === 'number' ? data.total : null;
+              chosenApi = cand;
+              break;
+            }
+          }
+        } catch {
+          // ignore candidate failure
+        }
+      }
+    } else {
+      const pageUrl = `${cleanBase}/rest/api/${chosenApi.version}/issue/${issueKey}/comment?startAt=${startAt}&maxResults=${limit}${chosenApi.expand ? '&expand=renderedBody' : ''}`;
       try {
-        commentRes = await fetch(
-          `${baseUrl}/rest/api/2/issue/${issueKey}/comment?startAt=${startAt}&maxResults=${limit}&orderBy=created&expand=renderedBody`,
-          { headers }
-        );
+        const r = await fetch(pageUrl, { headers: apiHeaders });
+        if (r.ok) {
+          const data = await r.json();
+          if (Array.isArray(data.comments)) {
+            batch = data.comments;
+            total = typeof data.total === 'number' ? data.total : null;
+          }
+        }
       } catch {
-        // Ignore
+        break;
       }
     }
 
-    if (!commentRes || !commentRes.ok) {
+    if (batch.length === 0) {
       break;
     }
 
-    try {
-      const data = await commentRes.json();
-      const batch = Array.isArray(data.comments) ? data.comments : [];
-      if (batch.length === 0) break;
+    allComments.push(...batch);
+    startAt += batch.length;
 
-      allComments.push(...batch);
-      startAt += batch.length;
-
-      if (allComments.length >= (data.total || 0) || batch.length < limit) {
-        break;
-      }
-    } catch {
+    if (total !== null && allComments.length >= total) {
+      break;
+    }
+    if (batch.length < limit) {
       break;
     }
   }
@@ -337,30 +562,18 @@ function formatJiraCommentsMarkdown(comments: any[]): string {
   let md = `### Comments (${comments.length})\n\n`;
   for (let i = 0; i < comments.length; i++) {
     const c = comments[i];
-    const author = c.author?.displayName || 'Unknown';
+    const author = c.author?.displayName || c.updateAuthor?.displayName || c.author?.name || 'Unknown';
     const cDate = c.created ? new Date(c.created).toLocaleString() : '';
-    let body = '';
-
-    if (c.renderedBody) {
-      body = c.renderedBody
-        .replace(/<br\s*\/?>/gi, '\n')
-        .replace(/<\/p>/gi, '\n\n')
-        .replace(/<[^>]+>/g, '')
-        .replace(/&quot;/g, '"')
-        .replace(/&amp;/g, '&')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .trim();
-    } else if (c.body && typeof c.body === 'object') {
-      body = adfToMarkdown(c.body).trim();
-    } else if (typeof c.body === 'string') {
-      body = c.body.trim();
-    }
+    const body = parseJiraCommentBody(c);
 
     md += `> 💬 **${author}** *(${cDate})*:\n`;
-    const lines = body.split('\n');
-    for (const line of lines) {
-      md += `> ${line}\n`;
+    if (body) {
+      const lines = body.split('\n');
+      for (const line of lines) {
+        md += `> ${line}\n`;
+      }
+    } else {
+      md += `> *(empty comment or attachment)*\n`;
     }
     md += `\n`;
   }
@@ -433,43 +646,69 @@ export async function POST(req: NextRequest) {
     }
 
     // Check for Jira Issue URL (e.g. https://company.atlassian.net/browse/PROJ-123 or /issues/PROJ-123)
-    const jiraIssueMatch =
-      parsedUrl.pathname.match(/(?:\/jira)?\/(?:browse|issues|projects\/[^/]+\/issues)\/([A-Z0-9]+-[0-9]+)/i) ||
-      parsedUrl.pathname.match(/\/rest\/api\/[23]\/issue\/([A-Z0-9]+-[0-9]+)/i) ||
-      parsedUrl.pathname.match(/\/([A-Z0-9]+-[0-9]+)$/i);
-    if (jiraIssueMatch && (headers['Authorization'] || headers['Cookie'])) {
-      const issueKey = jiraIssueMatch[1].toUpperCase();
-      const origin = parsedUrl.origin;
-      const apiEndpoint = `${origin}/rest/api/3/issue/${issueKey}?expand=renderedFields,names,schema`;
+    const jiraInfo = extractJiraInfo(url);
+    if (jiraInfo && (headers['Authorization'] || headers['Cookie'])) {
+      const { baseUrl: jiraBaseUrl, issueKey } = jiraInfo;
+      const headersForJira = {
+        ...headers,
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'X-Atlassian-Token': 'no-check',
+      };
 
+      let issueData: any = null;
+
+      // 1. Try Jira Cloud v3 first
       try {
-        const jiraRes = await fetch(apiEndpoint, {
-          headers: {
-            ...headers,
-            Accept: 'application/json',
-          },
-        });
+        const jiraRes3 = await fetch(
+          `${jiraBaseUrl}/rest/api/3/issue/${issueKey}?fields=*all&expand=renderedFields,names,schema,renderedBody`,
+          { headers: headersForJira }
+        );
+        if (jiraRes3.ok) {
+          issueData = await jiraRes3.json();
+        }
+      } catch (err) {
+        // v3 fetch error, fallback to v2 below
+      }
 
-        if (jiraRes.ok) {
-          const issueData = await jiraRes.json();
+      // 2. Fallback to Jira Server / Data Center v2
+      if (!issueData) {
+        try {
+          const jiraRes2 = await fetch(
+            `${jiraBaseUrl}/rest/api/2/issue/${issueKey}?fields=*all&expand=renderedFields,names,schema,renderedBody`,
+            { headers: headersForJira }
+          );
+          if (jiraRes2.ok) {
+            issueData = await jiraRes2.json();
+          }
+        } catch (err) {
+          console.warn('Jira v2 issue fetch attempt error:', err);
+        }
+      }
+
+      if (issueData) {
+        try {
           const fields = issueData.fields || {};
           const summary = fields.summary || issueKey;
           const status = fields.status?.name || 'Unknown';
           const priority = fields.priority?.name || 'None';
           const issueType = fields.issuetype?.name || 'Issue';
-          const assignee = fields.assignee?.displayName || 'Unassigned';
-          const reporter = fields.reporter?.displayName || 'Unknown';
+          const assignee = fields.assignee?.displayName || fields.assignee?.name || 'Unassigned';
+          const reporter = fields.reporter?.displayName || fields.reporter?.name || 'Unknown';
           const labels = Array.isArray(fields.labels) ? fields.labels : [];
           const descriptionNode = fields.description;
 
-          // Convert description (ADF or rendered HTML or string)
+          // Convert description (Rendered HTML, ADF, or Wiki Markup)
           let descriptionMd = '';
           if (issueData.renderedFields?.description) {
             descriptionMd = htmlToCleanMarkdown(issueData.renderedFields.description, new Map(), imagePathStyle);
           } else if (descriptionNode && typeof descriptionNode === 'object') {
             descriptionMd = adfToMarkdown(descriptionNode).trim();
+            if (!descriptionMd) {
+              descriptionMd = extractAllTextFromADF(descriptionNode).trim();
+            }
           } else if (typeof descriptionNode === 'string') {
-            descriptionMd = descriptionNode;
+            descriptionMd = jiraWikiMarkupToMarkdown(descriptionNode);
           }
 
           // Process and download Jira attachments (screenshots, images)
@@ -544,7 +783,7 @@ export async function POST(req: NextRequest) {
           // Fetch up to 100 comments from dedicated Jira comments API
           let commentsMd = '';
           try {
-            const comments = await fetchAllJiraComments(origin, issueKey, headers, 100);
+            const comments = await fetchAllJiraComments(jiraBaseUrl, issueKey, headers, 100);
             if (comments.length > 0) {
               commentsMd = formatJiraCommentsMarkdown(comments);
             } else if (fields.comment?.comments && Array.isArray(fields.comment.comments) && fields.comment.comments.length > 0) {
@@ -572,9 +811,9 @@ export async function POST(req: NextRequest) {
             labels: ['jira', issueKey.toLowerCase(), ...labels],
             images: downloadedImages,
           });
+        } catch (procErr) {
+          console.error('Error processing Jira issue data:', procErr);
         }
-      } catch (err) {
-        console.warn('Jira API fetch attempt error, falling back to HTML fetch:', err);
       }
     }
 

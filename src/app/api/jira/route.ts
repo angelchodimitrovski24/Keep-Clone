@@ -64,10 +64,38 @@ function adfToMarkdown(node: any): string {
         else if (mark.type === 'em') text = `*${text}*`;
         else if (mark.type === 'code') text = `\`${text}\``;
         else if (mark.type === 'strike') text = `~~${text}~~`;
+        else if (mark.type === 'underline') text = `<u>${text}</u>`;
         else if (mark.type === 'link' && mark.attrs?.href) text = `[${text}](${mark.attrs.href})`;
       }
     }
     return text;
+  }
+
+  // Handle inline non-text ADF nodes
+  if (node.type === 'mention') {
+    const name = node.attrs?.text || node.attrs?.displayName || node.attrs?.id || 'user';
+    return `@${name.replace(/^@/, '')}`;
+  }
+  if (node.type === 'emoji') {
+    return node.attrs?.text || node.attrs?.shortName || '';
+  }
+  if (node.type === 'hardBreak') {
+    return '\n';
+  }
+  if (node.type === 'inlineCard') {
+    const cardUrl = node.attrs?.url || '';
+    return cardUrl ? `[${cardUrl}](${cardUrl})` : '';
+  }
+  if (node.type === 'blockCard') {
+    const cardUrl = node.attrs?.url || '';
+    return cardUrl ? `\n\n[${cardUrl}](${cardUrl})\n\n` : '';
+  }
+  if (node.type === 'date') {
+    const ts = node.attrs?.timestamp;
+    return ts ? new Date(Number(ts)).toLocaleDateString() : '';
+  }
+  if (node.type === 'status') {
+    return ` \`[${node.attrs?.text || 'STATUS'}]\` `;
   }
 
   const children = Array.isArray(node.content) ? node.content.map(adfToMarkdown).join('') : '';
@@ -93,6 +121,10 @@ function adfToMarkdown(node: any): string {
     }
     case 'blockquote':
       return `\n\n> ${children.trim().replace(/\n/g, '\n> ')}\n\n`;
+    case 'panel': {
+      const panelType = node.attrs?.panelType || 'info';
+      return `\n\n> **[${panelType.toUpperCase()}]**\n> ${children.trim().replace(/\n/g, '\n> ')}\n\n`;
+    }
     case 'rule':
       return '\n\n---\n\n';
     case 'table':
@@ -102,16 +134,121 @@ function adfToMarkdown(node: any): string {
     case 'tableHeader':
     case 'tableCell':
       return `${children.trim()} | `;
+    case 'mediaSingle':
+    case 'mediaGroup':
+      return `\n\n${children}\n\n`;
+    case 'media':
+      return node.attrs?.id ? `[Attachment: ${node.attrs.id}]` : '';
     default:
       return children;
   }
 }
 
 /**
- * Formats full Jira issue object into Note payload with Markdown & downloaded attachments
+ * Fallback to extract any plain text from an ADF tree
  */
+function extractAllTextFromADF(node: any): string {
+  if (!node) return '';
+  if (typeof node === 'string') return node;
+  if (node.text) return node.text;
+  if (node.attrs?.text) return node.attrs.text;
+  if (Array.isArray(node.content)) {
+    return node.content.map(extractAllTextFromADF).join(' ');
+  }
+  return '';
+}
+
+/**
+ * Converts Jira Wiki Markup to standard Markdown
+ */
+function jiraWikiMarkupToMarkdown(wikiText: string): string {
+  if (!wikiText) return '';
+  let text = wikiText;
+
+  text = text.replace(/\{code(?::([a-zA-Z0-9_-]+))?\}([\s\S]*?)\{code\}/gi, (_m, lang, code) => {
+    return `\n\`\`\`${lang || ''}\n${code.trim()}\n\`\`\`\n`;
+  });
+  text = text.replace(/\{noformat\}([\s\S]*?)\{noformat\}/gi, (_m, content) => {
+    return `\n\`\`\`\n${content.trim()}\n\`\`\`\n`;
+  });
+  text = text.replace(/\{quote\}([\s\S]*?)\{quote\}/gi, (_m, quote) => {
+    return `\n> ${quote.trim().replace(/\n/g, '\n> ')}\n`;
+  });
+  text = text.replace(/\{panel(?::title=([^}]+))?\}([\s\S]*?)\{panel\}/gi, (_m, title, content) => {
+    const titleHeader = title ? `**${title}**\n> ` : '';
+    return `\n> ${titleHeader}${content.trim().replace(/\n/g, '\n> ')}\n`;
+  });
+  text = text.replace(/^h([1-6])\.\s+(.*)$/gim, (_m, level, content) => {
+    return `${'#'.repeat(parseInt(level, 10))} ${content}`;
+  });
+  text = text.replace(/\[([^|\]]+)\|([^\]]+)\]/g, '[$1]($2)');
+  text = text.replace(/\[([^\]]+)\]/g, (match, inner) => {
+    if (inner.startsWith('http://') || inner.startsWith('https://')) {
+      return `[${inner}](${inner})`;
+    }
+    return match;
+  });
+  text = text.replace(/^(\s*)\*\s+(.*)$/gm, '$1- $2');
+  text = text.replace(/^(\s*)#\s+(.*)$/gm, '$11. $2');
+  text = text.replace(/\{\{([^{}\n]+)\}\}/g, '`$1`');
+  text = text.replace(/(^|[\s(])\*([^*\n]+)\*([\s).,!?:;]|$)/g, '$1**$2**$3');
+  text = text.replace(/(^|[\s(])_([_\n]+)_([\s).,!?:;]|$)/g, '$1*$2*$3');
+  text = text.replace(/(^|[\s(])-([-\n]+)-([\s).,!?:;]|$)/g, '$1~~$2~~$3');
+  text = text.replace(/(^|[\s(])\+([+\n]+)\+([\s).,!?:;]|$)/g, '$1<u>$2</u>$3');
+
+  return text;
+}
+
+/**
+ * Parses any Jira comment body (rendered HTML, ADF object, or Wiki markup string)
+ */
+function parseJiraCommentBody(c: any): string {
+  if (!c) return '';
+
+  if (c.renderedBody && typeof c.renderedBody === 'string') {
+    return c.renderedBody
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/p>/gi, '\n\n')
+      .replace(/<li\b[^>]*>([\s\S]*?)<\/li>/gi, '\n- $1')
+      .replace(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, '[$2]($1)')
+      .replace(/<(?:strong|b)\b[^>]*>([\s\S]*?)<\/(?:strong|b)>/gi, '**$1**')
+      .replace(/<(?:em|i)\b[^>]*>([\s\S]*?)<\/(?:em|i)>/gi, '*$1*')
+      .replace(/<code\b[^>]*>([\s\S]*?)<\/code>/gi, '`$1`')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&quot;/g, '"')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&#39;/g, "'")
+      .replace(/&nbsp;/g, ' ')
+      .trim();
+  }
+
+  if (c.body && typeof c.body === 'object') {
+    const md = adfToMarkdown(c.body).trim();
+    if (md) return md;
+    const deep = extractAllTextFromADF(c.body).trim();
+    if (deep) return deep;
+  }
+
+  if (typeof c.body === 'string') {
+    return jiraWikiMarkupToMarkdown(c.body.trim());
+  }
+
+  if (c.body) {
+    try {
+      return JSON.stringify(c.body);
+    } catch {
+      return String(c.body);
+    }
+  }
+
+  return '';
+}
+
 /**
  * Fetches up to maxToFetch comments for a Jira issue with pagination support.
+ * Robust against Jira Cloud API v3 and Jira Server/Data Center API v2 variations.
  */
 async function fetchAllJiraComments(
   baseUrl: string,
@@ -121,49 +258,75 @@ async function fetchAllJiraComments(
 ): Promise<any[]> {
   const allComments: any[] = [];
   let startAt = 0;
-  const pageSize = 100;
+  const pageSize = 50;
+  const cleanBase = baseUrl.replace(/\/+$/, '');
+
+  const apiHeaders: Record<string, string> = {
+    ...headers,
+    Accept: 'application/json',
+    'Content-Type': 'application/json',
+    'X-Atlassian-Token': 'no-check',
+  };
+
+  let chosenApi: { version: '3' | '2'; expand: boolean } | null = null;
 
   while (allComments.length < maxToFetch) {
     const limit = Math.min(pageSize, maxToFetch - allComments.length);
-    let commentRes: Response | null = null;
+    let batch: any[] = [];
+    let total: number | null = null;
 
-    try {
-      commentRes = await fetch(
-        `${baseUrl}/rest/api/3/issue/${issueKey}/comment?startAt=${startAt}&maxResults=${limit}&orderBy=created&expand=renderedBody`,
-        { headers }
-      );
-    } catch {
-      // Ignore network errors
-    }
+    if (!chosenApi) {
+      const candidates: Array<{ version: '3' | '2'; expand: boolean }> = [
+        { version: '3', expand: true },
+        { version: '3', expand: false },
+        { version: '2', expand: true },
+        { version: '2', expand: false },
+      ];
 
-    if (!commentRes || !commentRes.ok) {
-      // Fallback to API v2
+      for (const cand of candidates) {
+        try {
+          const testUrl = `${cleanBase}/rest/api/${cand.version}/issue/${issueKey}/comment?startAt=0&maxResults=${limit}${cand.expand ? '&expand=renderedBody' : ''}`;
+          const r = await fetch(testUrl, { headers: apiHeaders });
+          if (r.ok) {
+            const data = await r.json();
+            if (Array.isArray(data.comments)) {
+              batch = data.comments;
+              total = typeof data.total === 'number' ? data.total : null;
+              chosenApi = cand;
+              break;
+            }
+          }
+        } catch {
+          // ignore candidate failure
+        }
+      }
+    } else {
+      const pageUrl = `${cleanBase}/rest/api/${chosenApi.version}/issue/${issueKey}/comment?startAt=${startAt}&maxResults=${limit}${chosenApi.expand ? '&expand=renderedBody' : ''}`;
       try {
-        commentRes = await fetch(
-          `${baseUrl}/rest/api/2/issue/${issueKey}/comment?startAt=${startAt}&maxResults=${limit}&orderBy=created&expand=renderedBody`,
-          { headers }
-        );
+        const r = await fetch(pageUrl, { headers: apiHeaders });
+        if (r.ok) {
+          const data = await r.json();
+          if (Array.isArray(data.comments)) {
+            batch = data.comments;
+            total = typeof data.total === 'number' ? data.total : null;
+          }
+        }
       } catch {
-        // Ignore
+        break;
       }
     }
 
-    if (!commentRes || !commentRes.ok) {
+    if (batch.length === 0) {
       break;
     }
 
-    try {
-      const data = await commentRes.json();
-      const batch = Array.isArray(data.comments) ? data.comments : [];
-      if (batch.length === 0) break;
+    allComments.push(...batch);
+    startAt += batch.length;
 
-      allComments.push(...batch);
-      startAt += batch.length;
-
-      if (allComments.length >= (data.total || 0) || batch.length < limit) {
-        break;
-      }
-    } catch {
+    if (total !== null && allComments.length >= total) {
+      break;
+    }
+    if (batch.length < limit) {
       break;
     }
   }
@@ -179,30 +342,18 @@ function formatJiraCommentsMarkdown(comments: any[]): string {
   let md = `### Comments (${comments.length})\n\n`;
   for (let i = 0; i < comments.length; i++) {
     const c = comments[i];
-    const author = c.author?.displayName || 'Unknown';
+    const author = c.author?.displayName || c.updateAuthor?.displayName || c.author?.name || 'Unknown';
     const cDate = c.created ? new Date(c.created).toLocaleString() : '';
-    let body = '';
-
-    if (c.renderedBody) {
-      body = c.renderedBody
-        .replace(/<br\s*\/?>/gi, '\n')
-        .replace(/<\/p>/gi, '\n\n')
-        .replace(/<[^>]+>/g, '')
-        .replace(/&quot;/g, '"')
-        .replace(/&amp;/g, '&')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .trim();
-    } else if (c.body && typeof c.body === 'object') {
-      body = adfToMarkdown(c.body).trim();
-    } else if (typeof c.body === 'string') {
-      body = c.body.trim();
-    }
+    const body = parseJiraCommentBody(c);
 
     md += `> 💬 **${author}** *(${cDate})*:\n`;
-    const lines = body.split('\n');
-    for (const line of lines) {
-      md += `> ${line}\n`;
+    if (body) {
+      const lines = body.split('\n');
+      for (const line of lines) {
+        md += `> ${line}\n`;
+      }
+    } else {
+      md += `> *(empty comment or attachment)*\n`;
     }
     md += `\n`;
   }
@@ -244,8 +395,11 @@ async function processJiraIssueToNote(
       .trim();
   } else if (fields.description && typeof fields.description === 'object') {
     descriptionMd = adfToMarkdown(fields.description).trim();
+    if (!descriptionMd) {
+      descriptionMd = extractAllTextFromADF(fields.description).trim();
+    }
   } else if (typeof fields.description === 'string') {
-    descriptionMd = fields.description;
+    descriptionMd = jiraWikiMarkupToMarkdown(fields.description);
   }
 
   // Process & Download Attachments
@@ -455,14 +609,14 @@ export async function POST(req: NextRequest) {
 
       const cleanKey = issueKey.trim().toUpperCase();
       let issueRes = await fetch(
-        `${baseUrl}/rest/api/3/issue/${cleanKey}?expand=renderedFields,names,schema`,
+        `${baseUrl}/rest/api/3/issue/${cleanKey}?fields=*all&expand=renderedFields,names,schema,renderedBody`,
         { headers: jiraHeaders }
       );
 
       if (!issueRes.ok) {
         // Fallback to API v2
         issueRes = await fetch(
-          `${baseUrl}/rest/api/2/issue/${cleanKey}?expand=renderedFields,names,schema`,
+          `${baseUrl}/rest/api/2/issue/${cleanKey}?fields=*all&expand=renderedFields,names,schema,renderedBody`,
           { headers: jiraHeaders }
         );
       }
@@ -548,10 +702,17 @@ export async function POST(req: NextRequest) {
         // Max 30 per batch to prevent long server timeouts
         try {
           const cleanK = k.trim().toUpperCase();
-          const issueRes = await fetch(
-            `${baseUrl}/rest/api/3/issue/${cleanK}?expand=renderedFields,names`,
+          let issueRes = await fetch(
+            `${baseUrl}/rest/api/3/issue/${cleanK}?fields=*all&expand=renderedFields,names,schema,renderedBody`,
             { headers: jiraHeaders }
           );
+
+          if (!issueRes.ok) {
+            issueRes = await fetch(
+              `${baseUrl}/rest/api/2/issue/${cleanK}?fields=*all&expand=renderedFields,names,schema,renderedBody`,
+              { headers: jiraHeaders }
+            );
+          }
 
           if (issueRes.ok) {
             const issueData = await issueRes.json();
