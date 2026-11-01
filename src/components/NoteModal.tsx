@@ -51,6 +51,9 @@ import { EditReadingTimeModal } from './EditReadingTimeModal';
 import { printNote } from '@/lib/printNote';
 import { importMhtmlIntoNote } from '@/lib/mhtmlParser';
 import { NotionSubpagesSection } from './NotionSubpagesSection';
+import { ExtractUrlModal } from './ExtractUrlModal';
+import { ExtractUrlResult } from '@/lib/urlExtractor';
+import { convertMarkdownToHtml } from '@/lib/formatUtils';
 
 function formatStopwatchTime(seconds: number): string {
   const h = Math.floor(seconds / 3600);
@@ -133,6 +136,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
   const [showSubpages, setShowSubpages] = useState(false);
   const [showCompletedTodos, setShowCompletedTodos] = useState(true);
   const [isFormattingOpen, setIsFormattingOpen] = useState(false);
+  const [isExtractUrlModalOpen, setIsExtractUrlModalOpen] = useState(false);
   const [isPreviewMode, setIsPreviewMode] = useState(false);
   const [showEncryptModal, setShowEncryptModal] = useState(false);
   const [showLinkModal, setShowLinkModal] = useState(false);
@@ -843,7 +847,26 @@ export const NoteModal: React.FC<NoteModalProps> = ({
     editorRef.current?.handleFormat(cmd);
   };
 
-    const handleInsertDataview = () => {
+  const handleExtractedUrlInModal = (result: ExtractUrlResult) => {
+    if (!title.trim() && result.title) {
+      setTitle(result.title);
+    }
+    const htmlContent = convertMarkdownToHtml(result.markdown);
+    if (editorRef.current) {
+      editorRef.current.insertContent(htmlContent);
+    } else {
+      setContent((prev) => (prev ? `${prev}\n\n${htmlContent}` : htmlContent));
+    }
+    if (result.labels && result.labels.length > 0) {
+      setLabels((prev) => Array.from(new Set([...prev, ...result.labels!])));
+    }
+    if (result.images && result.images.length > 0) {
+      const newImagePaths = result.images.map((img) => img.savedPath || img.serveUrl);
+      setImages((prev) => Array.from(new Set([...prev, ...newImagePaths])));
+    }
+  };
+
+  const handleInsertDataview = () => {
     if (editorRef.current) {
       editorRef.current.handleFormat('dataview');
     } else {
@@ -1879,6 +1902,7 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
               onAddImage={handleAddImage}
               onImportMhtml={handleImportMhtml}
               onInsertDataview={handleInsertDataview}
+              onExtractUrl={() => setIsExtractUrlModalOpen(true)}
               onCopyContent={handleCopyTitleAndContent}
               onArchiveToggle={() => {
                 toggleArchiveNote(note.id);
@@ -2034,6 +2058,12 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
           }}
         />
       )}
+      <ExtractUrlModal
+        isOpen={isExtractUrlModalOpen}
+        onClose={() => setIsExtractUrlModalOpen(false)}
+        onExtracted={handleExtractedUrlInModal}
+        isInsertMode={true}
+      />
     </div>
   );
 };

@@ -31,6 +31,7 @@ import {
   Globe,
   Database,
   ClipboardCopy,
+  DownloadCloud,
 } from 'lucide-react';
 import { Note, NoteColor, NoteBackgroundTheme } from '@/types/note';
 import { NOTE_COLORS, NOTE_THEMES } from '@/lib/constants';
@@ -71,6 +72,7 @@ interface NoteActionsProps {
   onMenuOpenChange?: (open: boolean) => void;
   onImportMhtml?: (file: File) => void;
   onInsertDataview?: () => void;
+  onExtractUrl?: () => void;
 }
 
 export const NoteActions: React.FC<NoteActionsProps> = ({
@@ -86,6 +88,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
   onAddImage,
   onImportMhtml,
   onInsertDataview,
+  onExtractUrl,
   onToggleChecklist,
   onAddReminder,
   onToggleLabel,
@@ -913,6 +916,19 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
               >
                 <Globe className="w-4 h-4 text-blue-500 shrink-0" />
                 <span>Import MHTML into note</span>
+              </button>
+            )}
+            {onExtractUrl && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMenu(false);
+                  onExtractUrl();
+                }}
+                className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
+              >
+                <DownloadCloud className="w-4 h-4 text-sky-500 shrink-0" />
+                <span>Extract from URL (Web Clipper)</span>
               </button>
             )}
 

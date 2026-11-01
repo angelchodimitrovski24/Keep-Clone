@@ -14,6 +14,7 @@ import {
   FileText,
   Sparkles,
   Globe,
+  DownloadCloud,
 } from 'lucide-react';
 import { useKeep } from '@/context/KeepContext';
 import { NoteActions } from './NoteActions';
@@ -34,6 +35,9 @@ import { ChecklistItemInput } from './ChecklistItemInput';
 import { printNote } from '@/lib/printNote';
 import { importMhtmlIntoNote } from '@/lib/mhtmlParser';
 import { NotionSubpagesSection } from './NotionSubpagesSection';
+import { ExtractUrlModal } from './ExtractUrlModal';
+import { ExtractUrlResult } from '@/lib/urlExtractor';
+import { convertMarkdownToHtml } from '@/lib/formatUtils';
 
 interface CreateNoteBarProps {
   onOpenDrawingModal?: () => void;
@@ -74,6 +78,7 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
   const [tempNoteId, setTempNoteId] = useState<string>(() => 'note-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6));
   const [showLinkModal, setShowLinkModal] = useState(false);
   const [isFormattingOpen, setIsFormattingOpen] = useState(false);
+  const [isExtractUrlModalOpen, setIsExtractUrlModalOpen] = useState(false);
   const [isEncrypted, setIsEncrypted] = useState(false);
   const [encryptionPassword, setEncryptionPassword] = useState('');
   const [encryptionHint, setEncryptionHint] = useState('');
@@ -298,7 +303,49 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
   };
 
   // Copy selected files & images to note content
-    const handleInsertDataview = () => {
+  const handleExtractedUrl = async (result: ExtractUrlResult) => {
+    const htmlContent = convertMarkdownToHtml(result.markdown);
+    const imagePaths = (result.images || []).map((img) => img.savedPath || img.serveUrl);
+    const newLabels = Array.from(new Set([...labels, ...(result.labels || []), 'clipped']));
+
+    if (isExpanded) {
+      if (!title.trim() && result.title) {
+        setTitle(result.title);
+      }
+      if (editorRef.current) {
+        editorRef.current.insertContent(htmlContent);
+      } else {
+        setContent((prev) => (prev ? `${prev}\n\n${htmlContent}` : htmlContent));
+      }
+      setLabels(newLabels);
+      if (imagePaths.length > 0) {
+        setImages((prev) => Array.from(new Set([...prev, ...imagePaths])));
+      }
+      return;
+    }
+
+    await addNote({
+      id: `note-url-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      title: result.title || 'Extracted Web Note',
+      content: htmlContent,
+      isList: false,
+      todos: [],
+      color: 'default',
+      theme: 'none',
+      category: category || (result.isJira ? 'Work' : null),
+      labels: newLabels,
+      isPinned: false,
+      images: imagePaths,
+      drawings: [],
+      linkedNoteIds: [],
+      childNoteIds: [],
+      noteType: 'default',
+      isArchived: false,
+      isTrash: false,
+    });
+  };
+
+  const handleInsertDataview = () => {
     setIsExpanded(true);
     if (editorRef.current) {
       editorRef.current.handleFormat('dataview');
@@ -464,6 +511,20 @@ const handleImportMhtml = async (file: File) => {
                 }}
               />
             </label>
+            {/* Extract from URL / Web Clipper */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsExtractUrlModalOpen(true);
+              }}
+              onMouseDown={(e) => e.stopPropagation()}
+              className="p-2 rounded-full hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-600 dark:text-stone-300 hover:text-blue-600 dark:hover:text-blue-400 cursor-pointer transition-colors"
+              title="Extract from URL (Web Clipper with Jira & Auth support)"
+            >
+              <DownloadCloud className="w-5 h-5" />
+            </button>
             <button type="button" onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -832,6 +893,7 @@ const handleImportMhtml = async (file: File) => {
             onAddImage={handleAddImage}
             onImportMhtml={handleImportMhtml}
             onInsertDataview={handleInsertDataview}
+            onExtractUrl={() => setIsExtractUrlModalOpen(true)}
             onToggleChecklist={() => setIsList(!isList)}
             onToggleSubpages={() => setIsNotionMode(!isNotionMode)}
             hasSubpages={isNotionMode || childNoteIds.length > 0}
@@ -964,6 +1026,11 @@ const handleImportMhtml = async (file: File) => {
           setEncryptionHint('');
           setShowEncryptModal(false);
         }}
+      />
+      <ExtractUrlModal
+        isOpen={isExtractUrlModalOpen}
+        onClose={() => setIsExtractUrlModalOpen(false)}
+        onExtracted={handleExtractedUrl}
       />
     </div>
   );
