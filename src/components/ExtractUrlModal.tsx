@@ -288,7 +288,7 @@ export const ExtractUrlModal: React.FC<ExtractUrlModalProps> = ({
           category: selectedCategory || (result.isJira ? 'Work' : null),
           labels: newLabels,
           isPinned: false,
-          images: imagePaths,
+          images: [], // Images are already embedded inline in content
           drawings: [],
         });
 

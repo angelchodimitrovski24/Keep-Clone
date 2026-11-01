@@ -196,7 +196,7 @@ export const JiraModal: React.FC<JiraModalProps> = ({ isOpen, onClose }) => {
       category: workCategory,
       labels: payload.labels,
       isPinned: false,
-      images: payload.images,
+      images: [], // Images are already embedded inline in content
       drawings: [],
       linkedNoteIds: [],
       childNoteIds: [],

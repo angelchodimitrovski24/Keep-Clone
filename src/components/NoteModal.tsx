@@ -298,6 +298,16 @@ export const NoteModal: React.FC<NoteModalProps> = ({
     return notes.find((n) => n.id === note.parentNoteId && !n.isTrash) || null;
   }, [note?.parentNoteId, notes]);
 
+  // Only display images in the header gallery if they are NOT already embedded in the note's content
+  const headerImages = useMemo(() => {
+    if (!images || images.length === 0) return [];
+    if (!content) return images;
+    return images.filter((img) => {
+      const filename = img.split(/[/\\]/).pop() || img;
+      return !content.includes(img) && !content.includes(filename) && !content.includes(encodeURIComponent(filename));
+    });
+  }, [images, content]);
+
   const isNotionPage = Boolean(
     (note && note.noteType === 'notion') ||
     showSubpages ||
@@ -862,7 +872,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
     }
     if (result.images && result.images.length > 0) {
       const newImagePaths = result.images.map((img) => img.savedPath || img.serveUrl);
-      setImages((prev) => Array.from(new Set([...prev, ...newImagePaths])));
+      // Images are already embedded inline in editorContent, do not add to header gallery
     }
   };
 
@@ -1018,9 +1028,9 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
         {/* Themed Background Illustration */}
         <NoteThemeArtwork theme={theme} isModal={true} />
         {/* Images Gallery */}
-        {images.length > 0 && (
+        {headerImages.length > 0 && (
           <div className="grid grid-cols-2 gap-1 p-2 bg-black/5 max-h-60 overflow-y-auto shrink-0">
-            {images.map((img, idx) => (
+            {headerImages.map((img, idx) => (
               <div key={idx} className="relative group rounded-lg overflow-hidden max-h-48">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={resolveLocalMediaUrl(img)} alt="Attachment" className="w-full h-full object-cover" />

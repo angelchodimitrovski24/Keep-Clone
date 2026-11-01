@@ -320,7 +320,7 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
       }
       setLabels(newLabels);
       if (imagePaths.length > 0) {
-        setImages((prev) => Array.from(new Set([...prev, ...imagePaths])));
+        // Web images are already embedded inline in editor content
       }
       return;
     }
@@ -336,7 +336,7 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
       category: category || (result.isJira ? 'Work' : null),
       labels: newLabels,
       isPinned: false,
-      images: imagePaths,
+      images: [],
       drawings: [],
       linkedNoteIds: [],
       childNoteIds: [],

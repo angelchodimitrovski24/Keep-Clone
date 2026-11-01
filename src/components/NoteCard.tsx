@@ -199,6 +199,16 @@ const NoteCardComponent: React.FC<NoteCardProps> = ({
   const activeTodos = useMemo(() => note.todos?.filter((t) => !t.completed) || [], [note.todos]);
 
   // Truncate ultra-long content preview on grid cards to avoid rendering thousands of DOM nodes
+  // Only display images in the card header banner if they are NOT already embedded in the note's content
+  const headerImages = useMemo(() => {
+    if (!activeNote.images || activeNote.images.length === 0) return [];
+    if (!activeNote.content) return activeNote.images;
+    return activeNote.images.filter((img) => {
+      const filename = img.split(/[/\\]/).pop() || img;
+      return !activeNote.content.includes(img) && !activeNote.content.includes(filename) && !activeNote.content.includes(encodeURIComponent(filename));
+    });
+  }, [activeNote.images, activeNote.content]);
+
   const cardPreviewContent = useMemo(() => {
     if (!activeNote.content) return '';
     if (activeNote.content.length <= 2500) return activeNote.content;
@@ -321,13 +331,13 @@ const NoteCardComponent: React.FC<NoteCardProps> = ({
         ) : (
           <>
             {/* Render Images / Drawings */}
-            {activeNote.images && activeNote.images.length > 0 && (
+            {headerImages && headerImages.length > 0 && (
               <div
                 className={`grid gap-0.5 bg-black/5 ${
                   activeNote.images.length === 1 ? 'grid-cols-1' : 'grid-cols-2'
                 }`}
               >
-                {activeNote.images.slice(0, 4).map((img, idx) => (
+                {headerImages.slice(0, 4).map((img, idx) => (
                   <div key={idx} className="relative aspect-video max-h-48 overflow-hidden">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
