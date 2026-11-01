@@ -78,6 +78,8 @@ interface KeepContextType {
   isSettingsOpen: boolean;
   isGoogleDriveModalOpen: boolean;
   isPdfExportModalOpen: boolean;
+  isJiraModalOpen: boolean;
+  setIsJiraModalOpen: (open: boolean) => void;
   sharingNote: Note | null;
 
   // Setters
@@ -232,6 +234,7 @@ export function KeepProvider({
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isGoogleDriveModalOpen, setIsGoogleDriveModalOpen] = useState(false);
   const [isPdfExportModalOpen, setIsPdfExportModalOpen] = useState(false);
+  const [isJiraModalOpen, setIsJiraModalOpen] = useState(false);
   const [isDateCompileModalOpen, setIsDateCompileModalOpen] = useState(false);
   const [isNotionTemplateModalOpen, setIsNotionTemplateModalOpen] = useState(false);
   const [sharingNote, setSharingNote] = useState<Note | null>(null);
@@ -1729,6 +1732,8 @@ export function KeepProvider({
       setIsGoogleDriveModalOpen,
       isPdfExportModalOpen,
       setIsPdfExportModalOpen,
+      isJiraModalOpen,
+      setIsJiraModalOpen,
       isDateCompileModalOpen,
       setIsDateCompileModalOpen,
       isNotionTemplateModalOpen,
@@ -1843,6 +1848,7 @@ export function KeepProvider({
       isGoogleDriveModalOpen,
       isPdfExportModalOpen,
       setIsPdfExportModalOpen,
+      isJiraModalOpen,
       isDateCompileModalOpen,
       setIsDateCompileModalOpen,
       isNotionTemplateModalOpen,

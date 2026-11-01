@@ -56,6 +56,7 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
     setIsDateCompileModalOpen,
     isNotionTemplateModalOpen,
     setIsNotionTemplateModalOpen,
+    setIsJiraModalOpen,
     importDataSmart,
   } = useKeep();
   const [isExpanded, setIsExpanded] = useState(false);
@@ -524,6 +525,22 @@ const handleImportMhtml = async (file: File) => {
               title="Extract from URL (Web Clipper with Jira & Auth support)"
             >
               <DownloadCloud className="w-5 h-5" />
+            </button>
+            {/* Atlassian Jira Manager */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsJiraModalOpen(true);
+              }}
+              onMouseDown={(e) => e.stopPropagation()}
+              className="p-2 rounded-full hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-600 dark:text-stone-300 hover:text-blue-600 dark:hover:text-blue-400 cursor-pointer transition-colors"
+              title="Atlassian Jira Manager (Download tickets, API token & JQL search)"
+            >
+              <span className="w-5 h-5 rounded-md bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center font-black text-xs shadow-xs">
+                J
+              </span>
             </button>
             <button type="button" onClick={(e) => {
                 e.preventDefault();

@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { useKeep, getFontSizeInPx } from '@/context/KeepContext';
 import { FontSizeOption, AppThemeMode } from '@/types/note';
+import { getSavedJiraConfig } from '@/lib/jiraClient';
 
 export const SettingsModal: React.FC = () => {
   const {
@@ -29,6 +30,7 @@ export const SettingsModal: React.FC = () => {
     setIsSettingsOpen,
     setIsGoogleDriveModalOpen,
     setIsPdfExportModalOpen,
+    setIsJiraModalOpen,
     isInstallModalOpen,
     setIsInstallModalOpen,
     canInstallPwa,
@@ -399,6 +401,44 @@ export const SettingsModal: React.FC = () => {
                 className="hidden"
               />
 
+            </div>
+          </div>
+
+          <hr className="border-stone-200 dark:border-stone-800" />
+
+          {/* Section: Atlassian Jira Integration */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-sm font-semibold text-stone-900 dark:text-stone-100 flex items-center gap-2">
+                <span className="w-5 h-5 rounded-md bg-blue-600 text-white flex items-center justify-center font-bold text-xs shadow-xs">
+                  J
+                </span>
+                <span>Atlassian Jira Integration</span>
+              </label>
+              {getSavedJiraConfig() ? (
+                <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-0.5 rounded-full">
+                  ✓ Configured
+                </span>
+              ) : (
+                <span className="text-[11px] font-semibold text-stone-500 bg-stone-500/15 border border-stone-500/30 px-2.5 py-0.5 rounded-full">
+                  Not Connected
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-stone-500 dark:text-stone-400 mb-3">
+              Configure your Atlassian API token and Jira domain to search issues with JQL, import tickets, and automatically download all attachment screenshots locally.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSettingsOpen(false);
+                  setIsJiraModalOpen(true);
+                }}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-blue-500/40 bg-blue-500/10 text-blue-700 dark:text-blue-300 text-xs font-semibold hover:bg-blue-500/20 transition-colors shadow-xs"
+              >
+                <span>Open Jira Manager &amp; API Token</span>
+              </button>
             </div>
           </div>
 

@@ -28,6 +28,7 @@ import { AndroidInstallBanner } from '@/components/AndroidInstallBanner';
 import { ActiveStopwatchDock } from '@/components/ActiveStopwatchDock';
 import { CreateNoteByDateModal } from '@/components/CreateNoteByDateModal';
 import { NotionTemplateModal } from '@/components/NotionTemplateModal';
+import { JiraModal } from '@/components/JiraModal';
 import { Note, NoteDrawing } from '@/types/note';
 
 interface KeepAppProps {
@@ -58,6 +59,8 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
     setImportSummary,
     sharingNote,
     setSharingNote,
+    isJiraModalOpen,
+    setIsJiraModalOpen,
     setCurrentFilter,
   } = useKeep();
 
