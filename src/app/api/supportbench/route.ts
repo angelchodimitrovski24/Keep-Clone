@@ -31,8 +31,27 @@ function getDefaultMediaFolder(): string {
 }
 
 /**
+ * Extracts subdomain / tenant from a Supportbench URL or domain string.
+ * e.g. "https://myaffiliates.supportbench.net/agent/case/c-159343/" -> "myaffiliates"
+ */
+function extractSubdomain(input: string): string | undefined {
+  if (!input) return undefined;
+  try {
+    const raw = input.trim();
+    const candidate = raw.startsWith('http://') || raw.startsWith('https://') ? raw : `https://${raw}`;
+    const u = new URL(candidate);
+    const m = u.hostname.match(/^([a-z0-9_-]+)\.supportbench\.(?:net|com)$/i);
+    if (m && m[1] && m[1].toLowerCase() !== 'api' && m[1].toLowerCase() !== 'app' && m[1].toLowerCase() !== 'www') {
+      return m[1].toLowerCase();
+    }
+  } catch {
+    //
+  }
+  return undefined;
+}
+
+/**
  * Normalizes the user's provided Base URL.
- * Strictly respects the domain and path entered by the user.
  */
 export function normalizeSupportbenchBaseUrl(input: string): string {
   let clean = (input || '').trim().replace(/\/+$/, '');
@@ -48,10 +67,41 @@ export function normalizeSupportbenchBaseUrl(input: string): string {
 }
 
 /**
- * Builds request headers for Supportbench API.
- * Sends Authorization: Bearer <token>, x-api-key, and api-key for maximum compatibility.
+ * Extracts case ID, numeric ID, and subdomain from an input string or full URL.
+ * e.g. "https://myaffiliates.supportbench.net/agent/case/c-159343/"
+ * -> caseId: "c-159343", numericId: "159343", subdomain: "myaffiliates"
  */
-export function buildSupportbenchHeaders(token: string): Record<string, string> {
+function extractCaseInfo(input: string): {
+  caseId: string;
+  numericId: string;
+  subdomain?: string;
+  fullUrl?: string;
+} {
+  let clean = input.trim().replace(/\/+$/, '');
+  let subdomain: string | undefined;
+  let fullUrl: string | undefined;
+
+  if (clean.startsWith('http://') || clean.startsWith('https://')) {
+    fullUrl = clean;
+    subdomain = extractSubdomain(clean);
+  }
+
+  const match = clean.match(/(?:case|cases|ticket|tickets)\/([A-Za-z0-9_-]+)/i);
+  let raw = match ? match[1] : clean;
+  raw = raw.replace(/^[#\s]+/, '').replace(/^case:\s*/i, '').replace(/\/+$/, '').trim();
+
+  // "c-159343" -> numeric is "159343"
+  const numericId = raw.replace(/^[A-Za-z]+-/, '');
+  const caseId = raw;
+
+  return { caseId, numericId, subdomain, fullUrl };
+}
+
+/**
+ * Builds request headers for Supportbench API.
+ * Sends Authorization: Bearer <token>, x-api-key, and optional tenant subdomain headers.
+ */
+export function buildSupportbenchHeaders(token: string, subdomain?: string): Record<string, string> {
   const cleanToken = (token || '').trim();
   const bearerToken = cleanToken.startsWith('Bearer ') ? cleanToken : `Bearer ${cleanToken}`;
   const rawToken = cleanToken.replace(/^Bearer\s+/i, '');
@@ -71,6 +121,16 @@ export function buildSupportbenchHeaders(token: string): Record<string, string> 
     headers['token'] = rawToken;
   }
 
+  if (subdomain) {
+    headers['x-subdomain'] = subdomain;
+    headers['subdomain'] = subdomain;
+    headers['x-organization'] = subdomain;
+    headers['organization'] = subdomain;
+    headers['x-tenant'] = subdomain;
+    headers['tenant'] = subdomain;
+    headers['x-company'] = subdomain;
+  }
+
   return headers;
 }
 
@@ -81,12 +141,10 @@ function htmlToCleanMarkdown(html: string): string {
   if (!html) return '';
   let text = html;
 
-  // Remove scripts, styles, comments
   text = text.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
   text = text.replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '');
   text = text.replace(/<!--[\s\S]*?-->/g, '');
 
-  // Preserve pre/code blocks
   const codeBlocks: string[] = [];
   text = text.replace(/<pre\b([^>]*)>([\s\S]*?)<\/pre>/gi, (_match, preAttrs, inner) => {
     const codeTagMatch = inner.match(/<code\b([^>]*)>([\s\S]*?)<\/code>/i);
@@ -108,7 +166,6 @@ function htmlToCleanMarkdown(html: string): string {
     return `___SUPPORTBENCH_CODE_BLOCK_${idx}___`;
   });
 
-  // Headers
   text = text.replace(/<h1\b[^>]*>([\s\S]*?)<\/h1>/gi, '\n\n# $1\n\n');
   text = text.replace(/<h2\b[^>]*>([\s\S]*?)<\/h2>/gi, '\n\n## $1\n\n');
   text = text.replace(/<h3\b[^>]*>([\s\S]*?)<\/h3>/gi, '\n\n### $1\n\n');
@@ -116,7 +173,6 @@ function htmlToCleanMarkdown(html: string): string {
   text = text.replace(/<h5\b[^>]*>([\s\S]*?)<\/h5>/gi, '\n\n##### $1\n\n');
   text = text.replace(/<h6\b[^>]*>([\s\S]*?)<\/h6>/gi, '\n\n###### $1\n\n');
 
-  // Real blockquotes (from HTML <blockquote>)
   text = text.replace(/<blockquote\b[^>]*>([\s\S]*?)<\/blockquote>/gi, (_match, inner) => {
     const clean = inner.replace(/<[^>]+>/g, '').trim();
     return `\n\n> ${clean.replace(/\n/g, '\n> ')}\n\n`;
@@ -124,7 +180,6 @@ function htmlToCleanMarkdown(html: string): string {
 
   text = text.replace(/<hr\b[^>]*\/?>/gi, '\n\n---\n\n');
 
-  // Lists
   text = text.replace(/<li\b[^>]*>([\s\S]*?)<\/li>/gi, (_match, inner) => {
     const hasChecked = /type=["']checkbox["'][^>]*checked/i.test(inner);
     const hasUnchecked = /type=["']checkbox["']/i.test(inner);
@@ -134,32 +189,26 @@ function htmlToCleanMarkdown(html: string): string {
     return `\n- ${cleanText}`;
   });
 
-  // Paragraphs & breaks
   text = text.replace(/<p\b[^>]*>([\s\S]*?)<\/p>/gi, '\n\n$1\n\n');
   text = text.replace(/<br\s*\/?>/gi, '\n');
 
-  // Links
   text = text.replace(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, (_match, href, linkText) => {
     const cleanLink = linkText.replace(/<[^>]+>/g, '').trim();
     if (!cleanLink) return '';
     return `[${cleanLink}](${href})`;
   });
 
-  // Formatting
   text = text.replace(/<(?:strong|b)\b[^>]*>([\s\S]*?)<\/(?:strong|b)>/gi, '**$1**');
   text = text.replace(/<(?:em|i)\b[^>]*>([\s\S]*?)<\/(?:em|i)>/gi, '*$1*');
   text = text.replace(/<(?:del|s|strike)\b[^>]*>([\s\S]*?)<\/(?:del|s|strike)>/gi, '~~$1~~');
   text = text.replace(/<code\b[^>]*>([\s\S]*?)<\/code>/gi, '`$1`');
 
-  // Strip remaining HTML tags
   text = text.replace(/<[^>]+>/g, '');
 
-  // Restore preserved code blocks
   text = text.replace(/___SUPPORTBENCH_CODE_BLOCK_(\d+)___/g, (_match, idx) => {
     return codeBlocks[parseInt(idx, 10)] || '';
   });
 
-  // Clean HTML entities & whitespace
   text = text
     .replace(/&quot;/g, '"')
     .replace(/&apos;/g, "'")
@@ -230,19 +279,42 @@ async function downloadMediaLocally(
 }
 
 /**
- * Extracts case ID or number from string or URL
+ * Parses case details from HTML in case the web page was fetched
  */
-function extractCaseId(input: string): string {
-  let clean = input.trim();
-  if (!clean) return '';
+function parseCaseFromHtml(html: string, caseId: string, sourceUrl: string): any {
+  const titleMatch = html.match(/<title>([^<]+)<\/title>/i);
+  let title = titleMatch ? titleMatch[1].replace(/-\s*Supportbench.*$/i, '').trim() : `Case #${caseId}`;
 
-  const urlMatch = clean.match(/(?:cases|case|tickets|ticket)\/(?:view\/|details\/|get\/)?([A-Za-z0-9_-]+)/i);
-  if (urlMatch && urlMatch[1]) {
-    return urlMatch[1];
+  const h1Match = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
+  if (h1Match && h1Match[1].trim()) {
+    title = h1Match[1].replace(/<[^>]+>/g, '').trim();
   }
 
-  clean = clean.replace(/^[#\s]+/, '').replace(/^case:\s*/i, '');
-  return clean;
+  // Look for comments/activities in HTML
+  const activities: any[] = [];
+  const commentBlocks = html.match(/<div[^>]*class=["'][^"']*(?:comment|activity|timeline-item|message)[^"']*["'][\s\S]*?<\/div>/gi) || [];
+  for (const block of commentBlocks.slice(0, 50)) {
+    const text = htmlToCleanMarkdown(block);
+    if (text.length > 10) {
+      activities.push({
+        author: 'Agent',
+        date: '',
+        type: 'Comment',
+        markdown: text,
+      });
+    }
+  }
+
+  return {
+    id: caseId,
+    case_number: caseId,
+    subject: title,
+    description: htmlToCleanMarkdown(html),
+    status: 'Open',
+    priority: 'Normal',
+    activities,
+    sourceUrl,
+  };
 }
 
 /**
@@ -322,93 +394,139 @@ function formatActivityItem(act: any): { author: string; date: string; type: str
 }
 
 /**
- * Fetches a single case from the user's Supportbench Base URL.
- * Strictly calls the real REST API and controller endpoints on the user's instance:
- * 1. GET {baseUrl}/api/v1/cases/{caseId}
- * 2. GET {baseUrl}/cases/{caseId}
- * 3. GET {baseUrl}/case/{caseId}
- * 4. GET {baseUrl}/api/v1/cases?number={caseId}
- * 5. GET {baseUrl}/case/get?id={caseId}
+ * Fetches a single case from Supportbench trying both the dedicated API cluster
+ * and the user's instance URL, using both raw and numeric case IDs.
  */
 async function fetchCaseData(
   baseUrl: string,
   headers: Record<string, string>,
-  caseId: string
-): Promise<{ caseObj: any; sourceUrl: string }> {
+  caseIdentifier: string
+): Promise<{ caseObj: any; sourceUrl: string; finalPortalUrl: string }> {
+  const { caseId, numericId, subdomain: inputSubdomain, fullUrl } = extractCaseInfo(caseIdentifier);
   const cleanBase = normalizeSupportbenchBaseUrl(baseUrl);
+  const baseSubdomain = extractSubdomain(cleanBase) || inputSubdomain;
 
-  const candidates = [
-    // Standard REST API on user's Base URL
-    `${cleanBase}/api/v1/cases/${encodeURIComponent(caseId)}`,
-    `${cleanBase}/cases/${encodeURIComponent(caseId)}`,
-    `${cleanBase}/case/${encodeURIComponent(caseId)}`,
-    `${cleanBase}/api/v1/cases?number=${encodeURIComponent(caseId)}`,
-    `${cleanBase}/api/v1/cases?case_number=${encodeURIComponent(caseId)}`,
-    `${cleanBase}/case/get?id=${encodeURIComponent(caseId)}`,
-    `${cleanBase}/case/get?caseNumber=${encodeURIComponent(caseId)}`,
-    `${cleanBase}/case/find?id=${encodeURIComponent(caseId)}`,
-  ];
+  // Determine base URLs to test
+  const basesToTry = [cleanBase];
+  if (!cleanBase.includes('api.supportbench.net')) {
+    basesToTry.push('https://api.supportbench.net');
+  }
+
+  const idsToTry = Array.from(new Set([caseId, numericId, `c-${numericId}`].filter(Boolean)));
+
+  const candidates: string[] = [];
+  for (const b of basesToTry) {
+    for (const id of idsToTry) {
+      candidates.push(`${b}/case/${encodeURIComponent(id)}`);
+      candidates.push(`${b}/case/get?id=${encodeURIComponent(id)}`);
+      candidates.push(`${b}/case/get?caseNumber=${encodeURIComponent(id)}`);
+      candidates.push(`${b}/case/get?number=${encodeURIComponent(id)}`);
+      candidates.push(`${b}/case/find?id=${encodeURIComponent(id)}`);
+      candidates.push(`${b}/case/find?number=${encodeURIComponent(id)}`);
+      candidates.push(`${b}/api/v1/cases/${encodeURIComponent(id)}`);
+      candidates.push(`${b}/cases/${encodeURIComponent(id)}`);
+      candidates.push(`${b}/agent/api/case/${encodeURIComponent(id)}`);
+      candidates.push(`${b}/agent/case/${encodeURIComponent(id)}`);
+      if (baseSubdomain) {
+        candidates.push(`${b}/case/get?id=${encodeURIComponent(id)}&subdomain=${encodeURIComponent(baseSubdomain)}`);
+        candidates.push(`${b}/case/${encodeURIComponent(id)}?subdomain=${encodeURIComponent(baseSubdomain)}`);
+      }
+    }
+  }
+
+  // Also if full URL was provided, attempt direct fetch with auth
+  if (fullUrl) {
+    candidates.unshift(fullUrl);
+  }
 
   let caseObj: any = null;
-  let successfulUrl = `${cleanBase}/cases/${caseId}`;
+  let successfulUrl = fullUrl || `${cleanBase}/agent/case/c-${numericId}/`;
+  let lastAuthError = '';
 
   for (const url of candidates) {
     try {
       const res = await fetch(url, { headers });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.Case && typeof data.Case === 'object') {
-          caseObj = data.Case;
-        } else if (data.case && typeof data.case === 'object') {
-          caseObj = data.case;
-        } else if (data.Data && typeof data.Data === 'object' && !Array.isArray(data.Data)) {
-          caseObj = data.Data;
-        } else if (data.data && typeof data.data === 'object' && !Array.isArray(data.data)) {
-          caseObj = data.data;
-        } else if (Array.isArray(data.Data) && data.Data.length > 0) {
-          caseObj = data.Data[0];
-        } else if (Array.isArray(data.data) && data.data.length > 0) {
-          caseObj = data.data[0];
-        } else if (Array.isArray(data.Cases) && data.Cases.length > 0) {
-          caseObj = data.Cases[0];
-        } else if (Array.isArray(data.cases) && data.cases.length > 0) {
-          caseObj = data.cases[0];
-        } else if (Array.isArray(data) && data.length > 0) {
-          caseObj = data[0];
-        } else if (
-          data.Id ||
-          data.id ||
-          data.CaseNumber ||
-          data.case_number ||
-          data.Number ||
-          data.number ||
-          data.Subject ||
-          data.subject ||
-          data.Title ||
-          data.title
-        ) {
-          caseObj = data;
-        }
+      const contentType = res.headers.get('content-type') || '';
 
-        if (caseObj) {
-          successfulUrl = url;
-          break;
+      if (res.ok) {
+        if (contentType.includes('json')) {
+          const data = await res.json();
+          if (data.Case && typeof data.Case === 'object') {
+            caseObj = data.Case;
+          } else if (data.case && typeof data.case === 'object') {
+            caseObj = data.case;
+          } else if (data.Data && typeof data.Data === 'object' && !Array.isArray(data.Data)) {
+            caseObj = data.Data;
+          } else if (data.data && typeof data.data === 'object' && !Array.isArray(data.data)) {
+            caseObj = data.data;
+          } else if (Array.isArray(data.Data) && data.Data.length > 0) {
+            caseObj = data.Data[0];
+          } else if (Array.isArray(data.data) && data.data.length > 0) {
+            caseObj = data.data[0];
+          } else if (Array.isArray(data.Cases) && data.Cases.length > 0) {
+            caseObj = data.Cases[0];
+          } else if (Array.isArray(data.cases) && data.cases.length > 0) {
+            caseObj = data.cases[0];
+          } else if (Array.isArray(data) && data.length > 0) {
+            caseObj = data[0];
+          } else if (
+            data.Id ||
+            data.id ||
+            data.CaseNumber ||
+            data.case_number ||
+            data.Number ||
+            data.number ||
+            data.Subject ||
+            data.subject ||
+            data.Title ||
+            data.title
+          ) {
+            caseObj = data;
+          }
+
+          if (caseObj) {
+            successfulUrl = url;
+            break;
+          }
+        } else if (contentType.includes('html')) {
+          const html = await res.text();
+          // Make sure it is not the login or sign-in page
+          if (!html.includes('Login into Supportbench') && !html.includes('Signin to') && !html.includes('Sign in')) {
+            caseObj = parseCaseFromHtml(html, caseId, url);
+            if (caseObj) {
+              successfulUrl = url;
+              break;
+            }
+          }
         }
+      } else if (res.status === 401 || res.status === 403) {
+        lastAuthError = `HTTP ${res.status} Unauthorized`;
       }
     } catch {
-      // try next candidate
+      // try next
     }
   }
 
+  // Construct canonical browser portal link
+  const portalHost = baseSubdomain ? `https://${baseSubdomain}.supportbench.net` : cleanBase;
+  const finalPortalUrl = fullUrl || `${portalHost}/agent/case/c-${numericId}/`;
+
   if (!caseObj) {
-    throw new Error(`Case '${caseId}' not found on Supportbench (${cleanBase}). Please verify the case ID and token permissions.`);
+    if (lastAuthError) {
+      throw new Error(
+        `Supportbench rejected authorization (${lastAuthError}) for case ${caseId}. Please ensure your API token has case read permissions.`
+      );
+    }
+    throw new Error(
+      `Case '${caseId}' (or #${numericId}) not found on Supportbench. Please verify the case URL/number and that your token has access to it.`
+    );
   }
 
-  return { caseObj, sourceUrl: successfulUrl };
+  return { caseObj, sourceUrl: successfulUrl, finalPortalUrl };
 }
 
 /**
- * Fetches activities/comments for a case from embedded objects or direct endpoints on baseUrl
+ * Fetches activities/comments for a case from embedded objects or direct endpoints
  */
 async function fetchCaseActivities(
   baseUrl: string,
@@ -416,7 +534,6 @@ async function fetchCaseActivities(
   caseObj: any,
   caseId: string
 ): Promise<any[]> {
-  // Check embedded activities (Supportbench returns them directly inside the case object)
   const embeddedCandidates = [
     caseObj.Activities,
     caseObj.activities,
@@ -441,19 +558,24 @@ async function fetchCaseActivities(
   const cleanBase = normalizeSupportbenchBaseUrl(baseUrl);
   const targetId = caseObj.Id || caseObj.id || caseObj.CaseId || caseObj.case_id || caseId;
 
-  const activityEndpoints = [
-    `${cleanBase}/api/v1/cases/${encodeURIComponent(targetId)}/comments`,
-    `${cleanBase}/api/v1/cases/${encodeURIComponent(targetId)}/activities`,
-    `${cleanBase}/cases/${encodeURIComponent(targetId)}/comments`,
-    `${cleanBase}/cases/${encodeURIComponent(targetId)}/activities`,
-    `${cleanBase}/case/${encodeURIComponent(targetId)}/activities`,
-    `${cleanBase}/activity/get?caseId=${encodeURIComponent(targetId)}`,
-  ];
+  const bases = [cleanBase, 'https://api.supportbench.net'];
+  const activityEndpoints: string[] = [];
+
+  for (const b of bases) {
+    activityEndpoints.push(`${b}/case/${encodeURIComponent(targetId)}/activities`);
+    activityEndpoints.push(`${b}/case/${encodeURIComponent(targetId)}/comments`);
+    activityEndpoints.push(`${b}/case/${encodeURIComponent(targetId)}/actions`);
+    activityEndpoints.push(`${b}/activity/get?caseId=${encodeURIComponent(targetId)}`);
+    activityEndpoints.push(`${b}/activity/get?id=${encodeURIComponent(targetId)}`);
+    activityEndpoints.push(`${b}/api/v1/cases/${encodeURIComponent(targetId)}/comments`);
+    activityEndpoints.push(`${b}/api/v1/cases/${encodeURIComponent(targetId)}/activities`);
+  }
 
   for (const url of activityEndpoints) {
     try {
       const res = await fetch(url, { headers });
-      if (res.ok) {
+      const contentType = res.headers.get('content-type') || '';
+      if (res.ok && contentType.includes('json')) {
         const data = await res.json();
         const list = Array.isArray(data)
           ? data
@@ -495,6 +617,7 @@ async function processSupportbenchCaseToNote(
   baseUrl: string,
   headers: Record<string, string>,
   targetFolder: string,
+  portalUrl: string,
   downloadAttachments: boolean = true
 ) {
   const caseId = String(
@@ -662,9 +785,6 @@ async function processSupportbenchCaseToNote(
   }
 
   // Construct Clean Markdown Note
-  const cleanBase = normalizeSupportbenchBaseUrl(baseUrl);
-  const portalUrl = `${cleanBase}/cases/${caseNumber}`;
-
   let markdown = `> 🎫 **Supportbench Case:** [**#${caseNumber} - ${subject}**](${portalUrl})  \n`;
   markdown += `> 📊 **Status:** \`${status}\` | ⚡ **Priority:** ${priority}${stage ? ` | 🏷️ **Stage:** ${stage}` : ''}  \n`;
   markdown += `> 👤 **Assignee:** ${assignee} | 👥 **Customer:** ${contact}${account ? ` (${account})` : ''}  \n`;
@@ -734,17 +854,19 @@ export async function POST(req: NextRequest) {
     const { action, baseUrl, apiToken, caseIdentifier, caseIdentifiers, downloadAttachments = true, folderPath } = body;
 
     const cleanBase = normalizeSupportbenchBaseUrl(baseUrl);
-    const headers = buildSupportbenchHeaders(apiToken);
+    const subdomain = extractSubdomain(cleanBase) || (caseIdentifier ? extractSubdomain(caseIdentifier) : undefined);
+    const headers = buildSupportbenchHeaders(apiToken, subdomain);
     const targetFolder = folderPath && fs.existsSync(folderPath) ? folderPath : getDefaultMediaFolder();
 
-    // 1. Action: Test Connection directly on the user's Base URL
+    // 1. Action: Test Connection directly verifying valid JSON authentication
     if (action === 'test-connection') {
       const testCandidates = [
+        'https://api.supportbench.net/users/me',
+        'https://api.supportbench.net/case/all',
+        'https://api.supportbench.net/users/get',
         `${cleanBase}/api/v1/cases?limit=1`,
         `${cleanBase}/cases?limit=1`,
-        `${cleanBase}/case/all?limit=1`,
         `${cleanBase}/users/me`,
-        `${cleanBase}/case/get`,
       ];
 
       let lastError = '';
@@ -754,15 +876,17 @@ export async function POST(req: NextRequest) {
         attemptedUrl = endpoint;
         try {
           const res = await fetch(endpoint, { headers });
-          if (res.ok) {
-            let userData: any = { displayName: 'Supportbench User', email: cleanBase };
+          const contentType = res.headers.get('content-type') || '';
+
+          if (res.ok && contentType.includes('json')) {
+            let userData: any = { displayName: 'Supportbench User', email: subdomain || cleanBase };
             try {
               const data = await res.json();
               const userObj = data.User || data.user || data.Profile || data.profile || data.Data || data.data || data;
               if (userObj.Name || userObj.name || userObj.Email || userObj.email || userObj.DisplayName || userObj.displayName) {
                 userData = {
                   displayName: userObj.Name || userObj.name || userObj.DisplayName || userObj.displayName || 'Supportbench User',
-                  email: userObj.Email || userObj.email || cleanBase,
+                  email: userObj.Email || userObj.email || subdomain || cleanBase,
                   id: userObj.Id || userObj.id || undefined,
                 };
               }
@@ -774,7 +898,7 @@ export async function POST(req: NextRequest) {
             return NextResponse.json(
               {
                 success: false,
-                error: `Authentication failed (HTTP ${res.status}): Please check your API Token or Key on ${cleanBase}.`,
+                error: `Authentication failed (HTTP ${res.status}): API Token was rejected. Please verify your token permissions.`,
               },
               { status: 401 }
             );
@@ -789,7 +913,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: `Could not connect to Supportbench at ${cleanBase}. Check the URL and token. (${lastError || 'Endpoint unreachable'})`,
+          error: `Could not authenticate with Supportbench. (${lastError || 'Endpoint unreachable'})`,
           endpoint: attemptedUrl,
         },
         { status: 400 }
@@ -799,12 +923,12 @@ export async function POST(req: NextRequest) {
     // 2. Action: Fetch Single Case
     if (action === 'fetch-case') {
       if (!caseIdentifier) {
-        return NextResponse.json({ success: false, error: 'Case identifier is required.' }, { status: 400 });
+        return NextResponse.json({ success: false, error: 'Case identifier or URL is required.' }, { status: 400 });
       }
 
-      const caseId = extractCaseId(caseIdentifier);
-      const { caseObj } = await fetchCaseData(cleanBase, headers, caseId);
-      const activities = await fetchCaseActivities(cleanBase, headers, caseObj, caseId);
+      const { caseObj, finalPortalUrl } = await fetchCaseData(cleanBase, headers, caseIdentifier);
+      const caseId = caseObj.Id || caseObj.id || caseObj.CaseNumber || caseObj.case_number || caseIdentifier;
+      const activities = await fetchCaseActivities(cleanBase, headers, caseObj, String(caseId));
 
       const notePayload = await processSupportbenchCaseToNote(
         caseObj,
@@ -812,6 +936,7 @@ export async function POST(req: NextRequest) {
         cleanBase,
         headers,
         targetFolder,
+        finalPortalUrl,
         downloadAttachments
       );
 
@@ -829,17 +954,21 @@ export async function POST(req: NextRequest) {
       const errors: any[] = [];
 
       for (const rawId of ids) {
-        const cId = extractCaseId(rawId);
-        if (!cId) continue;
+        if (!rawId || !rawId.trim()) continue;
         try {
-          const { caseObj } = await fetchCaseData(cleanBase, headers, cId);
-          const activities = await fetchCaseActivities(cleanBase, headers, caseObj, cId);
+          const itemSubdomain = extractSubdomain(rawId) || subdomain;
+          const itemHeaders = buildSupportbenchHeaders(apiToken, itemSubdomain);
+          const { caseObj, finalPortalUrl } = await fetchCaseData(cleanBase, itemHeaders, rawId);
+          const caseId = caseObj.Id || caseObj.id || caseObj.CaseNumber || caseObj.case_number || rawId;
+          const activities = await fetchCaseActivities(cleanBase, itemHeaders, caseObj, String(caseId));
+
           const notePayload = await processSupportbenchCaseToNote(
             caseObj,
             activities,
             cleanBase,
-            headers,
+            itemHeaders,
             targetFolder,
+            finalPortalUrl,
             downloadAttachments
           );
           notes.push(notePayload);
@@ -857,16 +986,17 @@ export async function POST(req: NextRequest) {
       const limit = Math.min(Math.max(body.limit || 25, 1), 50);
 
       const searchEndpoints = [
+        `https://api.supportbench.net/case/all`,
+        `https://api.supportbench.net/case/query`,
         `${cleanBase}/api/v1/cases${query ? `?search=${encodeURIComponent(query)}` : `?limit=${limit}`}`,
         `${cleanBase}/cases${query ? `?search=${encodeURIComponent(query)}` : `?limit=${limit}`}`,
-        `${cleanBase}/case/all`,
-        `${cleanBase}/case/query`,
       ];
 
       for (const url of searchEndpoints) {
         try {
           const res = await fetch(url, { headers });
-          if (res.ok) {
+          const contentType = res.headers.get('content-type') || '';
+          if (res.ok && contentType.includes('json')) {
             const data = await res.json();
             const list = Array.isArray(data)
               ? data
