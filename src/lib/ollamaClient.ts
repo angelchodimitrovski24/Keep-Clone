@@ -395,7 +395,8 @@ export async function streamOllamaChat(
  */
 export function buildNoteSummaryPrompt(
   note: Partial<Note>,
-  style: 'bullet' | 'concise' | 'action_items' | 'comprehensive' | 'translate' = 'bullet'
+  style: 'bullet' | 'concise' | 'action_items' | 'comprehensive' | 'translate' | 'custom' = 'bullet',
+  customInstruction?: string
 ): { system: string; user: string } {
   const title = note.title || 'Untitled Note';
   const category = note.category ? `Category: ${note.category}\n` : '';
@@ -406,22 +407,29 @@ export function buildNoteSummaryPrompt(
     'You are an intelligent, concise AI note assistant embedded in Google Keep Clone. Provide clear, direct, and well-structured markdown answers without meta commentary.';
 
   let instruction = '';
-  switch (style) {
-    case 'bullet':
-      instruction = 'Provide a structured bullet-point summary highlighting the key points, topics, and important notes.';
-      break;
-    case 'concise':
-      instruction = 'Provide a brief, 2-3 sentence executive summary capturing the core essence of this note.';
-      break;
-    case 'action_items':
-      instruction = 'Extract all action items, tasks, follow-ups, and to-dos as a markdown checklist (`- [ ] task`). If none are explicit, infer logical next steps.';
-      break;
-    case 'comprehensive':
-      instruction = 'Provide a detailed, comprehensive synthesis organized by headings, key points, context, and takeaways.';
-      break;
-    case 'translate':
-      instruction = 'Translate this note clearly and accurately into English (or preserve existing language if already English, offering a polished refinement).';
-      break;
+  if (customInstruction && customInstruction.trim()) {
+    instruction = customInstruction.trim();
+  } else {
+    switch (style) {
+      case 'bullet':
+        instruction = 'Provide a structured bullet-point summary highlighting the key points, topics, and important notes.';
+        break;
+      case 'concise':
+        instruction = 'Provide a brief, 2-3 sentence executive summary capturing the core essence of this note.';
+        break;
+      case 'action_items':
+        instruction = 'Extract all action items, tasks, follow-ups, and to-dos as a markdown checklist (`- [ ] task`). If none are explicit, infer logical next steps.';
+        break;
+      case 'comprehensive':
+        instruction = 'Provide a detailed, comprehensive synthesis organized by headings, key points, context, and takeaways.';
+        break;
+      case 'translate':
+        instruction = 'Translate this note clearly and accurately into English (or preserve existing language if already English, offering a polished refinement).';
+        break;
+      case 'custom':
+        instruction = 'Analyze and summarize this note according to the user instructions.';
+        break;
+    }
   }
 
   const user = `Here is the note to analyze:\n\n**Title:** ${title}\n${category}${labels}**Content:**\n${content}\n\n**Task:** ${instruction}`;
