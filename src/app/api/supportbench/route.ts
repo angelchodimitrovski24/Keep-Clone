@@ -439,141 +439,119 @@ function formatActivityItem(act: any): { author: string; date: string; type: str
 }
 
 /**
- * Fetches a single case from Supportbench.
- * Prioritizes the dedicated backend API (https://api.supportbench.net),
- * tests all active endpoints, and supports both c-prefix and numeric IDs.
+ * Resolves the REST API base. The tenant web domain (e.g. myaffiliates.supportbench.net)
+ * only serves the agent portal, so API calls for it go to https://api.supportbench.net.
+ */
+function resolveApiBase(baseUrl: string): string {
+  const cleanBase = normalizeSupportbenchBaseUrl(baseUrl);
+  try {
+    const host = new URL(cleanBase).hostname.toLowerCase();
+    if (/\.supportbench\.(net|com)$/.test(host) && host !== 'api.supportbench.net') {
+      return 'https://api.supportbench.net';
+    }
+  } catch {
+    return 'https://api.supportbench.net';
+  }
+  return cleanBase;
+}
+
+/**
+ * Reads a response body as JSON regardless of the Content-Type header
+ * (Supportbench returns JSON with text/plain). Handles double-encoded JSON strings.
+ * Returns { json } on success or { text } if the body is not JSON.
+ */
+async function readBodyAsJson(res: Response): Promise<{ json?: any; text: string }> {
+  const text = await res.text();
+  const trimmed = text.trim();
+  if (!trimmed) return { text };
+  try {
+    let parsed = JSON.parse(trimmed);
+    if (typeof parsed === 'string') {
+      try {
+        parsed = JSON.parse(parsed);
+      } catch {
+        return { text: parsed };
+      }
+    }
+    return { json: parsed, text };
+  } catch {
+    return { text };
+  }
+}
+
+/**
+ * Fetches a single case from Supportbench using the only real read endpoint:
+ *   GET {apiBase}/case/{C-id}
  */
 async function fetchCaseData(
   baseUrl: string,
   headers: Record<string, string>,
   caseIdentifier: string
-): Promise<{ caseObj: any; sourceUrl: string; finalPortalUrl: string; diagnostics?: string }> {
+): Promise<{ caseObj: any; sourceUrl: string; finalPortalUrl: string }> {
   const { caseId, numericId, subdomain: inputSubdomain, fullUrl } = extractCaseInfo(caseIdentifier);
   const cleanBase = normalizeSupportbenchBaseUrl(baseUrl);
   const baseSubdomain = extractSubdomain(cleanBase) || inputSubdomain;
 
-  // Determine candidates to test.
-  // 1. Primary: The dedicated API cluster (api.supportbench.net) where ticket JSON lives.
-  // 2. Secondary: The tenant base URL (cleanBase) in case of a custom proxy or authenticated web session.
-  const candidates: string[] = [];
+  // Supportbench case IDs use the "C-<number>" format
+  const apiCaseId = /^\d+$/.test(numericId) ? `C-${numericId}` : caseId;
 
-  // API Cluster endpoints
-  candidates.push(`https://api.supportbench.net/case/${encodeURIComponent(numericId)}`);
-  candidates.push(`https://api.supportbench.net/case/${encodeURIComponent(caseId)}`);
-  candidates.push(`https://api.supportbench.net/case/get?id=${encodeURIComponent(numericId)}`);
-  candidates.push(`https://api.supportbench.net/case/get?id=${encodeURIComponent(caseId)}`);
-  candidates.push(`https://api.supportbench.net/case/lookup?id=${encodeURIComponent(numericId)}`);
-  candidates.push(`https://api.supportbench.net/case/all`);
-  candidates.push(`https://api.supportbench.net/case/query`);
-  candidates.push(`https://api.supportbench.net/case/find`);
-
-  if (baseSubdomain) {
-    candidates.push(`https://api.supportbench.net/case/${encodeURIComponent(numericId)}?subdomain=${encodeURIComponent(baseSubdomain)}`);
-    candidates.push(`https://api.supportbench.net/case/${encodeURIComponent(caseId)}?subdomain=${encodeURIComponent(baseSubdomain)}`);
-    candidates.push(`https://api.supportbench.net/case/get?id=${encodeURIComponent(numericId)}&subdomain=${encodeURIComponent(baseSubdomain)}`);
+  // If the user pasted a full API URL, use it as-is; otherwise build it on the API base
+  let url: string;
+  if (fullUrl && /^https?:\/\/api\.supportbench\.net\/case\//i.test(fullUrl)) {
+    url = fullUrl;
+  } else {
+    url = `${resolveApiBase(baseUrl)}/case/${encodeURIComponent(apiCaseId)}`;
   }
 
-  // Tenant / Web Portal endpoints
-  if (fullUrl) {
-    candidates.push(fullUrl);
-  }
-  if (cleanBase && !cleanBase.includes('api.supportbench.net')) {
-    candidates.push(`${cleanBase}/agent/case/${encodeURIComponent(caseId)}/`);
-    candidates.push(`${cleanBase}/agent/case/${encodeURIComponent(numericId)}/`);
-    candidates.push(`${cleanBase}/case/${encodeURIComponent(caseId)}`);
-    candidates.push(`${cleanBase}/case/${encodeURIComponent(numericId)}`);
-    candidates.push(`${cleanBase}/case/get?id=${encodeURIComponent(numericId)}`);
-  }
-
-  let caseObj: any = null;
-  let successfulUrl = fullUrl || `https://api.supportbench.net/case/${numericId}`;
-  const debugLogs: string[] = [];
-
-  for (const url of candidates) {
-    try {
-      const isCleanBase = cleanBase && url.startsWith(cleanBase);
-      // For web portal URLs, prevent following 302 redirects to signin pages
-      const res = await fetch(url, {
-        headers,
-        redirect: isCleanBase ? 'manual' : 'follow',
-      });
-      const contentType = res.headers.get('content-type') || '';
-
-      if (res.status === 302) {
-        const loc = res.headers.get('location') || '';
-        debugLogs.push(`302 [web session required -> ${loc}] ${url}`);
-        continue;
-      }
-
-      let errorSnippet = '';
-      if (!res.ok && res.status !== 404) {
-        try {
-          const txt = await res.text();
-          errorSnippet = ` (${txt.replace(/<[^>]+>/g, '').trim().slice(0, 120)})`;
-        } catch {}
-      }
-
-      debugLogs.push(`${res.status} [${contentType.slice(0, 24)}] ${url}${errorSnippet}`);
-
-      if (res.ok) {
-        if (contentType.includes('json')) {
-          const rawJson = await res.json();
-          const extracted = extractCaseObject(rawJson, caseId, numericId);
-          if (extracted) {
-            caseObj = extracted;
-            successfulUrl = url;
-            break;
-          }
-        } else if (contentType.includes('html')) {
-          const html = await res.text();
-          // Verify it is not the login or sign-in page
-          if (!html.includes('Login into Supportbench') && !html.includes('Signin to') && !html.includes('Sign in')) {
-            const parsed = parseCaseFromHtml(html, caseId, url);
-            if (parsed) {
-              caseObj = parsed;
-              successfulUrl = url;
-              break;
-            }
-          }
-        }
-      }
-    } catch (err: any) {
-      debugLogs.push(`ERR [${err?.message}] ${url}`);
-    }
-  }
-
-  // Construct canonical browser portal link
   const portalHost = baseSubdomain ? `https://${baseSubdomain}.supportbench.net` : cleanBase;
-  const finalPortalUrl = fullUrl || `${portalHost}/agent/case/c-${numericId}/`;
+  const finalPortalUrl =
+    fullUrl && !/api\.supportbench\.net/i.test(fullUrl) ? fullUrl : `${portalHost}/agent/case/c-${numericId}/`;
 
-  if (!caseObj) {
-    // Show errors and 401/403/non-302 entries first
-    const significantLogs = debugLogs.filter((l) => !l.startsWith('302 [web session') && !l.includes(' 404 '));
-    const trace = (significantLogs.length > 0 ? significantLogs : debugLogs).slice(0, 8).join('\n');
+  let res: Response;
+  try {
+    res = await fetch(url, { headers });
+  } catch (err: any) {
+    throw new Error(`Network error calling ${url}: ${err?.message || 'request failed'}`);
+  }
 
-    const had401 = debugLogs.some((l) => l.includes('401'));
-    let authNote = '';
-    if (had401) {
-      authNote = '\n⚠️ HTTP 401 Unauthorized: The API Token was rejected by api.supportbench.net. Please ensure the token has Case permissions or generate a fresh API token.';
+  const contentType = res.headers.get('content-type') || 'none';
+  const { json, text } = await readBodyAsJson(res);
+  const snippet = text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300);
+
+  if (!res.ok) {
+    let hint = '';
+    if (res.status === 401 || res.status === 403) {
+      hint = ' The API token was rejected or the agent it belongs to cannot see this case/division.';
+    } else if (res.status === 404) {
+      hint = ' Case not found.';
     }
+    throw new Error(`GET ${url} returned HTTP ${res.status} [${contentType}].${hint} Response: ${snippet || '(empty)'}`);
+  }
 
+  if (json === undefined || json === null) {
     throw new Error(
-      `Could not download case '${caseId}' (or #${numericId}).${authNote}\n\nTrace:\n${trace}`
+      `GET ${url} returned HTTP 200 [${contentType}] but the body is not case JSON. Response: ${snippet || '(empty body)'}`
     );
   }
 
-  return { caseObj, sourceUrl: successfulUrl, finalPortalUrl, diagnostics: debugLogs.join('\n') };
+  const caseObj = extractCaseObject(json, apiCaseId, numericId);
+  if (!caseObj || typeof caseObj !== 'object') {
+    throw new Error(`GET ${url} returned HTTP 200 but no case object was found. Response: ${snippet}`);
+  }
+
+  return { caseObj, sourceUrl: url, finalPortalUrl };
 }
 
 /**
- * Fetches activities/comments for a case from embedded objects or direct endpoints
+ * Returns activities/comments embedded in the case object.
+ * (No guessed endpoints are called â€” only /case/{id} is a real read endpoint.)
  */
 async function fetchCaseActivities(
-  baseUrl: string,
-  headers: Record<string, string>,
+  _baseUrl: string,
+  _headers: Record<string, string>,
   caseObj: any,
-  caseId: string,
-  numericId?: string
+  _caseId: string,
+  _numericId?: string
 ): Promise<any[]> {
   const embeddedCandidates = [
     caseObj.Activities,
@@ -590,65 +568,13 @@ async function fetchCaseActivities(
     caseObj.messages,
     caseObj.History,
     caseObj.history,
+    caseObj.Emails,
+    caseObj.emails,
   ];
 
   for (const arr of embeddedCandidates) {
     if (Array.isArray(arr) && arr.length > 0) {
       return arr;
-    }
-  }
-
-  const cleanBase = normalizeSupportbenchBaseUrl(baseUrl);
-  const targetId = caseObj.Id || caseObj.id || caseObj.CaseId || caseObj.case_id || caseId;
-  const num = numericId || String(targetId).replace(/^[A-Za-z]+-/, '');
-
-  const bases = ['https://api.supportbench.net', cleanBase];
-  const activityEndpoints: string[] = [];
-
-  for (const b of bases) {
-    activityEndpoints.push(`${b}/activity/get?caseId=${encodeURIComponent(targetId)}`);
-    activityEndpoints.push(`${b}/activity/get?caseId=${encodeURIComponent(num)}`);
-    activityEndpoints.push(`${b}/activity/get?id=${encodeURIComponent(targetId)}`);
-    activityEndpoints.push(`${b}/activity/${encodeURIComponent(num)}`);
-    activityEndpoints.push(`${b}/activity/${encodeURIComponent(targetId)}`);
-    activityEndpoints.push(`${b}/case/${encodeURIComponent(targetId)}/activities`);
-    activityEndpoints.push(`${b}/case/${encodeURIComponent(num)}/activities`);
-    activityEndpoints.push(`${b}/case/${encodeURIComponent(targetId)}/comments`);
-    activityEndpoints.push(`${b}/case/${encodeURIComponent(num)}/comments`);
-    activityEndpoints.push(`${b}/action/get?caseId=${encodeURIComponent(targetId)}`);
-  }
-
-  for (const url of activityEndpoints) {
-    try {
-      const res = await fetch(url, { headers });
-      const contentType = res.headers.get('content-type') || '';
-      if (res.ok && contentType.includes('json')) {
-        const data = await res.json();
-        const list = Array.isArray(data)
-          ? data
-          : Array.isArray(data.Activities)
-          ? data.Activities
-          : Array.isArray(data.activities)
-          ? data.activities
-          : Array.isArray(data.Comments)
-          ? data.Comments
-          : Array.isArray(data.comments)
-          ? data.comments
-          : Array.isArray(data.Actions)
-          ? data.Actions
-          : Array.isArray(data.actions)
-          ? data.actions
-          : Array.isArray(data.Data)
-          ? data.Data
-          : Array.isArray(data.data)
-          ? data.data
-          : [];
-        if (list.length > 0) {
-          return list;
-        }
-      }
-    } catch {
-      // try next
     }
   }
 
@@ -854,11 +780,11 @@ async function processSupportbenchCaseToNote(
   }
 
   // Construct Clean Markdown Note
-  let markdown = `> 🎫 **Supportbench Case:** [**#${caseNumber} - ${subject}**](${portalUrl})  \n`;
-  markdown += `> 📊 **Status:** \`${status}\` | ⚡ **Priority:** ${priority}${stage ? ` | 🏷️ **Stage:** ${stage}` : ''}  \n`;
-  markdown += `> 👤 **Assignee:** ${assignee} | 👥 **Customer:** ${contact}${account ? ` (${account})` : ''}  \n`;
+  let markdown = `> ðŸŽ« **Supportbench Case:** [**#${caseNumber} - ${subject}**](${portalUrl})  \n`;
+  markdown += `> ðŸ“Š **Status:** \`${status}\` | âš¡ **Priority:** ${priority}${stage ? ` | ðŸ·ï¸ **Stage:** ${stage}` : ''}  \n`;
+  markdown += `> ðŸ‘¤ **Assignee:** ${assignee} | ðŸ‘¥ **Customer:** ${contact}${account ? ` (${account})` : ''}  \n`;
   if (createdDate || updatedDate) {
-    markdown += `> 🕒 **Created:** ${createdDate ? new Date(createdDate).toLocaleString() : 'N/A'}${updatedDate ? ` | **Updated:** ${new Date(updatedDate).toLocaleString()}` : ''}  \n`;
+    markdown += `> ðŸ•’ **Created:** ${createdDate ? new Date(createdDate).toLocaleString() : 'N/A'}${updatedDate ? ` | **Updated:** ${new Date(updatedDate).toLocaleString()}` : ''}  \n`;
   }
   markdown += `\n---\n\n`;
 
@@ -875,7 +801,7 @@ async function processSupportbenchCaseToNote(
       if (isImg) {
         markdown += `![${f.fileName}](${f.serveUrl})\n\n`;
       } else {
-        markdown += `- [📎 ${f.fileName}](${f.serveUrl})\n`;
+        markdown += `- [ðŸ“Ž ${f.fileName}](${f.serveUrl})\n`;
       }
     }
     markdown += '\n';
@@ -888,7 +814,7 @@ async function processSupportbenchCaseToNote(
       const act = activities[i];
       const parsed = formatActivityItem(act);
 
-      markdown += `#### 💬 **${parsed.author}** · *${parsed.date || 'Recent'}* \`[${parsed.type}]\`\n\n`;
+      markdown += `#### ðŸ’¬ **${parsed.author}** Â· *${parsed.date || 'Recent'}* \`[${parsed.type}]\`\n\n`;
       if (parsed.markdown) {
         markdown += `${parsed.markdown}\n\n`;
       } else {

@@ -654,7 +654,7 @@ export const SupportbenchModal: React.FC<SupportbenchModalProps> = ({ isOpen, on
                   className="w-full px-3.5 py-2 rounded-xl border border-stone-200 dark:border-stone-700 bg-white dark:bg-[#1a1b1e] text-xs text-stone-900 dark:text-stone-100 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-teal-500"
                 />
                 <p className="text-[11px] text-stone-500 dark:text-stone-400 mt-1">
-                  Enter your instance URL (e.g. <code>https://company.supportbench.com</code> or <code>https://api.supportbench.net</code>). All API requests are sent directly to this address.
+                  Use <code>https://api.supportbench.net</code> (the REST API). If you enter your web portal domain (e.g. <code>https://myaffiliates.supportbench.net</code>), case requests are automatically sent to <code>https://api.supportbench.net/case/C-&#123;id&#125;</code>.
                 </p>
               </div>
 
