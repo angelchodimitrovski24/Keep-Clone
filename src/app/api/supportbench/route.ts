@@ -99,7 +99,7 @@ function extractCaseInfo(input: string): {
 
 /**
  * Builds request headers for Supportbench API.
- * Sends Authorization: Bearer <token>, x-api-key, and optional tenant subdomain headers.
+ * Sends Authorization: Bearer <token>, x-api-key, and tenant headers.
  */
 export function buildSupportbenchHeaders(token: string, subdomain?: string): Record<string, string> {
   const cleanToken = (token || '').trim();
@@ -279,7 +279,7 @@ async function downloadMediaLocally(
 }
 
 /**
- * Parses case details from HTML in case the web page was fetched
+ * Parses case details from HTML in case an authenticated web page is returned
  */
 function parseCaseFromHtml(html: string, caseId: string, sourceUrl: string): any {
   const titleMatch = html.match(/<title>([^<]+)<\/title>/i);
@@ -315,6 +315,49 @@ function parseCaseFromHtml(html: string, caseId: string, sourceUrl: string): any
     activities,
     sourceUrl,
   };
+}
+
+/**
+ * Recursively searches any JSON object or array to extract the case record
+ */
+function extractCaseObject(data: any, targetId: string, numericTargetId: string): any {
+  if (!data) return null;
+  if (typeof data !== 'object') return null;
+
+  // If array of cases
+  if (Array.isArray(data)) {
+    const found = data.find((c: any) => {
+      const num = String(
+        c.CaseNumber ||
+        c.case_number ||
+        c.Number ||
+        c.number ||
+        c.Id ||
+        c.id ||
+        c.Reference ||
+        c.reference ||
+        ''
+      );
+      return (
+        num.toLowerCase() === targetId.toLowerCase() ||
+        num.toLowerCase() === numericTargetId.toLowerCase() ||
+        num.toLowerCase() === `c-${numericTargetId}`.toLowerCase()
+      );
+    });
+    return found || data[0] || null;
+  }
+
+  // Nested in data / case / result
+  if (data.Case && typeof data.Case === 'object') return extractCaseObject(data.Case, targetId, numericTargetId);
+  if (data.case && typeof data.case === 'object') return extractCaseObject(data.case, targetId, numericTargetId);
+  if (data.Data && typeof data.Data === 'object') return extractCaseObject(data.Data, targetId, numericTargetId);
+  if (data.data && typeof data.data === 'object') return extractCaseObject(data.data, targetId, numericTargetId);
+  if (data.Result && typeof data.Result === 'object') return extractCaseObject(data.Result, targetId, numericTargetId);
+  if (data.result && typeof data.result === 'object') return extractCaseObject(data.result, targetId, numericTargetId);
+  if (data.Cases && Array.isArray(data.Cases)) return extractCaseObject(data.Cases, targetId, numericTargetId);
+  if (data.cases && Array.isArray(data.cases)) return extractCaseObject(data.cases, targetId, numericTargetId);
+
+  return data;
 }
 
 /**
@@ -381,6 +424,8 @@ function formatActivityItem(act: any): { author: string; date: string; type: str
     act.message ||
     act.Description ||
     act.description ||
+    act.Note ||
+    act.note ||
     '';
 
   const cleanMd = typeof rawBody === 'string' ? htmlToCleanMarkdown(rawBody) : JSON.stringify(rawBody);
@@ -394,22 +439,24 @@ function formatActivityItem(act: any): { author: string; date: string; type: str
 }
 
 /**
- * Fetches a single case from Supportbench trying both the dedicated API cluster
- * and the user's instance URL, using both raw and numeric case IDs.
+ * Fetches a single case from Supportbench.
+ * Prioritizes the dedicated backend API (https://api.supportbench.net),
+ * tests all active endpoints, and supports both c-prefix and numeric IDs.
  */
 async function fetchCaseData(
   baseUrl: string,
   headers: Record<string, string>,
   caseIdentifier: string
-): Promise<{ caseObj: any; sourceUrl: string; finalPortalUrl: string }> {
+): Promise<{ caseObj: any; sourceUrl: string; finalPortalUrl: string; diagnostics?: string }> {
   const { caseId, numericId, subdomain: inputSubdomain, fullUrl } = extractCaseInfo(caseIdentifier);
   const cleanBase = normalizeSupportbenchBaseUrl(baseUrl);
   const baseSubdomain = extractSubdomain(cleanBase) || inputSubdomain;
 
-  // Determine base URLs to test
-  const basesToTry = [cleanBase];
-  if (!cleanBase.includes('api.supportbench.net')) {
-    basesToTry.push('https://api.supportbench.net');
+  // The primary API cluster for Supportbench is https://api.supportbench.net
+  // Also try cleanBase if user provided a custom instance URL
+  const basesToTry = ['https://api.supportbench.net'];
+  if (cleanBase && !cleanBase.includes('api.supportbench.net')) {
+    basesToTry.push(cleanBase);
   }
 
   const idsToTry = Array.from(new Set([caseId, numericId, `c-${numericId}`].filter(Boolean)));
@@ -423,87 +470,60 @@ async function fetchCaseData(
       candidates.push(`${b}/case/get?number=${encodeURIComponent(id)}`);
       candidates.push(`${b}/case/find?id=${encodeURIComponent(id)}`);
       candidates.push(`${b}/case/find?number=${encodeURIComponent(id)}`);
-      candidates.push(`${b}/api/v1/cases/${encodeURIComponent(id)}`);
+      candidates.push(`${b}/case/details/${encodeURIComponent(id)}`);
+      candidates.push(`${b}/case/details?id=${encodeURIComponent(id)}`);
+      candidates.push(`${b}/case/details?caseNumber=${encodeURIComponent(id)}`);
+      candidates.push(`${b}/case/info/${encodeURIComponent(id)}`);
+      candidates.push(`${b}/case/search?search=${encodeURIComponent(id)}`);
+      candidates.push(`${b}/case/query?id=${encodeURIComponent(id)}`);
       candidates.push(`${b}/cases/${encodeURIComponent(id)}`);
-      candidates.push(`${b}/agent/api/case/${encodeURIComponent(id)}`);
-      candidates.push(`${b}/agent/case/${encodeURIComponent(id)}`);
+      candidates.push(`${b}/api/v1/cases/${encodeURIComponent(id)}`);
       if (baseSubdomain) {
         candidates.push(`${b}/case/get?id=${encodeURIComponent(id)}&subdomain=${encodeURIComponent(baseSubdomain)}`);
         candidates.push(`${b}/case/${encodeURIComponent(id)}?subdomain=${encodeURIComponent(baseSubdomain)}`);
       }
     }
-  }
-
-  // Also if full URL was provided, attempt direct fetch with auth
-  if (fullUrl) {
-    candidates.unshift(fullUrl);
+    // Also include /case/all to filter in-memory if single-get doesn't match
+    candidates.push(`${b}/case/all`);
+    if (baseSubdomain) {
+      candidates.push(`${b}/case/all?subdomain=${encodeURIComponent(baseSubdomain)}`);
+    }
   }
 
   let caseObj: any = null;
-  let successfulUrl = fullUrl || `${cleanBase}/agent/case/c-${numericId}/`;
-  let lastAuthError = '';
+  let successfulUrl = fullUrl || `https://api.supportbench.net/case/${numericId}`;
+  const debugLogs: string[] = [];
 
   for (const url of candidates) {
     try {
       const res = await fetch(url, { headers });
       const contentType = res.headers.get('content-type') || '';
+      debugLogs.push(`${res.status} [${contentType.slice(0, 20)}] ${url}`);
 
       if (res.ok) {
         if (contentType.includes('json')) {
-          const data = await res.json();
-          if (data.Case && typeof data.Case === 'object') {
-            caseObj = data.Case;
-          } else if (data.case && typeof data.case === 'object') {
-            caseObj = data.case;
-          } else if (data.Data && typeof data.Data === 'object' && !Array.isArray(data.Data)) {
-            caseObj = data.Data;
-          } else if (data.data && typeof data.data === 'object' && !Array.isArray(data.data)) {
-            caseObj = data.data;
-          } else if (Array.isArray(data.Data) && data.Data.length > 0) {
-            caseObj = data.Data[0];
-          } else if (Array.isArray(data.data) && data.data.length > 0) {
-            caseObj = data.data[0];
-          } else if (Array.isArray(data.Cases) && data.Cases.length > 0) {
-            caseObj = data.Cases[0];
-          } else if (Array.isArray(data.cases) && data.cases.length > 0) {
-            caseObj = data.cases[0];
-          } else if (Array.isArray(data) && data.length > 0) {
-            caseObj = data[0];
-          } else if (
-            data.Id ||
-            data.id ||
-            data.CaseNumber ||
-            data.case_number ||
-            data.Number ||
-            data.number ||
-            data.Subject ||
-            data.subject ||
-            data.Title ||
-            data.title
-          ) {
-            caseObj = data;
-          }
-
-          if (caseObj) {
+          const rawJson = await res.json();
+          const extracted = extractCaseObject(rawJson, caseId, numericId);
+          if (extracted) {
+            caseObj = extracted;
             successfulUrl = url;
             break;
           }
         } else if (contentType.includes('html')) {
           const html = await res.text();
-          // Make sure it is not the login or sign-in page
+          // Verify it is not the login or sign-in page
           if (!html.includes('Login into Supportbench') && !html.includes('Signin to') && !html.includes('Sign in')) {
-            caseObj = parseCaseFromHtml(html, caseId, url);
-            if (caseObj) {
+            const parsed = parseCaseFromHtml(html, caseId, url);
+            if (parsed) {
+              caseObj = parsed;
               successfulUrl = url;
               break;
             }
           }
         }
-      } else if (res.status === 401 || res.status === 403) {
-        lastAuthError = `HTTP ${res.status} Unauthorized`;
       }
-    } catch {
-      // try next
+    } catch (err: any) {
+      debugLogs.push(`ERR ${err?.message} ${url}`);
     }
   }
 
@@ -512,17 +532,13 @@ async function fetchCaseData(
   const finalPortalUrl = fullUrl || `${portalHost}/agent/case/c-${numericId}/`;
 
   if (!caseObj) {
-    if (lastAuthError) {
-      throw new Error(
-        `Supportbench rejected authorization (${lastAuthError}) for case ${caseId}. Please ensure your API token has case read permissions.`
-      );
-    }
+    const errorDetails = debugLogs.slice(0, 10).join(' | ');
     throw new Error(
-      `Case '${caseId}' (or #${numericId}) not found on Supportbench. Please verify the case URL/number and that your token has access to it.`
+      `Could not download case '${caseId}' (or #${numericId}). Diagnostic trace: ${errorDetails}`
     );
   }
 
-  return { caseObj, sourceUrl: successfulUrl, finalPortalUrl };
+  return { caseObj, sourceUrl: successfulUrl, finalPortalUrl, diagnostics: debugLogs.join('\n') };
 }
 
 /**
@@ -532,7 +548,8 @@ async function fetchCaseActivities(
   baseUrl: string,
   headers: Record<string, string>,
   caseObj: any,
-  caseId: string
+  caseId: string,
+  numericId?: string
 ): Promise<any[]> {
   const embeddedCandidates = [
     caseObj.Activities,
@@ -547,6 +564,8 @@ async function fetchCaseActivities(
     caseObj.timeline,
     caseObj.Messages,
     caseObj.messages,
+    caseObj.History,
+    caseObj.history,
   ];
 
   for (const arr of embeddedCandidates) {
@@ -557,18 +576,22 @@ async function fetchCaseActivities(
 
   const cleanBase = normalizeSupportbenchBaseUrl(baseUrl);
   const targetId = caseObj.Id || caseObj.id || caseObj.CaseId || caseObj.case_id || caseId;
+  const num = numericId || String(targetId).replace(/^[A-Za-z]+-/, '');
 
-  const bases = [cleanBase, 'https://api.supportbench.net'];
+  const bases = ['https://api.supportbench.net', cleanBase];
   const activityEndpoints: string[] = [];
 
   for (const b of bases) {
-    activityEndpoints.push(`${b}/case/${encodeURIComponent(targetId)}/activities`);
-    activityEndpoints.push(`${b}/case/${encodeURIComponent(targetId)}/comments`);
-    activityEndpoints.push(`${b}/case/${encodeURIComponent(targetId)}/actions`);
     activityEndpoints.push(`${b}/activity/get?caseId=${encodeURIComponent(targetId)}`);
+    activityEndpoints.push(`${b}/activity/get?caseId=${encodeURIComponent(num)}`);
     activityEndpoints.push(`${b}/activity/get?id=${encodeURIComponent(targetId)}`);
-    activityEndpoints.push(`${b}/api/v1/cases/${encodeURIComponent(targetId)}/comments`);
-    activityEndpoints.push(`${b}/api/v1/cases/${encodeURIComponent(targetId)}/activities`);
+    activityEndpoints.push(`${b}/activity/${encodeURIComponent(num)}`);
+    activityEndpoints.push(`${b}/activity/${encodeURIComponent(targetId)}`);
+    activityEndpoints.push(`${b}/case/${encodeURIComponent(targetId)}/activities`);
+    activityEndpoints.push(`${b}/case/${encodeURIComponent(num)}/activities`);
+    activityEndpoints.push(`${b}/case/${encodeURIComponent(targetId)}/comments`);
+    activityEndpoints.push(`${b}/case/${encodeURIComponent(num)}/comments`);
+    activityEndpoints.push(`${b}/action/get?caseId=${encodeURIComponent(targetId)}`);
   }
 
   for (const url of activityEndpoints) {
@@ -621,10 +644,26 @@ async function processSupportbenchCaseToNote(
   downloadAttachments: boolean = true
 ) {
   const caseId = String(
-    caseObj.Id || caseObj.id || caseObj.CaseId || caseObj.case_id || caseObj.CaseNumber || caseObj.case_number || 'Case'
+    caseObj.Id ||
+    caseObj.id ||
+    caseObj.CaseId ||
+    caseObj.case_id ||
+    caseObj.CaseNumber ||
+    caseObj.case_number ||
+    caseObj.Reference ||
+    caseObj.reference ||
+    'Case'
   );
   const caseNumber = String(
-    caseObj.CaseNumber || caseObj.case_number || caseObj.Number || caseObj.number || caseObj.Id || caseObj.id || caseId
+    caseObj.CaseNumber ||
+    caseObj.case_number ||
+    caseObj.Number ||
+    caseObj.number ||
+    caseObj.Reference ||
+    caseObj.reference ||
+    caseObj.Id ||
+    caseObj.id ||
+    caseId
   );
   const subject =
     caseObj.Subject ||
@@ -635,6 +674,8 @@ async function processSupportbenchCaseToNote(
     caseObj.summary ||
     caseObj.Name ||
     caseObj.name ||
+    caseObj.Topic ||
+    caseObj.topic ||
     `Case #${caseNumber}`;
 
   const statusRaw = caseObj.Status ?? caseObj.status ?? caseObj.State ?? caseObj.state ?? 'Open';
@@ -724,6 +765,10 @@ async function processSupportbenchCaseToNote(
     caseObj.content ||
     caseObj.Details ||
     caseObj.details ||
+    caseObj.InitialMessage ||
+    caseObj.initial_message ||
+    caseObj.Text ||
+    caseObj.text ||
     '';
 
   let descriptionMd = htmlToCleanMarkdown(rawDescription);
@@ -927,8 +972,9 @@ export async function POST(req: NextRequest) {
       }
 
       const { caseObj, finalPortalUrl } = await fetchCaseData(cleanBase, headers, caseIdentifier);
-      const caseId = caseObj.Id || caseObj.id || caseObj.CaseNumber || caseObj.case_number || caseIdentifier;
-      const activities = await fetchCaseActivities(cleanBase, headers, caseObj, String(caseId));
+      const { caseId, numericId } = extractCaseInfo(caseIdentifier);
+      const finalCaseId = caseObj.Id || caseObj.id || caseObj.CaseNumber || caseObj.case_number || caseId;
+      const activities = await fetchCaseActivities(cleanBase, headers, caseObj, String(finalCaseId), numericId);
 
       const notePayload = await processSupportbenchCaseToNote(
         caseObj,
@@ -959,8 +1005,9 @@ export async function POST(req: NextRequest) {
           const itemSubdomain = extractSubdomain(rawId) || subdomain;
           const itemHeaders = buildSupportbenchHeaders(apiToken, itemSubdomain);
           const { caseObj, finalPortalUrl } = await fetchCaseData(cleanBase, itemHeaders, rawId);
-          const caseId = caseObj.Id || caseObj.id || caseObj.CaseNumber || caseObj.case_number || rawId;
-          const activities = await fetchCaseActivities(cleanBase, itemHeaders, caseObj, String(caseId));
+          const { caseId: parsedId, numericId } = extractCaseInfo(rawId);
+          const finalCaseId = caseObj.Id || caseObj.id || caseObj.CaseNumber || caseObj.case_number || parsedId;
+          const activities = await fetchCaseActivities(cleanBase, itemHeaders, caseObj, String(finalCaseId), numericId);
 
           const notePayload = await processSupportbenchCaseToNote(
             caseObj,
