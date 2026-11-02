@@ -328,22 +328,27 @@ export function isDataviewCode(code: string, lang?: string): boolean {
 export function healMojibake(text: string): string {
   if (!text) return '';
   return text
-    .replace(/ðŸ[’'´`]?¬/g, '💬')
-    .replace(/ðŸŽ«/g, '🎫')
-    .replace(/ðŸ“Š/g, '📊')
-    .replace(/âš¡/g, '⚡')
-    .replace(/ðŸ‘¤/g, '👤')
-    .replace(/ðŸ‘¥/g, '👥')
-    .replace(/ðŸ•’/g, '🕒')
-    .replace(/ðŸ“Ž/g, '📎')
-    .replace(/Â·/g, '•')
-    .replace(/Â /g, ' ')
-    .replace(/â€™/g, "'")
-    .replace(/â€˜/g, "'")
-    .replace(/â€œ/g, '"')
-    .replace(/â€ /g, '"')
-    .replace(/â€”/g, '—')
-    .replace(/â€“/g, '–');
+    // Speech balloon: 💬 (\uD83D\uDCAC)
+    .replace(/(?:ðŸ[\u2019'´`\u0092\u0080-\u009F]?¬|ðŸ’¬|Ã°Å¸[â€™'Â´`]?Â¬)/g, '💬')
+    // Middle dot / bullet: · (\u00B7) / • (\u2022)
+    .replace(/(?:Â·|Ã‚Â·)/g, '·')
+    .replace(/Â\s/g, ' ')
+    .replace(/(?:â€¢|Ã¢â‚¬Â¢)/g, '•')
+    // Ticket / stats / thunder / user icons
+    .replace(/(?:ðŸŽ«|Ã°Å¸Å½Â«)/g, '🎫')
+    .replace(/(?:ðŸ“Š|Ã°Å¸â€œÅ )/g, '📊')
+    .replace(/(?:âš¡|Ã¢Å¡Â¡)/g, '⚡')
+    .replace(/(?:ðŸ‘¤|Ã°Å¸â€˜Â¤)/g, '👤')
+    .replace(/(?:ðŸ‘¥|Ã°Å¸â€˜Â¥)/g, '👥')
+    .replace(/(?:ðŸ•’|Ã°Å¸â€¢â€™)/g, '🕒')
+    .replace(/(?:ðŸ“Ž|Ã°Å¸â€œÅ½)/g, '📎')
+    // Quotes and dashes
+    .replace(/(?:â€™|Ã¢â‚¬â„¢)/g, "'")
+    .replace(/(?:â€˜|Ã¢â‚¬Ëœ)/g, "'")
+    .replace(/(?:â€œ|Ã¢â‚¬Å“)/g, '"')
+    .replace(/(?:â€\x9d|Ã¢â‚¬\x9d)/g, '"')
+    .replace(/(?:â€”|Ã¢â‚¬â€)/g, '—')
+    .replace(/(?:â€“|Ã¢â‚¬â€œ)/g, '–');
 }
 
 export function convertMarkdownToHtml(content: string): string {

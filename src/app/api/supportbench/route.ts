@@ -371,86 +371,120 @@ function buildUserDirectory(caseObj: any): Map<string, { name: string; email: st
   const map = new Map<string, { name: string; email: string }>();
   if (!caseObj || typeof caseObj !== 'object') return map;
 
+  const isGenericName = (s: string) => /^(agent|user|staff|support|system|admin|jira|supportbench|unknown|none)$/i.test(s.trim());
+
   const register = (o: any) => {
     if (!o || typeof o !== 'object') return;
     const first = typeof o.FirstName === 'string' ? o.FirstName.trim() : typeof o.firstName === 'string' ? o.firstName.trim() : '';
     const last = typeof o.LastName === 'string' ? o.LastName.trim() : typeof o.lastName === 'string' ? o.lastName.trim() : '';
-    const name = (typeof o.Name === 'string' ? o.Name.trim() : typeof o.name === 'string' ? o.name.trim() : '') ||
+    const fullName = [first, last].filter(Boolean).join(' ');
+    let name = (
       (typeof o.DisplayName === 'string' ? o.DisplayName.trim() : typeof o.displayName === 'string' ? o.displayName.trim() : '') ||
-      [first, last].filter(Boolean).join(' ');
-    const email = typeof o.Email === 'string' ? o.Email.trim() : typeof o.email === 'string' ? o.email.trim() : '';
-    const id = String(o.Id || o.id || o.UserId || o.userId || o.AgentId || o.agentId || '').trim();
+      (typeof o.FullName === 'string' ? o.FullName.trim() : typeof o.fullName === 'string' ? o.fullName.trim() : '') ||
+      (typeof o.Name === 'string' ? o.Name.trim() : typeof o.name === 'string' ? o.name.trim() : '') ||
+      fullName
+    );
+    if (name && isGenericName(name)) name = '';
 
-    if (id && (name || email)) {
-      map.set(id.toLowerCase(), { name, email });
+    const email = (
+      (typeof o.Email === 'string' ? o.Email.trim() : typeof o.email === 'string' ? o.email.trim() : '') ||
+      (typeof o.EmailAddress === 'string' ? o.EmailAddress.trim() : typeof o.email_address === 'string' ? o.email_address.trim() : '')
+    );
+
+    const idCandidates = [
+      o.Id, o.id, o.UserId, o.userId, o.AgentId, o.agentId, o.Guid, o.guid, o.UUID, o.uuid, o.Key, o.key,
+      o.AuthorId, o.authorId, o.CreatedById, o.createdById, o.ActorId, o.actorId
+    ];
+
+    if (name || email) {
+      for (const rawId of idCandidates) {
+        if (rawId !== undefined && rawId !== null && String(rawId).trim()) {
+          map.set(String(rawId).trim().toLowerCase(), { name, email });
+        }
+      }
+      if (email) {
+        map.set(email.toLowerCase(), { name, email });
+      }
     }
   };
 
-  const pool = [
-    caseObj.Users, caseObj.users, caseObj.Agents, caseObj.agents, caseObj.Members, caseObj.members,
-    caseObj.Assignee, caseObj.assignee, caseObj.AssignedTo, caseObj.assigned_to, caseObj.Agent, caseObj.agent,
-    caseObj.Owner, caseObj.owner, caseObj.CreatedBy, caseObj.created_by, caseObj.Contact, caseObj.contact
-  ];
+  // Deep scan caseObj (up to 4 levels) for user/agent objects
+  const visited = new Set<any>();
+  const scan = (obj: any, depth = 0) => {
+    if (!obj || typeof obj !== 'object' || depth > 4 || visited.has(obj)) return;
+    visited.add(obj);
 
-  for (const item of pool) {
-    if (Array.isArray(item)) {
-      item.forEach(register);
-    } else if (item && typeof item === 'object') {
-      register(item);
+    if (Array.isArray(obj)) {
+      for (const item of obj) scan(item, depth + 1);
+      return;
     }
-  }
 
+    register(obj);
+
+    for (const [k, v] of Object.entries(obj)) {
+      if (v && typeof v === 'object') {
+        scan(v, depth + 1);
+      }
+    }
+  };
+
+  scan(caseObj);
   return map;
 }
 
 function extractActivityAuthor(act: any, caseObj?: any, userDirectory?: Map<string, { name: string; email: string }>): { name: string; email: string } {
   const str = (v: any): string => (typeof v === 'string' ? v.trim() : typeof v === 'number' ? String(v) : '');
   const isEmail = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
-  const isGeneric = (s: string) => /^(agent|user|staff|support|system|admin|jira|supportbench)$/i.test(s.trim());
+  const isGeneric = (s: string) => /^(agent|user|staff|support|system|admin|jira|supportbench|unknown|none)$/i.test(s.trim());
 
-  const nameFromObj = (o: any): string => {
-    if (!o || typeof o !== 'object') return '';
-    const first = str(o.FirstName ?? o.firstName ?? o.first_name);
-    const last = str(o.LastName ?? o.lastName ?? o.last_name);
-    return (
-      str(o.Name ?? o.name ?? o.DisplayName ?? o.displayName ?? o.FullName ?? o.fullName ?? o.full_name) ||
-      [first, last].filter(Boolean).join(' ')
-    );
-  };
-  const emailFromObj = (o: any): string =>
-    o && typeof o === 'object' ? str(o.Email ?? o.email ?? o.EmailAddress ?? o.emailAddress ?? o.email_address) : '';
+  const actType = str(act?.Type || act?.type || act?.ActivityType || act?.activity_type || act?.Action || act?.action).toUpperCase();
+  const isJiraUpdate = /jira/i.test(actType) || /jira/i.test(str(act?.SourceName)) || /jira/i.test(str(act?.Integration)) || /jira/i.test(str(act?.App));
+
+  if (isJiraUpdate) {
+    return { name: 'Jira Integration', email: '' };
+  }
+
+  let name = '';
+  let email = '';
 
   const personKeys = [
     'Author', 'author', 'Creator', 'creator', 'CreatedBy', 'createdBy', 'created_by',
     'User', 'user', 'Agent', 'agent', 'Sender', 'sender', 'From', 'from',
     'PostedBy', 'postedBy', 'Owner', 'owner', 'Contact', 'contact', 'Actor', 'actor',
+    'Staff', 'staff', 'Member', 'member',
   ];
-
-  let name = '';
-  let email = '';
 
   // 1. Check nested objects on person keys
   for (const k of personKeys) {
     const v = act?.[k];
     if (!v) continue;
     if (typeof v === 'object') {
-      const objName = nameFromObj(v);
-      const objEmail = emailFromObj(v);
+      const first = str(v.FirstName ?? v.firstName ?? v.first_name);
+      const last = str(v.LastName ?? v.lastName ?? v.last_name);
+      const objName = str(v.DisplayName ?? v.displayName ?? v.FullName ?? v.fullName ?? v.Name ?? v.name) || [first, last].filter(Boolean).join(' ');
+      const objEmail = str(v.Email ?? v.email ?? v.EmailAddress ?? v.emailAddress ?? v.email_address);
       if (objName && !isGeneric(objName)) name = name || objName;
       if (objEmail && isEmail(objEmail)) email = email || objEmail;
     } else {
       const s = str(v);
       if (isEmail(s)) {
         email = email || s;
-      } else if (s && !isGeneric(s)) {
+      } else if (s && !isGeneric(s) && !/^\d+$/.test(s)) {
         name = name || s;
       }
     }
     if (name && email) break;
   }
 
-  // 2. Flat fields (AgentName, CreatedByName, FromEmail, UserEmail, AuthorName, etc.)
+  // 2. Flat fields (FirstName + LastName, AgentName, CreatedByName, FromEmail, UserEmail, AuthorName, etc.)
   if (!name || !email) {
+    const directFirst = str(act?.FirstName ?? act?.firstName ?? act?.first_name);
+    const directLast = str(act?.LastName ?? act?.lastName ?? act?.last_name);
+    const directFullName = [directFirst, directLast].filter(Boolean).join(' ');
+    if (directFullName && !isGeneric(directFullName)) {
+      name = name || directFullName;
+    }
+
     for (const [k, v] of Object.entries(act || {})) {
       const s = str(v);
       if (!s) continue;
@@ -460,18 +494,21 @@ function extractActivityAuthor(act: any, caseObj?: any, userDirectory?: Map<stri
         !name &&
         /(author|creator|agent|user|createdby|created_by|owner|sender|from|postedby|actor).*name|^name$|displayname|fullname/i.test(k) &&
         !isEmail(s) &&
-        !isGeneric(s)
+        !isGeneric(s) &&
+        !/^\d+$/.test(s)
       ) {
         name = s;
       }
     }
   }
 
-  // 3. User directory lookup by author/user/agent ID
+  // 3. User directory lookup by author/user/agent ID or email
   if ((!name || !email) && userDirectory) {
     const idCandidates = [
       act?.UserId, act?.userId, act?.AuthorId, act?.authorId, act?.AgentId, act?.agentId,
-      act?.CreatedById, act?.createdById, act?.CreatorId, act?.creatorId, act?.ActorId, act?.actorId
+      act?.CreatedById, act?.createdById, act?.CreatorId, act?.creatorId, act?.ActorId, act?.actorId,
+      act?.CreatedBy, act?.Author, act?.User, act?.Agent,
+      email
     ];
     for (const id of idCandidates) {
       if (id && userDirectory.has(String(id).toLowerCase())) {
@@ -483,23 +520,38 @@ function extractActivityAuthor(act: any, caseObj?: any, userDirectory?: Map<stri
     }
   }
 
-  // 4. Fallback to case assignee / agent if note was created by internal staff
+  // 4. Fallback to case assignee / agent if note was created by internal staff or without specific author
   if (!name && caseObj) {
-    const caseAgentName =
-      caseObj.Assignee?.Name || caseObj.Assignee?.DisplayName || caseObj.assignee?.name || caseObj.assignee?.displayName ||
-      caseObj.AssignedTo?.Name || caseObj.AssignedTo?.DisplayName || caseObj.assigned_to?.name ||
-      caseObj.Agent?.Name || caseObj.Agent?.DisplayName || caseObj.agent?.name ||
-      (typeof caseObj.Assignee === 'string' && !isGeneric(caseObj.Assignee) ? caseObj.Assignee : '') ||
-      (typeof caseObj.assigned_to === 'string' && !isGeneric(caseObj.assigned_to) ? caseObj.assigned_to : '');
+    const assigneeObj = caseObj.Assignee || caseObj.assignee || caseObj.AssignedTo || caseObj.assigned_to || caseObj.Agent || caseObj.agent || caseObj.Owner || caseObj.owner;
+    if (assigneeObj && typeof assigneeObj === 'object') {
+      const first = str(assigneeObj.FirstName ?? assigneeObj.firstName ?? assigneeObj.first_name);
+      const last = str(assigneeObj.LastName ?? assigneeObj.lastName ?? assigneeObj.last_name);
+      const caseAgentName =
+        str(assigneeObj.DisplayName ?? assigneeObj.displayName ?? assigneeObj.FullName ?? assigneeObj.fullName ?? assigneeObj.Name ?? assigneeObj.name) ||
+        [first, last].filter(Boolean).join(' ');
+      const caseAgentEmail = str(assigneeObj.Email ?? assigneeObj.email ?? assigneeObj.EmailAddress ?? assigneeObj.emailAddress);
+      if (caseAgentName && !isGeneric(caseAgentName)) name = caseAgentName;
+      if (caseAgentEmail && isEmail(caseAgentEmail)) email = email || caseAgentEmail;
+    } else if (typeof assigneeObj === 'string' && !isGeneric(assigneeObj) && !/^\d+$/.test(assigneeObj)) {
+      name = assigneeObj.trim();
+    }
 
-    const caseAgentEmail =
-      caseObj.Assignee?.Email || caseObj.assignee?.email ||
-      caseObj.AssignedTo?.Email || caseObj.assigned_to?.email ||
-      caseObj.Agent?.Email || caseObj.agent?.email || '';
-
-    if (caseAgentName) {
-      name = caseAgentName;
-      if (!email && caseAgentEmail) email = caseAgentEmail;
+    if (!name) {
+      const flatCaseAgent = str(
+        caseObj.AssigneeName ?? caseObj.assignee_name ??
+        caseObj.AgentName ?? caseObj.agent_name ??
+        caseObj.AssignedAgentName ?? caseObj.assigned_agent_name ??
+        caseObj.OwnerName ?? caseObj.owner_name
+      );
+      if (flatCaseAgent && !isGeneric(flatCaseAgent)) name = flatCaseAgent;
+    }
+    if (!email) {
+      const flatCaseEmail = str(
+        caseObj.AssigneeEmail ?? caseObj.assignee_email ??
+        caseObj.AgentEmail ?? caseObj.agent_email ??
+        caseObj.OwnerEmail ?? caseObj.owner_email
+      );
+      if (flatCaseEmail && isEmail(flatCaseEmail)) email = flatCaseEmail;
     }
   }
 
@@ -515,7 +567,9 @@ function extractActivityAuthor(act: any, caseObj?: any, userDirectory?: Map<stri
 
 function formatActivityItem(act: any, caseObj?: any, userDirectory?: Map<string, { name: string; email: string }>): { author: string; date: string; type: string; markdown: string } {
   const { name, email } = extractActivityAuthor(act, caseObj, userDirectory);
-  const author = name && email && name !== email ? `${name} (${email})` : name || email || 'Agent';
+  const actType = (act?.Type || act?.type || act?.Action || act?.ActivityType || '').toUpperCase();
+  const defaultLabel = /jira/i.test(actType) ? 'Jira Integration' : 'Agent';
+  const author = name && email && name !== email ? `${name} (${email})` : name || email || defaultLabel;
 
   const date =
     act.CreatedDate ||

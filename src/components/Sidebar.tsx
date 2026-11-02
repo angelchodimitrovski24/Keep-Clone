@@ -32,6 +32,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onCloseMobile,
   onOpenLabelModal,
 }) => {
+  const [isMounted, setIsMounted] = React.useState(false);
+
+  React.useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
   const {
     currentFilter,
     selectedLabel,
@@ -146,7 +152,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
           )}
 
-          {categories.map((cat) => {
+          {isMounted && categories.map((cat) => {
             const isActive = currentFilter === 'category' && selectedCategory === cat.name;
             const isLocked = !!cat.isLocked;
             const isUnlocked = unlockedCategoryNames.includes(cat.name.toLowerCase());
@@ -209,7 +215,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
           )}
 
-          {labels.map((lbl) => {
+          {isMounted && labels.map((lbl) => {
             const isActive = currentFilter === 'label' && selectedLabel === lbl.name;
             return (
               <button

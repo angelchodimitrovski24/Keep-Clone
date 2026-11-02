@@ -36,6 +36,7 @@ import {
   lockCategoryInSession as lockCategoryInSessionStore,
 } from '@/lib/encryptionSession';
 import { exportBackupZip, importBackupSmart, ImportResult } from '@/lib/backupZip';
+import { healMojibake } from '@/lib/formatUtils';
 
 export function getFontSizeInPx(size: FontSizeOption | string): string {
   switch (size) {
@@ -540,7 +541,17 @@ export function KeepProvider({
         setNotes(initialNotes);
         setLabels([welcomeLabel]);
       } else {
-        setNotes(storedNotes);
+        const healedStoredNotes = storedNotes.map((n) => {
+          const healedTitle = healMojibake(n.title);
+          const healedContent = healMojibake(n.content);
+          if (healedTitle !== n.title || healedContent !== n.content) {
+            const healed = { ...n, title: healedTitle, content: healedContent };
+            saveNoteToDB(healed).catch(() => {});
+            return healed;
+          }
+          return n;
+        });
+        setNotes(healedStoredNotes);
         setLabels(storedLabels);
       }
 
