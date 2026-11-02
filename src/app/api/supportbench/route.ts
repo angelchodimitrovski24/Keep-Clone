@@ -31,10 +31,8 @@ function getDefaultMediaFolder(): string {
 }
 
 /**
- * Normalizes Supportbench domain or URL to the canonical API base URL.
- * The official Supportbench API is hosted on https://api.supportbench.net.
- * If user enters app.supportbench.net, supportbench.com, or a tenant name,
- * we map to https://api.supportbench.net or the custom instance API.
+ * Normalizes the user's provided Base URL.
+ * Strictly respects the domain and path entered by the user.
  */
 export function normalizeSupportbenchBaseUrl(input: string): string {
   let clean = (input || '').trim().replace(/\/+$/, '');
@@ -46,30 +44,12 @@ export function normalizeSupportbenchBaseUrl(input: string): string {
     clean = `https://${clean}`;
   }
 
-  try {
-    const url = new URL(clean);
-    const host = url.hostname.toLowerCase();
-    // Supportbench web app domains map to api.supportbench.net
-    if (
-      host === 'supportbench.net' ||
-      host === 'app.supportbench.net' ||
-      host === 'supportbench.com' ||
-      host === 'app.supportbench.com' ||
-      host === 'www.supportbench.com' ||
-      host === 'api.supportbench.com'
-    ) {
-      return 'https://api.supportbench.net';
-    }
-    return `${url.protocol}//${url.host}`;
-  } catch {
-    return 'https://api.supportbench.net';
-  }
+  return clean;
 }
 
 /**
  * Builds request headers for Supportbench API.
- * Supportbench uses ASP.NET Core Kestrel with Authorization: Bearer <token>.
- * Also supplies x-api-key and api-key for complete compatibility.
+ * Sends Authorization: Bearer <token>, x-api-key, and api-key for maximum compatibility.
  */
 export function buildSupportbenchHeaders(token: string): Record<string, string> {
   const cleanToken = (token || '').trim();
@@ -79,12 +59,13 @@ export function buildSupportbenchHeaders(token: string): Record<string, string> 
   const headers: Record<string, string> = {
     'Accept': 'application/json, text/plain, */*',
     'Content-Type': 'application/json',
-    'User-Agent': 'Keep-Clone-Supportbench-Agent/1.0',
+    'User-Agent': 'Keep-Clone-Supportbench/1.0',
   };
 
   if (rawToken) {
     headers['Authorization'] = bearerToken;
     headers['x-api-key'] = rawToken;
+    headers['X-API-KEY'] = rawToken;
     headers['api-key'] = rawToken;
     headers['apikey'] = rawToken;
     headers['token'] = rawToken;
@@ -95,8 +76,6 @@ export function buildSupportbenchHeaders(token: string): Record<string, string> 
 
 /**
  * Converts HTML to clean, readable Markdown without arbitrary blockquotes.
- * Code blocks become ```lang\n...```, inline code becomes `...`,
- * lists, bold, italics, links, and paragraphs are preserved.
  */
 function htmlToCleanMarkdown(html: string): string {
   if (!html) return '';
@@ -343,12 +322,13 @@ function formatActivityItem(act: any): { author: string; date: string; type: str
 }
 
 /**
- * Fetches a single case from Supportbench using its real ASP.NET Core endpoints.
- * Prioritizes:
- * 1. GET /case/{id}
- * 2. GET /case/get?id={id} or ?caseNumber={id}
- * 3. GET /case/find?id={id}
- * 4. GET /case/all (filtered)
+ * Fetches a single case from the user's Supportbench Base URL.
+ * Strictly calls the real REST API and controller endpoints on the user's instance:
+ * 1. GET {baseUrl}/api/v1/cases/{caseId}
+ * 2. GET {baseUrl}/cases/{caseId}
+ * 3. GET {baseUrl}/case/{caseId}
+ * 4. GET {baseUrl}/api/v1/cases?number={caseId}
+ * 5. GET {baseUrl}/case/get?id={caseId}
  */
 async function fetchCaseData(
   baseUrl: string,
@@ -358,24 +338,19 @@ async function fetchCaseData(
   const cleanBase = normalizeSupportbenchBaseUrl(baseUrl);
 
   const candidates = [
-    // Real Supportbench endpoints (ASP.NET Core)
+    // Standard REST API on user's Base URL
+    `${cleanBase}/api/v1/cases/${encodeURIComponent(caseId)}`,
+    `${cleanBase}/cases/${encodeURIComponent(caseId)}`,
     `${cleanBase}/case/${encodeURIComponent(caseId)}`,
+    `${cleanBase}/api/v1/cases?number=${encodeURIComponent(caseId)}`,
+    `${cleanBase}/api/v1/cases?case_number=${encodeURIComponent(caseId)}`,
     `${cleanBase}/case/get?id=${encodeURIComponent(caseId)}`,
     `${cleanBase}/case/get?caseNumber=${encodeURIComponent(caseId)}`,
-    `${cleanBase}/case/get?number=${encodeURIComponent(caseId)}`,
     `${cleanBase}/case/find?id=${encodeURIComponent(caseId)}`,
-    `${cleanBase}/case/find?case_number=${encodeURIComponent(caseId)}`,
-    `${cleanBase}/case/find?number=${encodeURIComponent(caseId)}`,
-    `${cleanBase}/case/details/${encodeURIComponent(caseId)}`,
-    `${cleanBase}/case/info/${encodeURIComponent(caseId)}`,
-    // Fallback standard REST
-    `${cleanBase}/cases/${encodeURIComponent(caseId)}`,
-    `${cleanBase}/v1/cases/${encodeURIComponent(caseId)}`,
-    `${cleanBase}/api/v1/cases/${encodeURIComponent(caseId)}`,
   ];
 
   let caseObj: any = null;
-  let successfulUrl = `${cleanBase}/case/${caseId}`;
+  let successfulUrl = `${cleanBase}/cases/${caseId}`;
 
   for (const url of candidates) {
     try {
@@ -425,48 +400,15 @@ async function fetchCaseData(
     }
   }
 
-  // If still not found, try querying /case/all and filtering by ID or Number
   if (!caseObj) {
-    try {
-      const allRes = await fetch(`${cleanBase}/case/all`, { headers });
-      if (allRes.ok) {
-        const allData = await allRes.json();
-        const list = Array.isArray(allData)
-          ? allData
-          : Array.isArray(allData.Cases)
-          ? allData.Cases
-          : Array.isArray(allData.cases)
-          ? allData.cases
-          : Array.isArray(allData.Data)
-          ? allData.Data
-          : Array.isArray(allData.data)
-          ? allData.data
-          : [];
-
-        const found = list.find((c: any) => {
-          const num = String(c.CaseNumber || c.case_number || c.Number || c.number || c.Id || c.id || '');
-          return num.toLowerCase() === caseId.toLowerCase();
-        });
-
-        if (found) {
-          caseObj = found;
-          successfulUrl = `${cleanBase}/case/${caseId}`;
-        }
-      }
-    } catch {
-      // ignore
-    }
-  }
-
-  if (!caseObj) {
-    throw new Error(`Case '${caseId}' not found on Supportbench (${cleanBase}). Please check the case number and your API token permissions.`);
+    throw new Error(`Case '${caseId}' not found on Supportbench (${cleanBase}). Please verify the case ID and token permissions.`);
   }
 
   return { caseObj, sourceUrl: successfulUrl };
 }
 
 /**
- * Fetches activities/comments for a case from embedded objects or Supportbench endpoints
+ * Fetches activities/comments for a case from embedded objects or direct endpoints on baseUrl
  */
 async function fetchCaseActivities(
   baseUrl: string,
@@ -500,14 +442,12 @@ async function fetchCaseActivities(
   const targetId = caseObj.Id || caseObj.id || caseObj.CaseId || caseObj.case_id || caseId;
 
   const activityEndpoints = [
-    `${cleanBase}/activity/get?caseId=${encodeURIComponent(targetId)}`,
-    `${cleanBase}/activity/get?case_id=${encodeURIComponent(targetId)}`,
-    `${cleanBase}/activity/get?id=${encodeURIComponent(targetId)}`,
-    `${cleanBase}/activity/${encodeURIComponent(targetId)}`,
+    `${cleanBase}/api/v1/cases/${encodeURIComponent(targetId)}/comments`,
+    `${cleanBase}/api/v1/cases/${encodeURIComponent(targetId)}/activities`,
+    `${cleanBase}/cases/${encodeURIComponent(targetId)}/comments`,
+    `${cleanBase}/cases/${encodeURIComponent(targetId)}/activities`,
     `${cleanBase}/case/${encodeURIComponent(targetId)}/activities`,
-    `${cleanBase}/case/${encodeURIComponent(targetId)}/activity`,
-    `${cleanBase}/case/${encodeURIComponent(targetId)}/comments`,
-    `${cleanBase}/case/${encodeURIComponent(targetId)}/actions`,
+    `${cleanBase}/activity/get?caseId=${encodeURIComponent(targetId)}`,
   ];
 
   for (const url of activityEndpoints) {
@@ -723,7 +663,7 @@ async function processSupportbenchCaseToNote(
 
   // Construct Clean Markdown Note
   const cleanBase = normalizeSupportbenchBaseUrl(baseUrl);
-  const portalUrl = `${cleanBase}/case/${caseNumber}`;
+  const portalUrl = `${cleanBase}/cases/${caseNumber}`;
 
   let markdown = `> 🎫 **Supportbench Case:** [**#${caseNumber} - ${subject}**](${portalUrl})  \n`;
   markdown += `> 📊 **Status:** \`${status}\` | ⚡ **Priority:** ${priority}${stage ? ` | 🏷️ **Stage:** ${stage}` : ''}  \n`;
@@ -797,42 +737,44 @@ export async function POST(req: NextRequest) {
     const headers = buildSupportbenchHeaders(apiToken);
     const targetFolder = folderPath && fs.existsSync(folderPath) ? folderPath : getDefaultMediaFolder();
 
-    // 1. Action: Test Connection
+    // 1. Action: Test Connection directly on the user's Base URL
     if (action === 'test-connection') {
       const testCandidates = [
+        `${cleanBase}/api/v1/cases?limit=1`,
+        `${cleanBase}/cases?limit=1`,
+        `${cleanBase}/case/all?limit=1`,
         `${cleanBase}/users/me`,
-        `${cleanBase}/users/get`,
-        `${cleanBase}/case/all`,
         `${cleanBase}/case/get`,
-        `${cleanBase}/case/query`,
-        `${cleanBase}/activity/get`,
       ];
 
       let lastError = '';
+      let attemptedUrl = '';
+
       for (const endpoint of testCandidates) {
+        attemptedUrl = endpoint;
         try {
           const res = await fetch(endpoint, { headers });
           if (res.ok) {
-            let userData: any = { displayName: 'Supportbench User', email: 'connected@supportbench' };
+            let userData: any = { displayName: 'Supportbench User', email: cleanBase };
             try {
               const data = await res.json();
               const userObj = data.User || data.user || data.Profile || data.profile || data.Data || data.data || data;
               if (userObj.Name || userObj.name || userObj.Email || userObj.email || userObj.DisplayName || userObj.displayName) {
                 userData = {
                   displayName: userObj.Name || userObj.name || userObj.DisplayName || userObj.displayName || 'Supportbench User',
-                  email: userObj.Email || userObj.email || 'connected',
+                  email: userObj.Email || userObj.email || cleanBase,
                   id: userObj.Id || userObj.id || undefined,
                 };
               }
             } catch {
-              // json parse failure is ok if HTTP status was 200
+              // Valid 200 response
             }
             return NextResponse.json({ success: true, user: userData, endpoint });
           } else if (res.status === 401 || res.status === 403) {
             return NextResponse.json(
               {
                 success: false,
-                error: `Authentication failed (HTTP ${res.status}): Please check your API Token or Key. Make sure you generated the token from Supportbench Settings.`,
+                error: `Authentication failed (HTTP ${res.status}): Please check your API Token or Key on ${cleanBase}.`,
               },
               { status: 401 }
             );
@@ -845,7 +787,11 @@ export async function POST(req: NextRequest) {
       }
 
       return NextResponse.json(
-        { success: false, error: `Could not connect to Supportbench at ${cleanBase}. (${lastError || 'Endpoint unreachable'})` },
+        {
+          success: false,
+          error: `Could not connect to Supportbench at ${cleanBase}. Check the URL and token. (${lastError || 'Endpoint unreachable'})`,
+          endpoint: attemptedUrl,
+        },
         { status: 400 }
       );
     }
@@ -911,11 +857,10 @@ export async function POST(req: NextRequest) {
       const limit = Math.min(Math.max(body.limit || 25, 1), 50);
 
       const searchEndpoints = [
+        `${cleanBase}/api/v1/cases${query ? `?search=${encodeURIComponent(query)}` : `?limit=${limit}`}`,
+        `${cleanBase}/cases${query ? `?search=${encodeURIComponent(query)}` : `?limit=${limit}`}`,
         `${cleanBase}/case/all`,
         `${cleanBase}/case/query`,
-        `${cleanBase}/case/find`,
-        `${cleanBase}/case/filter`,
-        `${cleanBase}/case/get`,
       ];
 
       for (const url of searchEndpoints) {
