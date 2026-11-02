@@ -5,6 +5,12 @@ import { Plus, Folder, Lock, Unlock } from 'lucide-react';
 import { useKeep } from '@/context/KeepContext';
 
 export const CategoryPillsBar: React.FC = () => {
+  const [isMounted, setIsMounted] = React.useState(false);
+
+  React.useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
   const {
     categories,
     notes,
@@ -17,8 +23,8 @@ export const CategoryPillsBar: React.FC = () => {
     setUnlockCategoryModalTarget,
   } = useKeep();
 
-  // Only show the category pills when on notes or category filter view
-  if (currentFilter !== 'notes' && currentFilter !== 'category') {
+  // Only show the category pills after client mount and when on notes or category filter view
+  if (!isMounted || (currentFilter !== 'notes' && currentFilter !== 'category')) {
     return null;
   }
 

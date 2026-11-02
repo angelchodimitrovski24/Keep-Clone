@@ -42,6 +42,7 @@ export const NotesGrid: React.FC<NotesGridProps> = ({
     emptyTrash,
     unlockedCategoryNames,
     setUnlockCategoryModalTarget,
+    isLoading,
   } = useKeep();
 
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -306,8 +307,17 @@ export const NotesGrid: React.FC<NotesGridProps> = ({
         </div>
       )}
 
+      {/* Loading Skeleton during initial load */}
+      {isLoading && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 animate-pulse py-4">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="h-36 rounded-2xl bg-stone-200/60 dark:bg-stone-800/60 border border-stone-200/60 dark:border-stone-800/60" />
+          ))}
+        </div>
+      )}
+
       {/* Empty State */}
-      {filteredNotes.length === 0 && (
+      {!isLoading && filteredNotes.length === 0 && (
         <div className="flex flex-col items-center justify-center py-20 text-stone-400 select-none">
           <div className="text-6xl mb-4">
             {currentFilter === 'notes' && '💡'}
