@@ -363,25 +363,79 @@ function extractCaseObject(data: any, targetId: string, numericTargetId: string)
 /**
  * Parses and formats an activity / comment item into clean markdown
  */
+/**
+ * Extracts the author name and email of an activity from the many shapes Supportbench may use
+ * (nested objects like Author/User/CreatedBy/Agent, or flat fields like AgentName/FromEmail).
+ */
+function extractActivityAuthor(act: any): { name: string; email: string } {
+  const str = (v: any): string => (typeof v === 'string' ? v.trim() : typeof v === 'number' ? String(v) : '');
+  const isEmail = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
+
+  const nameFromObj = (o: any): string => {
+    if (!o || typeof o !== 'object') return '';
+    const first = str(o.FirstName ?? o.firstName ?? o.first_name);
+    const last = str(o.LastName ?? o.lastName ?? o.last_name);
+    return (
+      str(o.Name ?? o.name ?? o.DisplayName ?? o.displayName ?? o.FullName ?? o.fullName ?? o.full_name) ||
+      [first, last].filter(Boolean).join(' ')
+    );
+  };
+  const emailFromObj = (o: any): string =>
+    o && typeof o === 'object' ? str(o.Email ?? o.email ?? o.EmailAddress ?? o.emailAddress ?? o.email_address) : '';
+
+  const personKeys = [
+    'Author', 'author', 'Agent', 'agent', 'User', 'user', 'CreatedBy', 'createdBy', 'created_by',
+    'Owner', 'owner', 'Sender', 'sender', 'From', 'from', 'PostedBy', 'postedBy', 'Contact', 'contact',
+  ];
+
+  let name = '';
+  let email = '';
+
+  // 1. Nested objects or plain string values on person keys
+  for (const k of personKeys) {
+    const v = act?.[k];
+    if (!v) continue;
+    if (typeof v === 'object') {
+      name = name || nameFromObj(v);
+      email = email || emailFromObj(v);
+    } else {
+      const s = str(v);
+      if (isEmail(s)) email = email || s;
+      else name = name || s;
+    }
+    if (name && email) break;
+  }
+
+  // 2. Flat fields like AgentName, CreatedByName, FromEmail, UserEmail...
+  if (!name || !email) {
+    for (const [k, v] of Object.entries(act || {})) {
+      const s = str(v);
+      if (!s) continue;
+      if (!email && /email/i.test(k) && isEmail(s)) {
+        email = s;
+      } else if (
+        !name &&
+        /(author|agent|user|createdby|created_by|owner|sender|from|postedby|contact).*name|^name$|displayname|fullname/i.test(k) &&
+        !isEmail(s)
+      ) {
+        name = s;
+      }
+    }
+  }
+
+  // "John Doe <john@x.com>" style strings
+  const angle = name.match(/^(.*?)\s*<([^>]+@[^>]+)>$/);
+  if (angle) {
+    name = angle[1].trim();
+    email = email || angle[2].trim();
+  }
+
+  return { name, email };
+}
+
 function formatActivityItem(act: any): { author: string; date: string; type: string; markdown: string } {
-  const author =
-    act.Author?.Name ||
-    act.Author?.DisplayName ||
-    act.Author?.Email ||
-    act.author?.name ||
-    act.author?.displayName ||
-    act.author?.email ||
-    act.User?.Name ||
-    act.User?.DisplayName ||
-    act.user?.name ||
-    act.user?.displayName ||
-    act.CreatedBy?.Name ||
-    act.created_by?.name ||
-    act.From ||
-    act.from ||
-    act.Agent?.Name ||
-    act.agent ||
-    'Agent';
+  const { name, email } = extractActivityAuthor(act);
+  const author = name && email && name !== email ? `${name} (${email})` : name || email || 'Agent';
 
   const date =
     act.CreatedDate ||
