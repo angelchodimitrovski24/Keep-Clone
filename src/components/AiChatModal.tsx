@@ -262,9 +262,11 @@ export const AiChatModal: React.FC = () => {
       .slice(0, 20);
   }, [notes, notePickerSearch]);
 
-  // Calculate matching notes for Bulk Summarizer
+  // Calculate matching notes for Bulk Summarizer (excluding any existing master summary notes)
   const activeNonTrashedNotes = useMemo(() => {
-    return (notes || []).filter((n) => !n.isTrash);
+    return (notes || []).filter(
+      (n) => !n.isTrash && !n.title?.startsWith('[Bulk Summary]') && !(n.labels || []).includes('Bulk')
+    );
   }, [notes]);
 
   const candidateNotesForBulk = useMemo(() => {
@@ -308,8 +310,9 @@ export const AiChatModal: React.FC = () => {
 
   // Synchronize manuallyCheckedIds whenever candidateNotesForBulk changes due to scope switch
   useEffect(() => {
+    if (isBulkRunning) return;
     setManuallyCheckedIds(new Set(candidateNotesForBulk.map((n) => n.id)));
-  }, [candidateNotesForBulk]);
+  }, [candidateNotesForBulk, isBulkRunning]);
 
   // Final list of notes selected to be summarized in bulk
   const finalNotesToSummarize = useMemo(() => {
@@ -729,7 +732,8 @@ The user will be able to apply your changes directly to the note with a single c
     const abortController = new AbortController();
     abortControllerRef.current = abortController;
 
-    const totalNotes = finalNotesToSummarize.length;
+    const notesToProcess = Array.from(finalNotesToSummarize);
+    const totalNotes = notesToProcess.length;
     const scopeLabel =
       bulkScope === 'selected'
         ? `${totalNotes} Selected Notes`
@@ -788,7 +792,7 @@ The user will be able to apply your changes directly to the note with a single c
         break;
       }
 
-      const note = finalNotesToSummarize[i];
+      const note = notesToProcess[i];
       const percent = Math.round(((i + 1) / totalNotes) * 100);
 
       setBulkProgress({
@@ -818,6 +822,8 @@ The user will be able to apply your changes directly to the note with a single c
           {
             system,
             baseUrl,
+            temperature: 0.3,
+            numPredict: 800,
             signal: abortController.signal,
           }
         );

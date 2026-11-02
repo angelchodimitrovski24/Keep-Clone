@@ -234,6 +234,8 @@ export async function POST(req: NextRequest) {
         stream: Boolean(stream),
         options: {
           temperature: typeof temperature === 'number' ? temperature : 0.7,
+          ...(body.numPredict ? { num_predict: body.numPredict } : {}),
+          ...(body.options && typeof body.options === 'object' ? body.options : {}),
         },
       };
 

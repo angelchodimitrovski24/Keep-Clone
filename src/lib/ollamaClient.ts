@@ -329,6 +329,7 @@ export async function streamOllamaChat(
   options?: {
     system?: string;
     temperature?: number;
+    numPredict?: number;
     baseUrl?: string;
     signal?: AbortSignal;
   }
@@ -342,6 +343,7 @@ export async function streamOllamaChat(
       messages,
       system: options?.system,
       temperature: options?.temperature,
+      numPredict: options?.numPredict,
       baseUrl: options?.baseUrl,
       stream: true,
     }),
@@ -361,30 +363,57 @@ export async function streamOllamaChat(
   const decoder = new TextDecoder();
   let fullText = '';
   let buffer = '';
+  let isDone = false;
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
+  try {
+    while (!isDone) {
+      if (options?.signal?.aborted) {
+        break;
+      }
 
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
+      const { done, value } = await reader.read();
+      if (done) break;
 
-    for (const line of lines) {
-      if (!line.trim()) continue;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const json = JSON.parse(line);
+          const chunk = json.message?.content || json.response || '';
+          if (chunk) {
+            fullText += chunk;
+            onChunk(chunk);
+          }
+          if (json.done) {
+            isDone = true;
+            break;
+          }
+        } catch {
+          // Plain text fallback
+          fullText += line;
+          onChunk(line);
+        }
+      }
+    }
+
+    if (!isDone && buffer.trim()) {
       try {
-        const json = JSON.parse(line);
+        const json = JSON.parse(buffer);
         const chunk = json.message?.content || json.response || '';
         if (chunk) {
           fullText += chunk;
           onChunk(chunk);
         }
       } catch {
-        // Plain text fallback
-        fullText += line;
-        onChunk(line);
+        fullText += buffer;
+        onChunk(buffer);
       }
     }
+  } finally {
+    reader.cancel().catch(() => {});
   }
 
   return fullText;
