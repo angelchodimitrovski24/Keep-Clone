@@ -30,6 +30,7 @@ import {
   Sparkles,
   GitMerge,
   Globe,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { useKeep } from '@/context/KeepContext';
 import { NOTE_COLORS } from '@/lib/constants';
@@ -70,6 +71,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
     setIsNotionTemplateModalOpen,
     setIsMergeNotesModalOpen,
     setIsWebExportModalOpen,
+    setIsExcelExportModalOpen,
     isInstallModalOpen,
     setIsInstallModalOpen,
     canInstallPwa,
@@ -196,6 +198,15 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
               >
                 <Globe className="w-5 h-5" />
                 <span className="text-xs font-bold hidden md:inline">Export Web Page</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsExcelExportModalOpen(true)}
+                className="p-2 rounded-full flex items-center gap-1.5 transition-colors hover:bg-emerald-100 dark:hover:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 cursor-pointer"
+                title={`Export ${selectedNoteIds.length} selected notes to Excel (.xlsx / .csv)`}
+              >
+                <FileSpreadsheet className="w-5 h-5" />
+                <span className="text-xs font-bold hidden md:inline">Export Excel</span>
               </button>
               <button
                 type="button"
@@ -492,6 +503,16 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
           title="Export notes as Web Page (Table of Contents + separate note pages)"
         >
           <Globe className="w-5 h-5" />
+        </button>
+
+        {/* Export Notes to Excel */}
+        <button
+          type="button"
+          onClick={() => setIsExcelExportModalOpen(true)}
+          className="p-2.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors text-emerald-600 dark:text-emerald-400 hidden sm:flex"
+          title="Export notes to Excel (.xlsx / .csv) - All, Selected, Labels, or Categories"
+        >
+          <FileSpreadsheet className="w-5 h-5" />
         </button>
 
         {/* Export Notes to PDF (NotebookLM Ready) */}

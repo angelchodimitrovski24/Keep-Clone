@@ -30,6 +30,7 @@ import { CreateNoteByDateModal } from '@/components/CreateNoteByDateModal';
 import { NotionTemplateModal } from '@/components/NotionTemplateModal';
 import { MergeNotesModal } from '@/components/MergeNotesModal';
 import { WebExportModal } from '@/components/WebExportModal';
+import { ExcelExportModal } from '@/components/ExcelExportModal';
 import { JiraModal } from '@/components/JiraModal';
 import { Note, NoteDrawing } from '@/types/note';
 
@@ -422,6 +423,7 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
       <NotionTemplateModal />
       <MergeNotesModal />
       <WebExportModal />
+      <ExcelExportModal />
 
       {/* Floating Calendar & Note Reminder Alerts */}
       <CalendarReminderToast />

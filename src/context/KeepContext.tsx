@@ -111,6 +111,8 @@ interface KeepContextType {
   setIsMergeNotesModalOpen: (open: boolean) => void;
   isWebExportModalOpen: boolean;
   setIsWebExportModalOpen: (open: boolean) => void;
+  isExcelExportModalOpen: boolean;
+  setIsExcelExportModalOpen: (open: boolean) => void;
 
   // Android & Mobile PWA Installation
   isInstallModalOpen: boolean;
@@ -243,6 +245,7 @@ export function KeepProvider({
   const [isNotionTemplateModalOpen, setIsNotionTemplateModalOpen] = useState(false);
   const [isMergeNotesModalOpen, setIsMergeNotesModalOpen] = useState(false);
   const [isWebExportModalOpen, setIsWebExportModalOpen] = useState(false);
+  const [isExcelExportModalOpen, setIsExcelExportModalOpen] = useState(false);
   const [sharingNote, setSharingNote] = useState<Note | null>(null);
 
   // Android & Mobile PWA Installation states
@@ -1748,6 +1751,8 @@ export function KeepProvider({
       setIsMergeNotesModalOpen,
       isWebExportModalOpen,
       setIsWebExportModalOpen,
+      isExcelExportModalOpen,
+      setIsExcelExportModalOpen,
       isInstallModalOpen,
       setIsInstallModalOpen,
       canInstallPwa,
@@ -1867,6 +1872,8 @@ export function KeepProvider({
       setIsMergeNotesModalOpen,
       isWebExportModalOpen,
       setIsWebExportModalOpen,
+      isExcelExportModalOpen,
+      setIsExcelExportModalOpen,
       isInstallModalOpen,
       canInstallPwa,
       isPwaInstalled,
