@@ -33,6 +33,7 @@ import { WebExportModal } from '@/components/WebExportModal';
 import { ExcelExportModal } from '@/components/ExcelExportModal';
 import { JiraModal } from '@/components/JiraModal';
 import { SupportbenchModal } from '@/components/SupportbenchModal';
+import { AiChatModal } from '@/components/AiChatModal';
 import { Note, NoteDrawing } from '@/types/note';
 
 interface KeepAppProps {
@@ -429,6 +430,7 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
       <ExcelExportModal />
       <JiraModal isOpen={isJiraModalOpen} onClose={() => setIsJiraModalOpen(false)} />
       <SupportbenchModal isOpen={isSupportbenchModalOpen} onClose={() => setIsSupportbenchModalOpen(false)} />
+      <AiChatModal />
 
       {/* Floating Calendar & Note Reminder Alerts */}
       <CalendarReminderToast />

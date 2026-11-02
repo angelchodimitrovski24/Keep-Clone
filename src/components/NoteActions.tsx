@@ -32,6 +32,7 @@ import {
   Database,
   ClipboardCopy,
   DownloadCloud,
+  Sparkles,
 } from 'lucide-react';
 import { Note, NoteColor, NoteBackgroundTheme } from '@/types/note';
 import { NOTE_COLORS, NOTE_THEMES } from '@/lib/constants';
@@ -73,6 +74,7 @@ interface NoteActionsProps {
   onImportMhtml?: (file: File) => void;
   onInsertDataview?: () => void;
   onExtractUrl?: () => void;
+  onSummarizeWithAi?: () => void;
 }
 
 export const NoteActions: React.FC<NoteActionsProps> = ({
@@ -89,6 +91,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
   onImportMhtml,
   onInsertDataview,
   onExtractUrl,
+  onSummarizeWithAi,
   onToggleChecklist,
   onAddReminder,
   onToggleLabel,
@@ -485,6 +488,21 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
           />
 
         </>
+      )}
+
+      {/* AI Summarize & Chat (Ollama) */}
+      {onSummarizeWithAi && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onSummarizeWithAi();
+          }}
+          className={`${iconBtnClass} text-amber-600 dark:text-amber-400 hover:text-amber-700`}
+          title="Summarize & Chat with Local AI (Ollama)"
+        >
+          <Sparkles className="w-4 h-4" />
+        </button>
       )}
 
       {/* Google Keep "A" Formatting Toggle Button */}
@@ -918,6 +936,20 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                 <span>Import MHTML into note</span>
               </button>
             )}
+            {onSummarizeWithAi && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMenu(false);
+                  onSummarizeWithAi();
+                }}
+                className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
+              >
+                <Sparkles className="w-4 h-4 text-amber-500 shrink-0" />
+                <span>Summarize & Chat with AI</span>
+              </button>
+            )}
+
             {onExtractUrl && (
               <button
                 type="button"

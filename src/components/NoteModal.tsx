@@ -116,6 +116,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
     setSharingNote,
     setIsNotionTemplateModalOpen,
     setIsDateCompileModalOpen,
+    openAiChatForNote,
   } = useKeep();
 
   const [title, setTitle] = useState('');
@@ -1913,6 +1914,20 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
               onImportMhtml={handleImportMhtml}
               onInsertDataview={handleInsertDataview}
               onExtractUrl={() => setIsExtractUrlModalOpen(true)}
+              onSummarizeWithAi={() => {
+                openAiChatForNote({
+                  ...note,
+                  title,
+                  content: editorRef.current?.getHTML() || content,
+                  isList,
+                  todos,
+                  color,
+                  theme,
+                  labels,
+                  reminder,
+                  category,
+                });
+              }}
               onCopyContent={handleCopyTitleAndContent}
               onArchiveToggle={() => {
                 toggleArchiveNote(note.id);

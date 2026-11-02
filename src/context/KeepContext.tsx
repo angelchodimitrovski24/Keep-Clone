@@ -82,6 +82,12 @@ interface KeepContextType {
   setIsJiraModalOpen: (open: boolean) => void;
   isSupportbenchModalOpen: boolean;
   setIsSupportbenchModalOpen: (open: boolean) => void;
+  isAiChatModalOpen: boolean;
+  setIsAiChatModalOpen: (open: boolean) => void;
+  aiChatTargetNote: Note | null;
+  setAiChatTargetNote: (note: Note | null) => void;
+  openAiChatForNote: (note: Note) => void;
+  openGeneralAiChat: () => void;
   sharingNote: Note | null;
 
   // Setters
@@ -244,6 +250,18 @@ export function KeepProvider({
   const [isPdfExportModalOpen, setIsPdfExportModalOpen] = useState(false);
   const [isJiraModalOpen, setIsJiraModalOpen] = useState(false);
   const [isSupportbenchModalOpen, setIsSupportbenchModalOpen] = useState(false);
+  const [isAiChatModalOpen, setIsAiChatModalOpen] = useState(false);
+  const [aiChatTargetNote, setAiChatTargetNote] = useState<Note | null>(null);
+
+  const openAiChatForNote = (note: Note) => {
+    setAiChatTargetNote(note);
+    setIsAiChatModalOpen(true);
+  };
+
+  const openGeneralAiChat = () => {
+    setAiChatTargetNote(null);
+    setIsAiChatModalOpen(true);
+  };
   const [isDateCompileModalOpen, setIsDateCompileModalOpen] = useState(false);
   const [isNotionTemplateModalOpen, setIsNotionTemplateModalOpen] = useState(false);
   const [isMergeNotesModalOpen, setIsMergeNotesModalOpen] = useState(false);
@@ -1748,6 +1766,12 @@ export function KeepProvider({
       setIsJiraModalOpen,
       isSupportbenchModalOpen,
       setIsSupportbenchModalOpen,
+      isAiChatModalOpen,
+      setIsAiChatModalOpen,
+      aiChatTargetNote,
+      setAiChatTargetNote,
+      openAiChatForNote,
+      openGeneralAiChat,
       isDateCompileModalOpen,
       setIsDateCompileModalOpen,
       isNotionTemplateModalOpen,
@@ -1872,6 +1896,11 @@ export function KeepProvider({
       setIsJiraModalOpen,
       isSupportbenchModalOpen,
       setIsSupportbenchModalOpen,
+      isAiChatModalOpen,
+      setIsAiChatModalOpen,
+      aiChatTargetNote,
+      openAiChatForNote,
+      openGeneralAiChat,
       isDateCompileModalOpen,
       setIsDateCompileModalOpen,
       isNotionTemplateModalOpen,

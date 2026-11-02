@@ -28,6 +28,7 @@ import {
   BarChart2,
   CalendarRange,
   Sparkles,
+  Bot,
   GitMerge,
   Globe,
   FileSpreadsheet,
@@ -68,6 +69,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
     setIsPdfExportModalOpen,
     setIsJiraModalOpen,
     setIsSupportbenchModalOpen,
+    openGeneralAiChat,
     setIsDateCompileModalOpen,
     setIsNotionTemplateModalOpen,
     setIsMergeNotesModalOpen,
@@ -484,6 +486,18 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
         >
           <span className="w-5 h-5 rounded-md bg-teal-600 hover:bg-teal-700 text-white flex items-center justify-center font-black text-[10px] shadow-xs">
             SB
+          </span>
+        </button>
+
+        {/* Ollama Local AI Assistant & Chat */}
+        <button
+          type="button"
+          onClick={openGeneralAiChat}
+          className="p-1.5 sm:p-2 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors shrink-0 flex items-center justify-center font-bold text-xs"
+          title="Ollama Local AI (Chat, Summarize, Attach Files & Ask Questions)"
+        >
+          <span className="w-5 h-5 rounded-md bg-gradient-to-tr from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white flex items-center justify-center shadow-xs">
+            <Bot className="w-3.5 h-3.5" />
           </span>
         </button>
 

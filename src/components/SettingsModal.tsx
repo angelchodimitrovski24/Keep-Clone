@@ -15,6 +15,7 @@ import {
   Check,
   Settings as SettingsIcon,
   Sparkles,
+  Bot,
   Cloud,
   FileText,
   Smartphone,
@@ -24,6 +25,7 @@ import { useKeep, getFontSizeInPx } from '@/context/KeepContext';
 import { FontSizeOption, AppThemeMode } from '@/types/note';
 import { getSavedJiraConfig } from '@/lib/jiraClient';
 import { getSavedSupportbenchConfig } from '@/lib/supportbenchClient';
+import { getSavedOllamaConfig } from '@/lib/ollamaClient';
 
 export const SettingsModal: React.FC = () => {
   const {
@@ -33,6 +35,7 @@ export const SettingsModal: React.FC = () => {
     setIsPdfExportModalOpen,
     setIsJiraModalOpen,
     setIsSupportbenchModalOpen,
+    openGeneralAiChat,
     isInstallModalOpen,
     setIsInstallModalOpen,
     canInstallPwa,
@@ -440,6 +443,45 @@ export const SettingsModal: React.FC = () => {
                 className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-blue-500/40 bg-blue-500/10 text-blue-700 dark:text-blue-300 text-xs font-semibold hover:bg-blue-500/20 transition-colors shadow-xs"
               >
                 <span>Open Jira Manager &amp; API Token</span>
+              </button>
+            </div>
+          </div>
+
+          <hr className="border-stone-200 dark:border-stone-800" />
+
+          {/* Section: Ollama Local AI */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-sm font-semibold text-stone-900 dark:text-stone-100 flex items-center gap-2">
+                <span className="w-5 h-5 rounded-md bg-gradient-to-tr from-amber-500 to-orange-500 text-white flex items-center justify-center font-bold text-xs shadow-xs">
+                  <Bot className="w-3.5 h-3.5" />
+                </span>
+                <span>Local AI via Ollama</span>
+              </label>
+              {getSavedOllamaConfig()?.selectedModel ? (
+                <span className="text-[11px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-500/15 border border-amber-500/30 px-2.5 py-0.5 rounded-full">
+                  Model: {getSavedOllamaConfig().selectedModel}
+                </span>
+              ) : (
+                <span className="text-[11px] font-semibold text-stone-500 bg-stone-500/15 border border-stone-500/30 px-2.5 py-0.5 rounded-full">
+                  Configured
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-stone-500 dark:text-stone-400 mb-3">
+              100% private local LLM engine. Summarize notes, extract action items, attach documents, and ask anything via local GPU inference.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSettingsOpen(false);
+                  openGeneralAiChat();
+                }}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-200 text-xs font-semibold hover:bg-amber-500/20 transition-colors shadow-xs"
+              >
+                <Bot className="w-4 h-4 text-amber-500" />
+                <span>Open Ollama AI Assistant &amp; Models</span>
               </button>
             </div>
           </div>

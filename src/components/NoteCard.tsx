@@ -60,6 +60,7 @@ const NoteCardComponent: React.FC<NoteCardProps> = ({
     startReadingStopwatch,
     stopAndSaveReadingStopwatch,
     setSharingNote,
+    openAiChatForNote,
   } = useKeep();
 
   const [showUnlockModal, setShowUnlockModal] = useState(false);
