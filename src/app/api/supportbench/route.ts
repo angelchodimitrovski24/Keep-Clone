@@ -452,19 +452,24 @@ async function fetchCaseData(
   const cleanBase = normalizeSupportbenchBaseUrl(baseUrl);
   const baseSubdomain = extractSubdomain(cleanBase) || inputSubdomain;
 
-  // The primary API cluster for Supportbench is https://api.supportbench.net
-  // Also try cleanBase if user provided a custom instance URL
-  const basesToTry = ['https://api.supportbench.net'];
-  if (cleanBase && !cleanBase.includes('api.supportbench.net')) {
-    basesToTry.push(cleanBase);
+  // Determine base URLs to test
+  // Try the user's base URL first, then the dedicated API cluster
+  const basesToTry = [cleanBase];
+  if (!cleanBase.includes('api.supportbench.net')) {
+    basesToTry.push('https://api.supportbench.net');
   }
 
   const idsToTry = Array.from(new Set([caseId, numericId, `c-${numericId}`].filter(Boolean)));
 
   const candidates: string[] = [];
+  if (fullUrl) {
+    candidates.push(fullUrl);
+  }
+
   for (const b of basesToTry) {
     for (const id of idsToTry) {
       candidates.push(`${b}/case/${encodeURIComponent(id)}`);
+      candidates.push(`${b}/agent/case/${encodeURIComponent(id)}`);
       candidates.push(`${b}/case/get?id=${encodeURIComponent(id)}`);
       candidates.push(`${b}/case/get?caseNumber=${encodeURIComponent(id)}`);
       candidates.push(`${b}/case/get?number=${encodeURIComponent(id)}`);
@@ -483,7 +488,7 @@ async function fetchCaseData(
         candidates.push(`${b}/case/${encodeURIComponent(id)}?subdomain=${encodeURIComponent(baseSubdomain)}`);
       }
     }
-    // Also include /case/all to filter in-memory if single-get doesn't match
+    // Also include /case/all to filter in-memory
     candidates.push(`${b}/case/all`);
     if (baseSubdomain) {
       candidates.push(`${b}/case/all?subdomain=${encodeURIComponent(baseSubdomain)}`);
@@ -903,16 +908,20 @@ export async function POST(req: NextRequest) {
     const headers = buildSupportbenchHeaders(apiToken, subdomain);
     const targetFolder = folderPath && fs.existsSync(folderPath) ? folderPath : getDefaultMediaFolder();
 
-    // 1. Action: Test Connection directly verifying valid JSON authentication
+    // 1. Action: Test Connection directly on the base URL (separate from case downloading)
     if (action === 'test-connection') {
       const testCandidates = [
-        'https://api.supportbench.net/users/me',
-        'https://api.supportbench.net/case/all',
-        'https://api.supportbench.net/users/get',
-        `${cleanBase}/api/v1/cases?limit=1`,
-        `${cleanBase}/cases?limit=1`,
         `${cleanBase}/users/me`,
+        `${cleanBase}/users/get`,
+        `${cleanBase}/case/all`,
+        `${cleanBase}/case/get`,
+        `${cleanBase}/case/query`,
+        `${cleanBase}/activity/get`,
       ];
+      if (!cleanBase.includes('api.supportbench.net')) {
+        testCandidates.push('https://api.supportbench.net/users/me');
+        testCandidates.push('https://api.supportbench.net/case/all');
+      }
 
       let lastError = '';
       let attemptedUrl = '';
@@ -921,9 +930,8 @@ export async function POST(req: NextRequest) {
         attemptedUrl = endpoint;
         try {
           const res = await fetch(endpoint, { headers });
-          const contentType = res.headers.get('content-type') || '';
 
-          if (res.ok && contentType.includes('json')) {
+          if (res.ok) {
             let userData: any = { displayName: 'Supportbench User', email: subdomain || cleanBase };
             try {
               const data = await res.json();
@@ -943,7 +951,7 @@ export async function POST(req: NextRequest) {
             return NextResponse.json(
               {
                 success: false,
-                error: `Authentication failed (HTTP ${res.status}): API Token was rejected. Please verify your token permissions.`,
+                error: `Authentication failed (HTTP ${res.status}): Please check your API Token or Key on ${cleanBase}.`,
               },
               { status: 401 }
             );
@@ -958,7 +966,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: `Could not authenticate with Supportbench. (${lastError || 'Endpoint unreachable'})`,
+          error: `Could not connect to Supportbench at ${cleanBase}. Check the URL and token. (${lastError || 'Endpoint unreachable'})`,
           endpoint: attemptedUrl,
         },
         { status: 400 }
