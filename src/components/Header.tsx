@@ -70,6 +70,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
     setIsJiraModalOpen,
     setIsSupportbenchModalOpen,
     openGeneralAiChat,
+    openBulkSummarize,
     setIsDateCompileModalOpen,
     setIsNotionTemplateModalOpen,
     setIsMergeNotesModalOpen,
@@ -174,6 +175,17 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
 
           {currentFilter !== 'trash' ? (
             <>
+              {/* Bulk Summarize with Ollama AI */}
+              <button
+                type="button"
+                onClick={() => openBulkSummarize(selectedNoteIds)}
+                className="p-2 rounded-full flex items-center gap-1.5 transition-colors hover:bg-amber-100 dark:hover:bg-amber-900/40 text-amber-700 dark:text-amber-400 cursor-pointer"
+                title={`Summarize ${selectedNoteIds.length} selected notes in bulk (AI Agent)`}
+              >
+                <Sparkles className="w-5 h-5 text-amber-500" />
+                <span className="text-xs font-bold hidden md:inline">Bulk Summarize</span>
+              </button>
+
               {/* Merge Notes into a new one */}
               <button
                 type="button"

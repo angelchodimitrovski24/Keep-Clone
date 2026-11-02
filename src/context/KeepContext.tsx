@@ -88,6 +88,11 @@ interface KeepContextType {
   setAiChatTargetNote: (note: Note | null) => void;
   openAiChatForNote: (note: Note) => void;
   openGeneralAiChat: () => void;
+  aiChatInitialTab: 'chat' | 'bulk' | 'models';
+  setAiChatInitialTab: (tab: 'chat' | 'bulk' | 'models') => void;
+  bulkSummarizeInitialNoteIds: string[];
+  setBulkSummarizeInitialNoteIds: (ids: string[]) => void;
+  openBulkSummarize: (initialNoteIds?: string[]) => void;
   sharingNote: Note | null;
 
   // Setters
@@ -252,14 +257,27 @@ export function KeepProvider({
   const [isSupportbenchModalOpen, setIsSupportbenchModalOpen] = useState(false);
   const [isAiChatModalOpen, setIsAiChatModalOpen] = useState(false);
   const [aiChatTargetNote, setAiChatTargetNote] = useState<Note | null>(null);
+  const [aiChatInitialTab, setAiChatInitialTab] = useState<'chat' | 'bulk' | 'models'>('chat');
+  const [bulkSummarizeInitialNoteIds, setBulkSummarizeInitialNoteIds] = useState<string[]>([]);
 
   const openAiChatForNote = (note: Note) => {
     setAiChatTargetNote(note);
+    setAiChatInitialTab('chat');
     setIsAiChatModalOpen(true);
   };
 
   const openGeneralAiChat = () => {
     setAiChatTargetNote(null);
+    setAiChatInitialTab('chat');
+    setIsAiChatModalOpen(true);
+  };
+
+  const openBulkSummarize = (initialNoteIds?: string[]) => {
+    setAiChatTargetNote(null);
+    setAiChatInitialTab('bulk');
+    if (initialNoteIds && initialNoteIds.length > 0) {
+      setBulkSummarizeInitialNoteIds(initialNoteIds);
+    }
     setIsAiChatModalOpen(true);
   };
   const [isDateCompileModalOpen, setIsDateCompileModalOpen] = useState(false);
@@ -1772,6 +1790,11 @@ export function KeepProvider({
       setAiChatTargetNote,
       openAiChatForNote,
       openGeneralAiChat,
+      aiChatInitialTab,
+      setAiChatInitialTab,
+      bulkSummarizeInitialNoteIds,
+      setBulkSummarizeInitialNoteIds,
+      openBulkSummarize,
       isDateCompileModalOpen,
       setIsDateCompileModalOpen,
       isNotionTemplateModalOpen,
@@ -1901,6 +1924,11 @@ export function KeepProvider({
       aiChatTargetNote,
       openAiChatForNote,
       openGeneralAiChat,
+      aiChatInitialTab,
+      setAiChatInitialTab,
+      bulkSummarizeInitialNoteIds,
+      setBulkSummarizeInitialNoteIds,
+      openBulkSummarize,
       isDateCompileModalOpen,
       setIsDateCompileModalOpen,
       isNotionTemplateModalOpen,

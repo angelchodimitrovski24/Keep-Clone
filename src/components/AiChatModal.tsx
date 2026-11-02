@@ -33,6 +33,13 @@ import {
   Search,
   FileEdit,
   ArrowRight,
+  Zap,
+  Filter,
+  Tag,
+  Folder,
+  CheckSquare,
+  Square as SquareIcon,
+  AlertCircle,
 } from 'lucide-react';
 import { useKeep } from '@/context/KeepContext';
 import {
@@ -56,19 +63,29 @@ import { convertMarkdownToHtml } from '@/lib/formatUtils';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { Note } from '@/types/note';
 
+type BulkScope = 'selected' | 'label' | 'category' | 'search' | 'all';
+type SummaryStyle = 'bullet' | 'concise' | 'action_items' | 'comprehensive';
+
 export const AiChatModal: React.FC = () => {
   const {
     notes,
+    labels,
+    categories,
+    selectedNoteIds,
     isAiChatModalOpen,
     setIsAiChatModalOpen,
     aiChatTargetNote,
     setAiChatTargetNote,
+    aiChatInitialTab,
+    setAiChatInitialTab,
+    bulkSummarizeInitialNoteIds,
+    setEditingNote,
     addNote,
     updateNote,
   } = useKeep();
 
-  // Active Tab: 'chat' | 'models'
-  const [activeTab, setActiveTab] = useState<'chat' | 'models'>('chat');
+  // Active Tab: 'chat' | 'bulk' | 'models'
+  const [activeTab, setActiveTab] = useState<'chat' | 'bulk' | 'models'>('chat');
 
   // Ollama Config State
   const [baseUrl, setBaseUrl] = useState('http://127.0.0.1:11434');
@@ -99,6 +116,29 @@ export const AiChatModal: React.FC = () => {
   >({});
   const [updateFeedback, setUpdateFeedback] = useState<string | null>(null);
 
+  // BULK SUMMARIZE AGENT STATE
+  const [bulkScope, setBulkScope] = useState<BulkScope>('selected');
+  const [selectedLabelFilter, setSelectedLabelFilter] = useState<string>('');
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('');
+  const [bulkSearchQuery, setBulkSearchQuery] = useState<string>('');
+  const [manuallyCheckedIds, setManuallyCheckedIds] = useState<Set<string>>(new Set());
+  const [bulkSummaryStyle, setBulkSummaryStyle] = useState<SummaryStyle>('bullet');
+  const [masterNoteCustomTitle, setMasterNoteCustomTitle] = useState<string>('');
+  const [masterNoteCategory, setMasterNoteCategory] = useState<string>('AI Summaries');
+
+  // Bulk Execution State
+  const [isBulkRunning, setIsBulkRunning] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState<{
+    current: number;
+    total: number;
+    currentNoteTitle: string;
+    percent: number;
+  } | null>(null);
+  const [currentStreamingSummary, setCurrentStreamingSummary] = useState<string>('');
+  const [createdMasterNoteId, setCreatedMasterNoteId] = useState<string | null>(null);
+  const [createdMasterNoteTitle, setCreatedMasterNoteTitle] = useState<string | null>(null);
+  const [bulkError, setBulkError] = useState<string | null>(null);
+
   // Pulling Model State
   const [customModelInput, setCustomModelInput] = useState('');
   const [pullingModelName, setPullingModelName] = useState<string | null>(null);
@@ -112,6 +152,24 @@ export const AiChatModal: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const notePickerRef = useRef<HTMLDivElement>(null);
+
+  // Sync initial tab when opened
+  useEffect(() => {
+    if (aiChatInitialTab) {
+      setActiveTab(aiChatInitialTab);
+    }
+  }, [aiChatInitialTab]);
+
+  // Sync initial selected notes for bulk summarize
+  useEffect(() => {
+    if (bulkSummarizeInitialNoteIds && bulkSummarizeInitialNoteIds.length > 0) {
+      setBulkScope('selected');
+      setManuallyCheckedIds(new Set(bulkSummarizeInitialNoteIds));
+    } else if (selectedNoteIds && selectedNoteIds.length > 0) {
+      setBulkScope('selected');
+      setManuallyCheckedIds(new Set(selectedNoteIds));
+    }
+  }, [bulkSummarizeInitialNoteIds, selectedNoteIds]);
 
   // Sync active target note from KeepContext
   useEffect(() => {
@@ -137,7 +195,6 @@ export const AiChatModal: React.FC = () => {
     setInstalledModels(res.models);
     setCanAutoStart(Boolean(res.canAutoStart));
 
-    // Auto-select first model if none selected
     if (res.models.length > 0 && !selectedModel) {
       const preferred =
         res.models.find((m) => m.name.includes('llama3.2') || m.name.includes('gemma4') || m.name.includes('llama3')) ||
@@ -161,8 +218,10 @@ export const AiChatModal: React.FC = () => {
   };
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages, isGenerating]);
+    if (activeTab === 'chat') {
+      scrollToBottom();
+    }
+  }, [messages, isGenerating, activeTab]);
 
   // Auto-expand textarea height based on content
   const adjustTextareaHeight = () => {
@@ -192,8 +251,8 @@ export const AiChatModal: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showNotePicker]);
 
-  // Filter notes for note picker
-  const filteredNotes = useMemo(() => {
+  // Filter notes for chat note picker
+  const filteredNotesForPicker = useMemo(() => {
     const activeNotes = (notes || []).filter((n) => !n.isTrash);
     if (!notePickerSearch.trim()) return activeNotes.slice(0, 15);
     const q = notePickerSearch.toLowerCase();
@@ -201,6 +260,78 @@ export const AiChatModal: React.FC = () => {
       .filter((n) => (n.title || '').toLowerCase().includes(q) || (n.content || '').toLowerCase().includes(q))
       .slice(0, 20);
   }, [notes, notePickerSearch]);
+
+  // Calculate matching notes for Bulk Summarizer
+  const activeNonTrashedNotes = useMemo(() => {
+    return (notes || []).filter((n) => !n.isTrash);
+  }, [notes]);
+
+  const candidateNotesForBulk = useMemo(() => {
+    if (bulkScope === 'selected') {
+      const targetIds = selectedNoteIds.length > 0 ? selectedNoteIds : bulkSummarizeInitialNoteIds;
+      if (targetIds && targetIds.length > 0) {
+        const idSet = new Set(targetIds);
+        return activeNonTrashedNotes.filter((n) => idSet.has(n.id));
+      }
+      return [];
+    }
+
+    if (bulkScope === 'label') {
+      if (!selectedLabelFilter) return [];
+      return activeNonTrashedNotes.filter((n) => n.labels && n.labels.includes(selectedLabelFilter));
+    }
+
+    if (bulkScope === 'category') {
+      if (!selectedCategoryFilter) return [];
+      return activeNonTrashedNotes.filter((n) => (n.category || '').toLowerCase() === selectedCategoryFilter.toLowerCase());
+    }
+
+    if (bulkScope === 'search') {
+      if (!bulkSearchQuery.trim()) return [];
+      const q = bulkSearchQuery.toLowerCase();
+      return activeNonTrashedNotes.filter(
+        (n) => (n.title || '').toLowerCase().includes(q) || (n.content || '').toLowerCase().includes(q)
+      );
+    }
+
+    return activeNonTrashedNotes;
+  }, [
+    bulkScope,
+    selectedNoteIds,
+    bulkSummarizeInitialNoteIds,
+    selectedLabelFilter,
+    selectedCategoryFilter,
+    bulkSearchQuery,
+    activeNonTrashedNotes,
+  ]);
+
+  // Synchronize manuallyCheckedIds whenever candidateNotesForBulk changes due to scope switch
+  useEffect(() => {
+    setManuallyCheckedIds(new Set(candidateNotesForBulk.map((n) => n.id)));
+  }, [candidateNotesForBulk]);
+
+  // Final list of notes selected to be summarized in bulk
+  const finalNotesToSummarize = useMemo(() => {
+    return candidateNotesForBulk.filter((n) => manuallyCheckedIds.has(n.id));
+  }, [candidateNotesForBulk, manuallyCheckedIds]);
+
+  // Toggle individual note checkbox in bulk list
+  const toggleNoteChecked = (id: string) => {
+    setManuallyCheckedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAllBulkNotes = () => {
+    setManuallyCheckedIds(new Set(candidateNotesForBulk.map((n) => n.id)));
+  };
+
+  const deselectAllBulkNotes = () => {
+    setManuallyCheckedIds(new Set());
+  };
 
   // Handle Model Selection
   const handleSelectModel = (modelName: string) => {
@@ -265,7 +396,7 @@ export const AiChatModal: React.FC = () => {
     }
   };
 
-  // Handle file attachment
+  // Attach files to chat
   const handleAttachFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
@@ -314,7 +445,7 @@ export const AiChatModal: React.FC = () => {
     setAttachedFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
-  // Start a fresh conversation (reset history)
+  // Start fresh chat conversation
   const handleNewConversation = () => {
     if (isGenerating && abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -325,7 +456,7 @@ export const AiChatModal: React.FC = () => {
     setUpdateFeedback(null);
   };
 
-  // Send message or generate response (Continuous conversation)
+  // Send message in continuous chat
   const handleSendMessage = async (customPrompt?: string) => {
     const textToSend = (customPrompt !== undefined ? customPrompt : inputPrompt).trim();
     if (!textToSend && attachedFiles.length === 0) return;
@@ -340,7 +471,6 @@ export const AiChatModal: React.FC = () => {
     setAttachedFiles([]);
     setShowNotePicker(false);
 
-    // Resolve target note: either from active reference, or auto-detected by link/title/mention
     let targetNote: Note | null = activeReferencedNote || aiChatTargetNote;
     const detected = detectReferencedNote(textToSend, notes);
     if (detected) {
@@ -348,7 +478,6 @@ export const AiChatModal: React.FC = () => {
       setActiveReferencedNote(detected.note);
     }
 
-    // Construct user message
     const userMsg: OllamaChatMessage = {
       id: `user-${Date.now()}`,
       role: 'user',
@@ -367,7 +496,6 @@ export const AiChatModal: React.FC = () => {
     const newMessages = [...messages, userMsg];
     setMessages(newMessages);
 
-    // Prepare assistant placeholder message
     const assistantMsgId = `assistant-${Date.now()}`;
     const assistantMsg: OllamaChatMessage = {
       id: assistantMsgId,
@@ -383,10 +511,8 @@ export const AiChatModal: React.FC = () => {
     abortControllerRef.current = abortController;
 
     try {
-      // Build LLM context payload with full conversation history
       const llmMessages: Array<{ role: string; content: string; images?: string[] }> = [];
 
-      // System Prompt with Note Intelligence and Update Instructions
       let systemPrompt = `You are a brilliant, highly capable AI assistant embedded inside Google Keep Clone.
 You have full memory of the continuous conversation and can analyze, summarize, write, and update Google Keep notes.
 Format your responses with clean, readable Markdown.
@@ -406,12 +532,10 @@ The user will be able to apply your changes directly to the note with a single c
         systemPrompt += `\n\n${buildNoteContextPrompt(targetNote)}`;
       }
 
-      // Convert conversation history for multi-turn messaging
       for (const m of newMessages) {
         let contentWithFiles = m.content;
         const images: string[] = [];
 
-        // If turn has attached note context
         if (m.referencedNote && m.role === 'user') {
           const noteObj = notes.find((n) => n.id === m.referencedNote?.id);
           if (noteObj) {
@@ -472,7 +596,7 @@ The user will be able to apply your changes directly to the note with a single c
     }
   };
 
-  // Quick action for Note
+  // Quick single note action
   const handleRunNoteAction = (style: 'bullet' | 'concise' | 'action_items' | 'comprehensive' | 'translate') => {
     const target = activeReferencedNote || aiChatTargetNote;
     if (!target) return;
@@ -480,26 +604,22 @@ The user will be able to apply your changes directly to the note with a single c
     handleSendMessage(user);
   };
 
-  // Stop Generation
   const handleStopGenerating = () => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
   };
 
-  // Copy message
   const handleCopyMessage = (msgId: string, text: string) => {
     navigator.clipboard.writeText(text);
     setCopiedMessageId(msgId);
     setTimeout(() => setCopiedMessageId(null), 2000);
   };
 
-  // Save AI response as a new Note
   const handleSaveAsNewNote = async (msgId: string, content: string) => {
     const target = activeReferencedNote || aiChatTargetNote;
     const title = target ? `AI: ${target.title || 'Note'}` : `AI Note (${new Date().toLocaleDateString()})`;
 
-    // If there's an update block, extract clean content
     const parsedUpdate = parseNoteUpdateBlock(content);
     const textToSave = parsedUpdate ? parsedUpdate.proposedContent : content;
     const html = convertMarkdownToHtml(textToSave);
@@ -515,7 +635,6 @@ The user will be able to apply your changes directly to the note with a single c
     setTimeout(() => setSavedNoteMessageId(null), 2500);
   };
 
-  // Append AI response into the active/target note
   const handleAppendToCurrentNote = async (msgId: string, content: string) => {
     const target = activeReferencedNote || aiChatTargetNote;
     if (!target) return;
@@ -535,14 +654,12 @@ The user will be able to apply your changes directly to the note with a single c
     }, 3500);
   };
 
-  // Apply Full Update to Note (Replaces note content with proposed changes)
   const handleApplyNoteUpdate = async (
     msgId: string,
     targetNote: Note,
     proposedContent: string,
     proposedTitle?: string
   ) => {
-    // Save previous state for Undo
     setAppliedUpdates((prev) => ({
       ...prev,
       [msgId]: {
@@ -553,9 +670,7 @@ The user will be able to apply your changes directly to the note with a single c
     }));
 
     const cleanHtml = convertMarkdownToHtml(proposedContent);
-    const updates: Partial<Note> = {
-      content: cleanHtml,
-    };
+    const updates: Partial<Note> = { content: cleanHtml };
     if (proposedTitle && proposedTitle !== targetNote.title) {
       updates.title = proposedTitle;
     }
@@ -566,7 +681,6 @@ The user will be able to apply your changes directly to the note with a single c
     setTimeout(() => setUpdateFeedback(null), 4000);
   };
 
-  // Revert / Undo Note Update
   const handleUndoNoteUpdate = async (msgId: string) => {
     const record = appliedUpdates[msgId];
     if (!record) return;
@@ -588,6 +702,159 @@ The user will be able to apply your changes directly to the note with a single c
 
     setUpdateFeedback(`Reverted note to previous state.`);
     setTimeout(() => setUpdateFeedback(null), 3000);
+  };
+
+  // -------------------------------------------------------------
+  // BULK SUMMARIZER AGENT EXECUTION
+  // Processes notes sequentially, appending each to the Master Note
+  // -------------------------------------------------------------
+  const handleStartBulkSummarize = async () => {
+    if (finalNotesToSummarize.length === 0) {
+      alert('Please select at least one note to summarize in bulk.');
+      return;
+    }
+    if (!selectedModel) {
+      alert('Please select an active Ollama model first in the Models tab.');
+      setActiveTab('models');
+      return;
+    }
+
+    setIsBulkRunning(true);
+    setBulkError(null);
+    setCreatedMasterNoteId(null);
+    setCreatedMasterNoteTitle(null);
+    setCurrentStreamingSummary('');
+
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+
+    const totalNotes = finalNotesToSummarize.length;
+    const scopeLabel =
+      bulkScope === 'selected'
+        ? `${totalNotes} Selected Notes`
+        : bulkScope === 'label'
+        ? `Label #${selectedLabelFilter}`
+        : bulkScope === 'category'
+        ? `Category: ${selectedCategoryFilter}`
+        : bulkScope === 'search'
+        ? `Search: "${bulkSearchQuery}"`
+        : 'All Active Notes';
+
+    const finalMasterTitle =
+      masterNoteCustomTitle.trim() ||
+      `[Bulk Summary] ${scopeLabel} (${totalNotes} Notes) - ${new Date().toLocaleDateString()}`;
+
+    // 1. Create Initial Master Note in Keep
+    const styleDescriptions: Record<SummaryStyle, string> = {
+      bullet: 'Structured Bullet Points (Key highlights & takeaways)',
+      concise: 'Executive Brief (Concise 2-3 sentence overview)',
+      action_items: 'Action Items Checklist (- [ ] todos & follow-ups)',
+      comprehensive: 'Comprehensive Deep Dive (Headings & in-depth analysis)',
+    };
+
+    let accumulatedMarkdown = `# 📚 Bulk AI Summary (${totalNotes} Notes)\n\n` +
+      `> 🤖 **Generated by Local LLM:** \`${selectedModel}\`  \n` +
+      `> 📅 **Date:** ${new Date().toLocaleString()}  \n` +
+      `> 🎯 **Scope:** ${scopeLabel} (${totalNotes} notes processed sequentially)  \n` +
+      `> 📝 **Style:** ${styleDescriptions[bulkSummaryStyle]}\n\n---\n\n`;
+
+    let masterNoteObj: Note | null = null;
+    try {
+      masterNoteObj = await addNote({
+        title: finalMasterTitle,
+        content: convertMarkdownToHtml(accumulatedMarkdown),
+        category: masterNoteCategory || 'AI Summaries',
+        labels: ['AI-Summary', 'Bulk'],
+      });
+      setCreatedMasterNoteId(masterNoteObj.id);
+      setCreatedMasterNoteTitle(finalMasterTitle);
+    } catch (err: any) {
+      setBulkError(`Failed creating master summary note: ${err?.message || 'DB error'}`);
+      setIsBulkRunning(false);
+      return;
+    }
+
+    // 2. Sequential Agent Loop (One note at a time to prevent token window overflow)
+    for (let i = 0; i < totalNotes; i++) {
+      if (abortController.signal.aborted) {
+        break;
+      }
+
+      const note = finalNotesToSummarize[i];
+      const percent = Math.round(((i + 1) / totalNotes) * 100);
+
+      setBulkProgress({
+        current: i + 1,
+        total: totalNotes,
+        currentNoteTitle: note.title || `Note #${i + 1}`,
+        percent,
+      });
+      setCurrentStreamingSummary('');
+
+      // Build single-note summary prompt
+      const { system, user } = buildNoteSummaryPrompt(note, bulkSummaryStyle);
+
+      let noteSummary = '';
+      try {
+        await streamOllamaChat(
+          selectedModel,
+          [{ role: 'user', content: user }],
+          (chunk) => {
+            noteSummary += chunk;
+            setCurrentStreamingSummary(noteSummary);
+          },
+          {
+            system,
+            baseUrl,
+            signal: abortController.signal,
+          }
+        );
+
+        // Format and append section to Master Note
+        const noteHeader = `## ${i + 1}. 📄 ${note.title || 'Untitled Note'}\n` +
+          `> **Category:** \`${note.category || 'General'}\` | **Labels:** \`${(note.labels || []).join(', ') || 'None'}\`  \n` +
+          `> *Last Modified: ${note.updatedAt ? new Date(note.updatedAt).toLocaleDateString() : 'N/A'}*\n\n` +
+          `${noteSummary.trim()}\n\n---\n\n`;
+
+        accumulatedMarkdown += noteHeader;
+
+        // Persist update in Keep in real-time
+        await updateNote(
+          masterNoteObj.id,
+          { content: convertMarkdownToHtml(accumulatedMarkdown) },
+          `Appended summary ${i + 1} of ${totalNotes}`
+        );
+      } catch (err: any) {
+        if (err?.name === 'AbortError') {
+          break;
+        }
+        accumulatedMarkdown += `## ${i + 1}. 📄 ${note.title || 'Untitled Note'}\n` +
+          `> ⚠️ *Error summarizing note: ${err?.message || 'Ollama connection issue'}*\n\n---\n\n`;
+        await updateNote(
+          masterNoteObj.id,
+          { content: convertMarkdownToHtml(accumulatedMarkdown) },
+          `Recorded error for note ${i + 1}`
+        );
+      }
+    }
+
+    setIsBulkRunning(false);
+    abortControllerRef.current = null;
+  };
+
+  const handleStopBulkAgent = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    setIsBulkRunning(false);
+  };
+
+  const handleOpenMasterNote = (noteId: string) => {
+    const found = notes.find((n) => n.id === noteId);
+    if (found) {
+      setEditingNote(found);
+      setIsAiChatModalOpen(false);
+    }
   };
 
   if (!isAiChatModalOpen) return null;
@@ -619,14 +886,14 @@ The user will be able to apply your changes directly to the note with a single c
                 )}
               </div>
               <p className="text-[11px] text-stone-500 dark:text-stone-400 truncate hidden sm:block">
-                Continuous chat, multi-line prompts, note references & 1-click note updates
+                Continuous chat, note references, and sequential bulk summarizer agent
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             {/* Quick Model Selector Dropdown in Header */}
-            {isConnected && installedModels.length > 0 && activeTab === 'chat' && (
+            {isConnected && installedModels.length > 0 && (
               <div className="hidden md:flex items-center gap-1 px-2.5 py-1 rounded-xl bg-stone-200/60 dark:bg-stone-800/60 border border-stone-300/50 dark:border-stone-700/50 text-xs">
                 <Cpu className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
                 <select
@@ -643,11 +910,14 @@ The user will be able to apply your changes directly to the note with a single c
               </div>
             )}
 
-            {/* TAB TOGGLES */}
+            {/* TAB TOGGLES: Chat | Bulk Summarize | Models */}
             <div className="flex bg-stone-200/70 dark:bg-stone-800/80 p-0.5 rounded-xl text-xs font-medium">
               <button
                 type="button"
-                onClick={() => setActiveTab('chat')}
+                onClick={() => {
+                  setActiveTab('chat');
+                  setAiChatInitialTab('chat');
+                }}
                 className={`px-2.5 sm:px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${
                   activeTab === 'chat'
                     ? 'bg-white dark:bg-[#25262b] text-stone-900 dark:text-stone-100 shadow-xs font-semibold'
@@ -658,9 +928,29 @@ The user will be able to apply your changes directly to the note with a single c
                 <span className="hidden sm:inline">Chat & Assistant</span>
                 <span className="sm:hidden">Chat</span>
               </button>
+
               <button
                 type="button"
-                onClick={() => setActiveTab('models')}
+                onClick={() => {
+                  setActiveTab('bulk');
+                  setAiChatInitialTab('bulk');
+                }}
+                className={`px-2.5 sm:px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${
+                  activeTab === 'bulk'
+                    ? 'bg-white dark:bg-[#25262b] text-amber-600 dark:text-amber-400 shadow-xs font-bold'
+                    : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-200'
+                }`}
+              >
+                <Zap className="w-3.5 h-3.5 text-amber-500 fill-current" />
+                <span>Bulk Summarize</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('models');
+                  setAiChatInitialTab('models');
+                }}
                 className={`px-2.5 sm:px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${
                   activeTab === 'models'
                     ? 'bg-white dark:bg-[#25262b] text-stone-900 dark:text-stone-100 shadow-xs font-semibold'
@@ -672,7 +962,7 @@ The user will be able to apply your changes directly to the note with a single c
               </button>
             </div>
 
-            {/* New Conversation Button */}
+            {/* New Conversation Button in Chat Tab */}
             {activeTab === 'chat' && messages.length > 0 && (
               <button
                 type="button"
@@ -697,7 +987,7 @@ The user will be able to apply your changes directly to the note with a single c
           </div>
         </div>
 
-        {/* FEEDBACK TOAST / BANNER */}
+        {/* FEEDBACK TOAST */}
         {updateFeedback && (
           <div className="px-4 py-2 bg-emerald-500 text-white text-xs font-medium flex items-center justify-between shrink-0 shadow-xs animate-in slide-in-from-top-2">
             <div className="flex items-center gap-2">
@@ -714,10 +1004,10 @@ The user will be able to apply your changes directly to the note with a single c
           </div>
         )}
 
-        {/* BODY TAB 1: CHAT & NOTE ASSISTANT */}
+        {/* TAB 1: CHAT & ASSISTANT */}
         {activeTab === 'chat' && (
           <div className="flex flex-col flex-1 min-h-0 overflow-hidden relative">
-            {/* Active Referenced / Focused Note Banner */}
+            {/* Active Referenced Note Banner */}
             {activeReferencedNote && (
               <div className="px-4 sm:px-6 py-2 bg-amber-500/10 border-b border-amber-500/20 flex flex-wrap items-center justify-between gap-2 shrink-0">
                 <div className="flex items-center gap-2 min-w-0">
@@ -827,18 +1117,35 @@ The user will be able to apply your changes directly to the note with a single c
                     <p className="text-xs text-stone-500 dark:text-stone-400 mt-1 leading-relaxed max-w-sm mx-auto">
                       {activeReferencedNote
                         ? 'Summarize, ask questions, or ask the AI to rewrite and update this note.'
-                        : 'Ask questions, attach files, reference any note by title or link, and have continuous conversations.'}
+                        : 'Ask questions, attach files, reference any note by title or link, or run bulk summarization.'}
                     </p>
                   </div>
 
                   {/* Starter Prompts */}
                   <div className="w-full grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 text-left">
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('bulk')}
+                      className="p-2.5 rounded-xl border border-amber-500/50 hover:border-amber-500 bg-amber-500/10 text-xs text-amber-950 dark:text-amber-200 transition-colors sm:col-span-2 flex items-center justify-between"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Zap className="w-4 h-4 text-amber-600 fill-current shrink-0" />
+                        <div>
+                          <span className="font-bold block">⚡ Summarize Notes in Bulk (Agent)</span>
+                          <span className="text-[11px] text-amber-800/80 dark:text-amber-300/80">
+                            Process multiple notes sequentially and append them all into one master note
+                          </span>
+                        </div>
+                      </div>
+                      <ArrowRight className="w-4 h-4 text-amber-600 shrink-0" />
+                    </button>
+
                     {activeReferencedNote ? (
                       <>
                         <button
                           type="button"
                           onClick={() => handleRunNoteAction('bullet')}
-                          className="p-2.5 rounded-xl border border-stone-200 dark:border-stone-800 hover:border-amber-400 dark:hover:border-amber-500/50 bg-stone-50 dark:bg-[#1a1b1e] text-xs text-stone-700 dark:text-stone-300 transition-colors"
+                          className="p-2.5 rounded-xl border border-stone-200 dark:border-stone-800 hover:border-amber-400 bg-stone-50 dark:bg-[#1a1b1e] text-xs text-stone-700 dark:text-stone-300 transition-colors"
                         >
                           <span className="font-semibold block text-stone-900 dark:text-stone-100">📝 Summarize Note</span>
                           <span className="text-[11px] text-stone-500">Structured bullets of key points</span>
@@ -846,32 +1153,10 @@ The user will be able to apply your changes directly to the note with a single c
                         <button
                           type="button"
                           onClick={() => handleRunNoteAction('action_items')}
-                          className="p-2.5 rounded-xl border border-stone-200 dark:border-stone-800 hover:border-amber-400 dark:hover:border-amber-500/50 bg-stone-50 dark:bg-[#1a1b1e] text-xs text-stone-700 dark:text-stone-300 transition-colors"
+                          className="p-2.5 rounded-xl border border-stone-200 dark:border-stone-800 hover:border-amber-400 bg-stone-50 dark:bg-[#1a1b1e] text-xs text-stone-700 dark:text-stone-300 transition-colors"
                         >
                           <span className="font-semibold block text-stone-900 dark:text-stone-100">✅ Action Items</span>
                           <span className="text-[11px] text-stone-500">Extract todos as checkboxes</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleSendMessage(
-                              `Rewrite and polish this note into clean professional language. Format your update inside a \`\`\`note-update block.`
-                            )
-                          }
-                          className="p-2.5 rounded-xl border border-stone-200 dark:border-stone-800 hover:border-amber-400 dark:hover:border-amber-500/50 bg-stone-50 dark:bg-[#1a1b1e] text-xs text-stone-700 dark:text-stone-300 transition-colors"
-                        >
-                          <span className="font-semibold block text-stone-900 dark:text-stone-100">✨ Polish & Propose Update</span>
-                          <span className="text-[11px] text-stone-500">Refine language and apply directly</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleSendMessage('What are the key takeaways, risks, and missing details in this note?')
-                          }
-                          className="p-2.5 rounded-xl border border-stone-200 dark:border-stone-800 hover:border-amber-400 dark:hover:border-amber-500/50 bg-stone-50 dark:bg-[#1a1b1e] text-xs text-stone-700 dark:text-stone-300 transition-colors"
-                        >
-                          <span className="font-semibold block text-stone-900 dark:text-stone-100">🔍 Key Insights</span>
-                          <span className="text-[11px] text-stone-500">Critical analysis & review</span>
                         </button>
                       </>
                     ) : (
@@ -898,22 +1183,6 @@ The user will be able to apply your changes directly to the note with a single c
                           </span>
                           <span className="text-[11px] text-stone-500">Upload text, code, or images</span>
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => handleSendMessage('Give me 5 actionable productivity tips for personal knowledge management.')}
-                          className="p-2.5 rounded-xl border border-stone-200 dark:border-stone-800 hover:border-amber-400 dark:hover:border-amber-500/50 bg-stone-50 dark:bg-[#1a1b1e] text-xs text-stone-700 dark:text-stone-300 transition-colors"
-                        >
-                          <span className="font-semibold block text-stone-900 dark:text-stone-100">💡 Brainstorming</span>
-                          <span className="text-[11px] text-stone-500">Productivity & note tips</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleSendMessage('Explain how Ollama runs LLMs completely offline on device.')}
-                          className="p-2.5 rounded-xl border border-stone-200 dark:border-stone-800 hover:border-amber-400 dark:hover:border-amber-500/50 bg-stone-50 dark:bg-[#1a1b1e] text-xs text-stone-700 dark:text-stone-300 transition-colors"
-                        >
-                          <span className="font-semibold block text-stone-900 dark:text-stone-100">🔒 Local Privacy</span>
-                          <span className="text-[11px] text-stone-500">How local inference works</span>
-                        </button>
                       </>
                     )}
                   </div>
@@ -929,7 +1198,6 @@ The user will be able to apply your changes directly to the note with a single c
                       key={msg.id}
                       className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}
                     >
-                      {/* Sender & Timestamp Header */}
                       <div className="flex items-center gap-1.5 mb-1 px-1 text-[11px] text-stone-400">
                         {msg.role === 'user' ? (
                           <span className="font-medium">You</span>
@@ -942,7 +1210,6 @@ The user will be able to apply your changes directly to the note with a single c
                         <span>{msg.timestamp}</span>
                       </div>
 
-                      {/* Bubble Content */}
                       <div
                         className={`max-w-[92%] sm:max-w-[85%] rounded-2xl px-4 py-3 text-xs sm:text-sm leading-relaxed shadow-xs ${
                           msg.role === 'user'
@@ -950,7 +1217,6 @@ The user will be able to apply your changes directly to the note with a single c
                             : 'bg-stone-100 dark:bg-[#25262b] text-stone-900 dark:text-stone-100 border border-stone-200 dark:border-stone-800 rounded-tl-xs'
                         }`}
                       >
-                        {/* Referenced Note Badge in User Bubble */}
                         {msg.referencedNote && (
                           <div className="flex items-center gap-1.5 mb-2 pb-1.5 border-b border-white/20 text-xs font-semibold">
                             <BookOpen className="w-3.5 h-3.5" />
@@ -961,7 +1227,6 @@ The user will be able to apply your changes directly to the note with a single c
                           </div>
                         )}
 
-                        {/* Attached files pills in user bubble */}
                         {msg.attachedFiles && msg.attachedFiles.length > 0 && (
                           <div className="flex flex-wrap gap-1.5 mb-2 pb-2 border-b border-white/20">
                             {msg.attachedFiles.map((f, idx) => (
@@ -976,7 +1241,6 @@ The user will be able to apply your changes directly to the note with a single c
                           </div>
                         )}
 
-                        {/* Message Content */}
                         {msg.role === 'assistant' ? (
                           <div className="space-y-3">
                             <div className="prose prose-sm dark:prose-invert max-w-none text-xs sm:text-sm">
@@ -992,7 +1256,7 @@ The user will be able to apply your changes directly to the note with a single c
                               )}
                             </div>
 
-                            {/* PROPOSED NOTE UPDATE CARD (if LLM output note-update block) */}
+                            {/* PROPOSED NOTE UPDATE CARD */}
                             {parsedUpdate && activeTarget && (
                               <div className="mt-3 p-3.5 rounded-xl border border-amber-500/40 bg-amber-500/10 text-stone-900 dark:text-stone-100 space-y-2.5">
                                 <div className="flex items-center justify-between">
@@ -1061,7 +1325,6 @@ The user will be able to apply your changes directly to the note with a single c
                       {/* Actions for Assistant Message */}
                       {msg.role === 'assistant' && msg.content && (
                         <div className="flex flex-wrap items-center gap-1.5 mt-1.5 px-1">
-                          {/* Copy button */}
                           <button
                             type="button"
                             onClick={() => handleCopyMessage(msg.id, msg.content)}
@@ -1081,7 +1344,6 @@ The user will be able to apply your changes directly to the note with a single c
                             )}
                           </button>
 
-                          {/* Quick Overwrite / Update Note if active target note exists */}
                           {activeTarget && !parsedUpdate && (
                             <button
                               type="button"
@@ -1103,7 +1365,6 @@ The user will be able to apply your changes directly to the note with a single c
                             </button>
                           )}
 
-                          {/* Insert / Append into Note */}
                           {activeTarget && (
                             <button
                               type="button"
@@ -1125,7 +1386,6 @@ The user will be able to apply your changes directly to the note with a single c
                             </button>
                           )}
 
-                          {/* Save as New Note */}
                           <button
                             type="button"
                             onClick={() => handleSaveAsNewNote(msg.id, msg.content)}
@@ -1213,10 +1473,10 @@ The user will be able to apply your changes directly to the note with a single c
                 </div>
 
                 <div className="flex-1 overflow-y-auto space-y-1 max-h-48 pt-1">
-                  {filteredNotes.length === 0 ? (
+                  {filteredNotesForPicker.length === 0 ? (
                     <p className="text-center py-4 text-xs text-stone-400">No matching notes found.</p>
                   ) : (
-                    filteredNotes.map((n) => (
+                    filteredNotesForPicker.map((n) => (
                       <button
                         key={n.id}
                         type="button"
@@ -1257,7 +1517,6 @@ The user will be able to apply your changes directly to the note with a single c
                 }}
                 className="flex items-end gap-1.5 sm:gap-2"
               >
-                {/* File Attachment Input (hidden) */}
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -1267,7 +1526,6 @@ The user will be able to apply your changes directly to the note with a single c
                   className="hidden"
                 />
 
-                {/* Attach File Button */}
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
@@ -1277,7 +1535,6 @@ The user will be able to apply your changes directly to the note with a single c
                   <Paperclip className="w-4 h-4 sm:w-5 sm:h-5" />
                 </button>
 
-                {/* Reference Note Button */}
                 <button
                   type="button"
                   onClick={() => setShowNotePicker((prev) => !prev)}
@@ -1291,9 +1548,7 @@ The user will be able to apply your changes directly to the note with a single c
                   <BookOpen className="w-4 h-4 sm:w-5 sm:h-5" />
                 </button>
 
-                {/* Input Textarea Container */}
                 <div className="flex-1 relative flex flex-col">
-                  {/* Referenced Note Pill above textarea */}
                   {activeReferencedNote && (
                     <div className="flex items-center gap-1.5 mb-1 px-1">
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-800 dark:text-amber-300 text-[11px] font-semibold border border-amber-500/30">
@@ -1334,7 +1589,6 @@ The user will be able to apply your changes directly to the note with a single c
                       className="w-full resize-none min-h-[44px] max-h-56 px-3.5 py-2.5 pr-8 rounded-xl border border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-[#1a1b1e] text-xs sm:text-sm text-stone-900 dark:text-stone-100 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-amber-500 leading-relaxed overflow-y-auto"
                     />
 
-                    {/* Expand/Collapse Textarea Toggle */}
                     <button
                       type="button"
                       onClick={() => setIsExpandedInput((prev) => !prev)}
@@ -1346,7 +1600,6 @@ The user will be able to apply your changes directly to the note with a single c
                   </div>
                 </div>
 
-                {/* Clear Chat Button */}
                 {messages.length > 0 && (
                   <button
                     type="button"
@@ -1358,7 +1611,6 @@ The user will be able to apply your changes directly to the note with a single c
                   </button>
                 )}
 
-                {/* Send or Stop Button */}
                 {isGenerating ? (
                   <button
                     type="button"
@@ -1383,10 +1635,421 @@ The user will be able to apply your changes directly to the note with a single c
           </div>
         )}
 
-        {/* BODY TAB 2: OLLAMA MODELS & SETUP */}
+        {/* TAB 2: BULK SUMMARIZE AGENT */}
+        {activeTab === 'bulk' && (
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5">
+            {/* Intro Card */}
+            <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-transparent border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="space-y-1">
+                <h3 className="text-sm sm:text-base font-bold text-stone-900 dark:text-stone-100 flex items-center gap-2">
+                  <Zap className="w-4 h-4 text-amber-500 fill-current" />
+                  Bulk Summarizer Agent
+                </h3>
+                <p className="text-xs text-stone-600 dark:text-stone-300 max-w-xl leading-relaxed">
+                  Summarize dozens of notes sequentially. Because each note is processed individually, it will{' '}
+                  <strong className="text-amber-700 dark:text-amber-400 font-semibold">never exceed the context window</strong>.
+                  All summaries are automatically appended in real time into one new Master Note in Keep!
+                </p>
+              </div>
+
+              {isBulkRunning ? (
+                <button
+                  type="button"
+                  onClick={handleStopBulkAgent}
+                  className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-xs transition-colors flex items-center gap-1.5 shrink-0 self-start sm:self-auto"
+                >
+                  <Square className="w-3.5 h-3.5 fill-current" />
+                  <span>Stop Agent</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleStartBulkSummarize}
+                  disabled={finalNotesToSummarize.length === 0 || !isConnected}
+                  className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-40 text-white text-xs font-bold shadow-xs transition-colors flex items-center gap-1.5 shrink-0 self-start sm:self-auto"
+                >
+                  <Play className="w-3.5 h-3.5 fill-current" />
+                  <span>Start Bulk Summarizer ({finalNotesToSummarize.length})</span>
+                </button>
+              )}
+            </div>
+
+            {/* LIVE RUNNING AGENT STATUS & PROGRESS BAR */}
+            {isBulkRunning && bulkProgress && (
+              <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 space-y-3 animate-in fade-in">
+                <div className="flex items-center justify-between text-xs font-bold text-amber-950 dark:text-amber-200">
+                  <div className="flex items-center gap-2">
+                    <RefreshCw className="w-4 h-4 animate-spin text-amber-600" />
+                    <span>
+                      Summarizing Note {bulkProgress.current} of {bulkProgress.total}: "{bulkProgress.currentNoteTitle}"
+                    </span>
+                  </div>
+                  <span>{bulkProgress.percent}%</span>
+                </div>
+
+                <div className="w-full bg-amber-500/20 h-2.5 rounded-full overflow-hidden">
+                  <div
+                    className="bg-amber-500 h-full transition-all duration-300"
+                    style={{ width: `${bulkProgress.percent}%` }}
+                  />
+                </div>
+
+                {/* Real-time Streaming Output Preview */}
+                {currentStreamingSummary && (
+                  <div className="p-3 rounded-xl bg-white dark:bg-[#1a1b1e] border border-amber-500/20 max-h-36 overflow-y-auto text-xs font-mono whitespace-pre-wrap text-stone-700 dark:text-stone-300">
+                    {currentStreamingSummary}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* SUCCESS BANNER WHEN DONE */}
+            {!isBulkRunning && createdMasterNoteId && (
+              <div className="p-4 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-between gap-3 text-xs text-emerald-900 dark:text-emerald-200 animate-in fade-in">
+                <div className="flex items-center gap-2 min-w-0">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  <div className="min-w-0">
+                    <span className="font-bold block truncate">
+                      ✓ Bulk Summary Completed! Appended into Master Note:
+                    </span>
+                    <span className="underline truncate block max-w-md">"{createdMasterNoteTitle}"</span>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleOpenMasterNote(createdMasterNoteId)}
+                  className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition-colors flex items-center gap-1.5 shrink-0"
+                >
+                  <BookOpen className="w-3.5 h-3.5" />
+                  <span>Open Master Note in Keep</span>
+                </button>
+              </div>
+            )}
+
+            {/* ERROR BANNER */}
+            {bulkError && (
+              <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-xs text-rose-700 dark:text-rose-400 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{bulkError}</span>
+              </div>
+            )}
+
+            {/* SECTION 1: HOW TO CHOOSE NOTES */}
+            <div className="space-y-3">
+              <label className="text-xs font-bold text-stone-900 dark:text-stone-100 flex items-center gap-1.5">
+                <Filter className="w-3.5 h-3.5 text-amber-500" />
+                1. Select Notes Scope:
+              </label>
+
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setBulkScope('selected')}
+                  className={`p-2.5 rounded-xl border text-left transition-all text-xs flex flex-col justify-between ${
+                    bulkScope === 'selected'
+                      ? 'border-amber-500 bg-amber-500/10 font-bold text-amber-900 dark:text-amber-200 shadow-2xs'
+                      : 'border-stone-200 dark:border-stone-800 hover:bg-stone-50 dark:hover:bg-stone-800/50 text-stone-700 dark:text-stone-300'
+                  }`}
+                >
+                  <span className="flex items-center gap-1.5">
+                    <CheckSquare className="w-3.5 h-3.5" />
+                    <span>Selected</span>
+                  </span>
+                  <span className="text-[10px] text-stone-400 mt-1 font-normal">
+                    {selectedNoteIds.length > 0 ? `${selectedNoteIds.length} chosen in grid` : '0 currently selected'}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setBulkScope('label')}
+                  className={`p-2.5 rounded-xl border text-left transition-all text-xs flex flex-col justify-between ${
+                    bulkScope === 'label'
+                      ? 'border-amber-500 bg-amber-500/10 font-bold text-amber-900 dark:text-amber-200 shadow-2xs'
+                      : 'border-stone-200 dark:border-stone-800 hover:bg-stone-50 dark:hover:bg-stone-800/50 text-stone-700 dark:text-stone-300'
+                  }`}
+                >
+                  <span className="flex items-center gap-1.5">
+                    <Tag className="w-3.5 h-3.5" />
+                    <span>By Label</span>
+                  </span>
+                  <span className="text-[10px] text-stone-400 mt-1 font-normal">Filter by tag/label</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setBulkScope('category')}
+                  className={`p-2.5 rounded-xl border text-left transition-all text-xs flex flex-col justify-between ${
+                    bulkScope === 'category'
+                      ? 'border-amber-500 bg-amber-500/10 font-bold text-amber-900 dark:text-amber-200 shadow-2xs'
+                      : 'border-stone-200 dark:border-stone-800 hover:bg-stone-50 dark:hover:bg-stone-800/50 text-stone-700 dark:text-stone-300'
+                  }`}
+                >
+                  <span className="flex items-center gap-1.5">
+                    <Folder className="w-3.5 h-3.5" />
+                    <span>By Category</span>
+                  </span>
+                  <span className="text-[10px] text-stone-400 mt-1 font-normal">Filter by folder</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setBulkScope('search')}
+                  className={`p-2.5 rounded-xl border text-left transition-all text-xs flex flex-col justify-between ${
+                    bulkScope === 'search'
+                      ? 'border-amber-500 bg-amber-500/10 font-bold text-amber-900 dark:text-amber-200 shadow-2xs'
+                      : 'border-stone-200 dark:border-stone-800 hover:bg-stone-50 dark:hover:bg-stone-800/50 text-stone-700 dark:text-stone-300'
+                  }`}
+                >
+                  <span className="flex items-center gap-1.5">
+                    <Search className="w-3.5 h-3.5" />
+                    <span>By Search</span>
+                  </span>
+                  <span className="text-[10px] text-stone-400 mt-1 font-normal">Match keyword query</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setBulkScope('all')}
+                  className={`p-2.5 rounded-xl border text-left transition-all text-xs flex flex-col justify-between ${
+                    bulkScope === 'all'
+                      ? 'border-amber-500 bg-amber-500/10 font-bold text-amber-900 dark:text-amber-200 shadow-2xs'
+                      : 'border-stone-200 dark:border-stone-800 hover:bg-stone-50 dark:hover:bg-stone-800/50 text-stone-700 dark:text-stone-300'
+                  }`}
+                >
+                  <span className="flex items-center gap-1.5">
+                    <Layers className="w-3.5 h-3.5" />
+                    <span>All Notes</span>
+                  </span>
+                  <span className="text-[10px] text-stone-400 mt-1 font-normal">
+                    {activeNonTrashedNotes.length} total active notes
+                  </span>
+                </button>
+              </div>
+
+              {/* Scope specific sub-controls */}
+              {bulkScope === 'label' && (
+                <div className="p-3 rounded-xl bg-stone-50 dark:bg-[#1a1b1e] border border-stone-200 dark:border-stone-800 flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-medium text-stone-500">Choose Label:</span>
+                  {(labels || []).length === 0 ? (
+                    <span className="text-xs text-stone-400 italic">No labels created yet.</span>
+                  ) : (
+                    labels.map((l) => (
+                      <button
+                        key={l.id}
+                        type="button"
+                        onClick={() => setSelectedLabelFilter(l.name)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors ${
+                          selectedLabelFilter === l.name
+                            ? 'bg-amber-500 text-white shadow-2xs'
+                            : 'bg-stone-200 dark:bg-stone-800 text-stone-700 dark:text-stone-300 hover:bg-stone-300'
+                        }`}
+                      >
+                        #{l.name}
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+
+              {bulkScope === 'category' && (
+                <div className="p-3 rounded-xl bg-stone-50 dark:bg-[#1a1b1e] border border-stone-200 dark:border-stone-800 flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-medium text-stone-500">Choose Category:</span>
+                  {(categories || []).length === 0 ? (
+                    <span className="text-xs text-stone-400 italic">No categories created yet.</span>
+                  ) : (
+                    categories.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => setSelectedCategoryFilter(c.name)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1 ${
+                          selectedCategoryFilter.toLowerCase() === c.name.toLowerCase()
+                            ? 'bg-amber-500 text-white shadow-2xs'
+                            : 'bg-stone-200 dark:bg-stone-800 text-stone-700 dark:text-stone-300 hover:bg-stone-300'
+                        }`}
+                      >
+                        <span>{c.icon || '📁'}</span>
+                        <span>{c.name}</span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+
+              {bulkScope === 'search' && (
+                <div className="relative">
+                  <Search className="w-4 h-4 absolute left-3 top-3 text-stone-400" />
+                  <input
+                    type="text"
+                    value={bulkSearchQuery}
+                    onChange={(e) => setBulkSearchQuery(e.target.value)}
+                    placeholder="Search query to filter notes (e.g. 'project', 'bugs', 'meeting')..."
+                    className="w-full pl-9 pr-4 py-2 rounded-xl border border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-[#1a1b1e] text-xs text-stone-900 dark:text-stone-100 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* SECTION 2: MATCHED NOTES PREVIEW & SELECTION */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-stone-900 dark:text-stone-100">
+                    2. Notes to Summarize ({finalNotesToSummarize.length} of {candidateNotesForBulk.length} selected):
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 text-xs">
+                  <button
+                    type="button"
+                    onClick={selectAllBulkNotes}
+                    className="text-amber-600 dark:text-amber-400 font-semibold hover:underline"
+                  >
+                    Select All
+                  </button>
+                  <span className="text-stone-400">·</span>
+                  <button
+                    type="button"
+                    onClick={deselectAllBulkNotes}
+                    className="text-stone-500 hover:text-stone-800 dark:hover:text-stone-200"
+                  >
+                    Deselect All
+                  </button>
+                </div>
+              </div>
+
+              {candidateNotesForBulk.length === 0 ? (
+                <div className="p-6 rounded-xl border border-dashed border-stone-300 dark:border-stone-700 text-center text-xs text-stone-400">
+                  {bulkScope === 'selected'
+                    ? 'No notes currently selected. Select notes in the main Keep grid or pick another scope above.'
+                    : 'No matching notes found for this filter.'}
+                </div>
+              ) : (
+                <div className="max-h-52 overflow-y-auto border border-stone-200 dark:border-stone-800 rounded-xl divide-y divide-stone-100 dark:divide-stone-800/60 bg-stone-50/50 dark:bg-[#1a1b1e]/50">
+                  {candidateNotesForBulk.map((n) => {
+                    const isChecked = manuallyCheckedIds.has(n.id);
+                    return (
+                      <div
+                        key={n.id}
+                        onClick={() => toggleNoteChecked(n.id)}
+                        className={`p-2.5 px-3 flex items-center justify-between gap-3 text-xs cursor-pointer hover:bg-stone-100 dark:hover:bg-stone-800/80 transition-colors ${
+                          isChecked ? 'bg-amber-500/5' : 'opacity-60'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => toggleNoteChecked(n.id)}
+                            className="rounded text-amber-500 focus:ring-amber-500 shrink-0 cursor-pointer"
+                          />
+                          <span className="font-semibold text-stone-900 dark:text-stone-100 truncate">
+                            {n.title || 'Untitled Note'}
+                          </span>
+                          <span className="text-[11px] text-stone-400 truncate max-w-[200px] hidden sm:inline">
+                            {(n.content || '').replace(/<[^>]+>/g, ' ').slice(0, 50)}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0 text-[11px] text-stone-400">
+                          {n.category && (
+                            <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-300 font-medium">
+                              {n.category}
+                            </span>
+                          )}
+                          <span>{(n.content || '').length} chars</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* SECTION 3: SUMMARY CONFIGURATION & MASTER NOTE DESTINATION */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-stone-900 dark:text-stone-100 block">
+                  3. Summary Style:
+                </label>
+                <select
+                  value={bulkSummaryStyle}
+                  onChange={(e) => setBulkSummaryStyle(e.target.value as SummaryStyle)}
+                  className="w-full px-3 py-2 rounded-xl border border-stone-200 dark:border-stone-700 bg-white dark:bg-[#25262b] text-xs font-semibold text-stone-900 dark:text-stone-100 focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
+                >
+                  <option value="bullet">📝 Structured Bullets (Key Points)</option>
+                  <option value="concise">⚡ Executive Summary (2-3 Sentences)</option>
+                  <option value="action_items">✅ Action Items Checklist (- [ ])</option>
+                  <option value="comprehensive">🔍 Comprehensive Deep Dive</option>
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-stone-900 dark:text-stone-100 block">
+                  4. Master Note Category:
+                </label>
+                <select
+                  value={masterNoteCategory}
+                  onChange={(e) => setMasterNoteCategory(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-stone-200 dark:border-stone-700 bg-white dark:bg-[#25262b] text-xs font-semibold text-stone-900 dark:text-stone-100 focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
+                >
+                  <option value="AI Summaries">📁 AI Summaries</option>
+                  {(categories || []).map((c) => (
+                    <option key={c.id} value={c.name}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="sm:col-span-2 space-y-1.5">
+                <label className="text-xs font-bold text-stone-900 dark:text-stone-100 block">
+                  Master Note Title (One note created for all summaries):
+                </label>
+                <input
+                  type="text"
+                  value={masterNoteCustomTitle}
+                  onChange={(e) => setMasterNoteCustomTitle(e.target.value)}
+                  placeholder={`[Bulk Summary] ${candidateNotesForBulk.length} Notes - ${new Date().toLocaleDateString()}`}
+                  className="w-full px-3.5 py-2 rounded-xl border border-stone-200 dark:border-stone-700 bg-white dark:bg-[#25262b] text-xs text-stone-900 dark:text-stone-100 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+            </div>
+
+            {/* Bottom Actions */}
+            <div className="pt-2 flex items-center justify-between border-t border-stone-200 dark:border-stone-800">
+              <span className="text-[11px] text-stone-500 dark:text-stone-400">
+                Processed sequentially via <strong>{selectedModel || 'active model'}</strong>. Zero context overflow.
+              </span>
+
+              {isBulkRunning ? (
+                <button
+                  type="button"
+                  onClick={handleStopBulkAgent}
+                  className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-xs transition-colors flex items-center gap-1.5"
+                >
+                  <Square className="w-3.5 h-3.5 fill-current" />
+                  <span>Stop Agent</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleStartBulkSummarize}
+                  disabled={finalNotesToSummarize.length === 0 || !isConnected}
+                  className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-40 text-white font-bold text-xs shadow-xs transition-colors flex items-center gap-1.5"
+                >
+                  <Zap className="w-3.5 h-3.5 fill-current" />
+                  <span>Start Bulk Summarizer Agent ({finalNotesToSummarize.length} Notes)</span>
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* TAB 3: OLLAMA MODELS & SETUP */}
         {activeTab === 'models' && (
           <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
-            {/* Feedback Banners */}
             {modelActionError && (
               <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-xs text-rose-700 dark:text-rose-400 flex items-center justify-between">
                 <span>{modelActionError}</span>
@@ -1412,7 +2075,6 @@ The user will be able to apply your changes directly to the note with a single c
               </div>
             )}
 
-            {/* PULLING PROGRESS BAR */}
             {pullingModelName && (
               <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 space-y-2 animate-in fade-in">
                 <div className="flex items-center justify-between text-xs font-semibold text-amber-950 dark:text-amber-200">
