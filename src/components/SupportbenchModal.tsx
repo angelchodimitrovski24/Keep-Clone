@@ -464,12 +464,14 @@ export const SupportbenchModal: React.FC<SupportbenchModalProps> = ({ isOpen, on
 
               {/* Live Execution Logs */}
               {downloadLogs.length > 0 && (
-                <div className="space-y-1.5 max-h-40 overflow-y-auto p-2.5 rounded-xl bg-stone-100 dark:bg-[#151618] border border-stone-200 dark:border-stone-800 text-[11px] font-mono">
+                <div className="space-y-2 max-h-60 overflow-y-auto p-3 rounded-xl bg-stone-100 dark:bg-[#151618] border border-stone-200 dark:border-stone-800 text-[11px] font-mono select-text">
                   {downloadLogs.map((log) => (
                     <div
                       key={log.id}
-                      className={`truncate ${
-                        log.success ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+                      className={`break-words whitespace-pre-wrap select-text leading-relaxed p-1.5 rounded-lg ${
+                        log.success
+                          ? 'text-emerald-700 dark:text-emerald-400 bg-emerald-500/10'
+                          : 'text-rose-600 dark:text-rose-400 bg-rose-500/10'
                       }`}
                     >
                       {log.text}

@@ -452,47 +452,37 @@ async function fetchCaseData(
   const cleanBase = normalizeSupportbenchBaseUrl(baseUrl);
   const baseSubdomain = extractSubdomain(cleanBase) || inputSubdomain;
 
-  // Determine base URLs to test
-  // Try the user's base URL first, then the dedicated API cluster
-  const basesToTry = [cleanBase];
-  if (!cleanBase.includes('api.supportbench.net')) {
-    basesToTry.push('https://api.supportbench.net');
+  // Determine candidates to test.
+  // 1. Primary: The dedicated API cluster (api.supportbench.net) where ticket JSON lives.
+  // 2. Secondary: The tenant base URL (cleanBase) in case of a custom proxy or authenticated web session.
+  const candidates: string[] = [];
+
+  // API Cluster endpoints
+  candidates.push(`https://api.supportbench.net/case/${encodeURIComponent(numericId)}`);
+  candidates.push(`https://api.supportbench.net/case/${encodeURIComponent(caseId)}`);
+  candidates.push(`https://api.supportbench.net/case/get?id=${encodeURIComponent(numericId)}`);
+  candidates.push(`https://api.supportbench.net/case/get?id=${encodeURIComponent(caseId)}`);
+  candidates.push(`https://api.supportbench.net/case/lookup?id=${encodeURIComponent(numericId)}`);
+  candidates.push(`https://api.supportbench.net/case/all`);
+  candidates.push(`https://api.supportbench.net/case/query`);
+  candidates.push(`https://api.supportbench.net/case/find`);
+
+  if (baseSubdomain) {
+    candidates.push(`https://api.supportbench.net/case/${encodeURIComponent(numericId)}?subdomain=${encodeURIComponent(baseSubdomain)}`);
+    candidates.push(`https://api.supportbench.net/case/${encodeURIComponent(caseId)}?subdomain=${encodeURIComponent(baseSubdomain)}`);
+    candidates.push(`https://api.supportbench.net/case/get?id=${encodeURIComponent(numericId)}&subdomain=${encodeURIComponent(baseSubdomain)}`);
   }
 
-  const idsToTry = Array.from(new Set([caseId, numericId, `c-${numericId}`].filter(Boolean)));
-
-  const candidates: string[] = [];
+  // Tenant / Web Portal endpoints
   if (fullUrl) {
     candidates.push(fullUrl);
   }
-
-  for (const b of basesToTry) {
-    for (const id of idsToTry) {
-      candidates.push(`${b}/case/${encodeURIComponent(id)}`);
-      candidates.push(`${b}/agent/case/${encodeURIComponent(id)}`);
-      candidates.push(`${b}/case/get?id=${encodeURIComponent(id)}`);
-      candidates.push(`${b}/case/get?caseNumber=${encodeURIComponent(id)}`);
-      candidates.push(`${b}/case/get?number=${encodeURIComponent(id)}`);
-      candidates.push(`${b}/case/find?id=${encodeURIComponent(id)}`);
-      candidates.push(`${b}/case/find?number=${encodeURIComponent(id)}`);
-      candidates.push(`${b}/case/details/${encodeURIComponent(id)}`);
-      candidates.push(`${b}/case/details?id=${encodeURIComponent(id)}`);
-      candidates.push(`${b}/case/details?caseNumber=${encodeURIComponent(id)}`);
-      candidates.push(`${b}/case/info/${encodeURIComponent(id)}`);
-      candidates.push(`${b}/case/search?search=${encodeURIComponent(id)}`);
-      candidates.push(`${b}/case/query?id=${encodeURIComponent(id)}`);
-      candidates.push(`${b}/cases/${encodeURIComponent(id)}`);
-      candidates.push(`${b}/api/v1/cases/${encodeURIComponent(id)}`);
-      if (baseSubdomain) {
-        candidates.push(`${b}/case/get?id=${encodeURIComponent(id)}&subdomain=${encodeURIComponent(baseSubdomain)}`);
-        candidates.push(`${b}/case/${encodeURIComponent(id)}?subdomain=${encodeURIComponent(baseSubdomain)}`);
-      }
-    }
-    // Also include /case/all to filter in-memory
-    candidates.push(`${b}/case/all`);
-    if (baseSubdomain) {
-      candidates.push(`${b}/case/all?subdomain=${encodeURIComponent(baseSubdomain)}`);
-    }
+  if (cleanBase && !cleanBase.includes('api.supportbench.net')) {
+    candidates.push(`${cleanBase}/agent/case/${encodeURIComponent(caseId)}/`);
+    candidates.push(`${cleanBase}/agent/case/${encodeURIComponent(numericId)}/`);
+    candidates.push(`${cleanBase}/case/${encodeURIComponent(caseId)}`);
+    candidates.push(`${cleanBase}/case/${encodeURIComponent(numericId)}`);
+    candidates.push(`${cleanBase}/case/get?id=${encodeURIComponent(numericId)}`);
   }
 
   let caseObj: any = null;
@@ -501,9 +491,29 @@ async function fetchCaseData(
 
   for (const url of candidates) {
     try {
-      const res = await fetch(url, { headers });
+      const isCleanBase = cleanBase && url.startsWith(cleanBase);
+      // For web portal URLs, prevent following 302 redirects to signin pages
+      const res = await fetch(url, {
+        headers,
+        redirect: isCleanBase ? 'manual' : 'follow',
+      });
       const contentType = res.headers.get('content-type') || '';
-      debugLogs.push(`${res.status} [${contentType.slice(0, 20)}] ${url}`);
+
+      if (res.status === 302) {
+        const loc = res.headers.get('location') || '';
+        debugLogs.push(`302 [web session required -> ${loc}] ${url}`);
+        continue;
+      }
+
+      let errorSnippet = '';
+      if (!res.ok && res.status !== 404) {
+        try {
+          const txt = await res.text();
+          errorSnippet = ` (${txt.replace(/<[^>]+>/g, '').trim().slice(0, 120)})`;
+        } catch {}
+      }
+
+      debugLogs.push(`${res.status} [${contentType.slice(0, 24)}] ${url}${errorSnippet}`);
 
       if (res.ok) {
         if (contentType.includes('json')) {
@@ -528,7 +538,7 @@ async function fetchCaseData(
         }
       }
     } catch (err: any) {
-      debugLogs.push(`ERR ${err?.message} ${url}`);
+      debugLogs.push(`ERR [${err?.message}] ${url}`);
     }
   }
 
@@ -537,9 +547,18 @@ async function fetchCaseData(
   const finalPortalUrl = fullUrl || `${portalHost}/agent/case/c-${numericId}/`;
 
   if (!caseObj) {
-    const errorDetails = debugLogs.slice(0, 10).join(' | ');
+    // Show errors and 401/403/non-302 entries first
+    const significantLogs = debugLogs.filter((l) => !l.startsWith('302 [web session') && !l.includes(' 404 '));
+    const trace = (significantLogs.length > 0 ? significantLogs : debugLogs).slice(0, 8).join('\n');
+
+    const had401 = debugLogs.some((l) => l.includes('401'));
+    let authNote = '';
+    if (had401) {
+      authNote = '\n⚠️ HTTP 401 Unauthorized: The API Token was rejected by api.supportbench.net. Please ensure the token has Case permissions or generate a fresh API token.';
+    }
+
     throw new Error(
-      `Could not download case '${caseId}' (or #${numericId}). Diagnostic trace: ${errorDetails}`
+      `Could not download case '${caseId}' (or #${numericId}).${authNote}\n\nTrace:\n${trace}`
     );
   }
 
