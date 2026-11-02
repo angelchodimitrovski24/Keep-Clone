@@ -23,6 +23,7 @@ import {
 import { useKeep, getFontSizeInPx } from '@/context/KeepContext';
 import { FontSizeOption, AppThemeMode } from '@/types/note';
 import { getSavedJiraConfig } from '@/lib/jiraClient';
+import { getSavedSupportbenchConfig } from '@/lib/supportbenchClient';
 
 export const SettingsModal: React.FC = () => {
   const {
@@ -31,6 +32,7 @@ export const SettingsModal: React.FC = () => {
     setIsGoogleDriveModalOpen,
     setIsPdfExportModalOpen,
     setIsJiraModalOpen,
+    setIsSupportbenchModalOpen,
     isInstallModalOpen,
     setIsInstallModalOpen,
     canInstallPwa,

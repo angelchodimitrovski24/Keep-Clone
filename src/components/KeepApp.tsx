@@ -32,6 +32,7 @@ import { MergeNotesModal } from '@/components/MergeNotesModal';
 import { WebExportModal } from '@/components/WebExportModal';
 import { ExcelExportModal } from '@/components/ExcelExportModal';
 import { JiraModal } from '@/components/JiraModal';
+import { SupportbenchModal } from '@/components/SupportbenchModal';
 import { Note, NoteDrawing } from '@/types/note';
 
 interface KeepAppProps {
@@ -64,6 +65,8 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
     setSharingNote,
     isJiraModalOpen,
     setIsJiraModalOpen,
+    isSupportbenchModalOpen,
+    setIsSupportbenchModalOpen,
     setCurrentFilter,
   } = useKeep();
 
@@ -424,6 +427,8 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
       <MergeNotesModal />
       <WebExportModal />
       <ExcelExportModal />
+      <JiraModal isOpen={isJiraModalOpen} onClose={() => setIsJiraModalOpen(false)} />
+      <SupportbenchModal isOpen={isSupportbenchModalOpen} onClose={() => setIsSupportbenchModalOpen(false)} />
 
       {/* Floating Calendar & Note Reminder Alerts */}
       <CalendarReminderToast />

@@ -80,6 +80,8 @@ interface KeepContextType {
   isPdfExportModalOpen: boolean;
   isJiraModalOpen: boolean;
   setIsJiraModalOpen: (open: boolean) => void;
+  isSupportbenchModalOpen: boolean;
+  setIsSupportbenchModalOpen: (open: boolean) => void;
   sharingNote: Note | null;
 
   // Setters
@@ -241,6 +243,7 @@ export function KeepProvider({
   const [isGoogleDriveModalOpen, setIsGoogleDriveModalOpen] = useState(false);
   const [isPdfExportModalOpen, setIsPdfExportModalOpen] = useState(false);
   const [isJiraModalOpen, setIsJiraModalOpen] = useState(false);
+  const [isSupportbenchModalOpen, setIsSupportbenchModalOpen] = useState(false);
   const [isDateCompileModalOpen, setIsDateCompileModalOpen] = useState(false);
   const [isNotionTemplateModalOpen, setIsNotionTemplateModalOpen] = useState(false);
   const [isMergeNotesModalOpen, setIsMergeNotesModalOpen] = useState(false);
@@ -1743,6 +1746,8 @@ export function KeepProvider({
       setIsPdfExportModalOpen,
       isJiraModalOpen,
       setIsJiraModalOpen,
+      isSupportbenchModalOpen,
+      setIsSupportbenchModalOpen,
       isDateCompileModalOpen,
       setIsDateCompileModalOpen,
       isNotionTemplateModalOpen,
@@ -1864,6 +1869,9 @@ export function KeepProvider({
       isPdfExportModalOpen,
       setIsPdfExportModalOpen,
       isJiraModalOpen,
+      setIsJiraModalOpen,
+      isSupportbenchModalOpen,
+      setIsSupportbenchModalOpen,
       isDateCompileModalOpen,
       setIsDateCompileModalOpen,
       isNotionTemplateModalOpen,

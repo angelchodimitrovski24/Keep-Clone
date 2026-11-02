@@ -67,6 +67,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
     setIsGoogleDriveModalOpen,
     setIsPdfExportModalOpen,
     setIsJiraModalOpen,
+    setIsSupportbenchModalOpen,
     setIsDateCompileModalOpen,
     setIsNotionTemplateModalOpen,
     setIsMergeNotesModalOpen,
@@ -472,6 +473,17 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
         >
           <span className="w-5 h-5 rounded-md bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center font-black text-xs shadow-xs">
             J
+          </span>
+        </button>
+        {/* Supportbench Manager */}
+        <button
+          type="button"
+          onClick={() => setIsSupportbenchModalOpen(true)}
+          className="p-1.5 sm:p-2 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors shrink-0 flex items-center justify-center font-bold text-xs"
+          title="Supportbench Manager (Download cases, API token/key & multi-case scrape)"
+        >
+          <span className="w-5 h-5 rounded-md bg-teal-600 hover:bg-teal-700 text-white flex items-center justify-center font-black text-[10px] shadow-xs">
+            SB
           </span>
         </button>
 

@@ -57,6 +57,7 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
     isNotionTemplateModalOpen,
     setIsNotionTemplateModalOpen,
     setIsJiraModalOpen,
+    setIsSupportbenchModalOpen,
     importDataSmart,
   } = useKeep();
   const [isExpanded, setIsExpanded] = useState(false);
@@ -540,6 +541,22 @@ const handleImportMhtml = async (file: File) => {
             >
               <span className="w-5 h-5 rounded-md bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center font-black text-xs shadow-xs">
                 J
+              </span>
+            </button>
+            {/* Supportbench Manager */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsSupportbenchModalOpen(true);
+              }}
+              onMouseDown={(e) => e.stopPropagation()}
+              className="p-2 rounded-full hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-600 dark:text-stone-300 hover:text-teal-600 dark:hover:text-teal-400 cursor-pointer transition-colors"
+              title="Supportbench Manager (Download cases, API token/key & multi-case scrape)"
+            >
+              <span className="w-5 h-5 rounded-md bg-teal-600 hover:bg-teal-700 text-white flex items-center justify-center font-black text-[10px] shadow-xs">
+                SB
               </span>
             </button>
             <button type="button" onClick={(e) => {
