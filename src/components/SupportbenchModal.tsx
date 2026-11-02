@@ -387,7 +387,7 @@ export const SupportbenchModal: React.FC<SupportbenchModalProps> = ({ isOpen, on
                   value={casesInput}
                   onChange={(e) => setCasesInput(e.target.value)}
                   disabled={isDownloading}
-                  placeholder={`1042\n1043\nhttps://mycompany.supportbench.com/cases/1044\nSB-1045`}
+                  placeholder={`1042\n1043\nhttps://app.supportbench.net/cases/1044\n1045`}
                   rows={5}
                   className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 dark:border-stone-700 bg-white dark:bg-[#1a1b1e] text-xs font-mono text-stone-900 dark:text-stone-100 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-teal-500"
                 />
@@ -648,11 +648,11 @@ export const SupportbenchModal: React.FC<SupportbenchModalProps> = ({ isOpen, on
                   type="text"
                   value={baseUrl}
                   onChange={(e) => setBaseUrl(e.target.value)}
-                  placeholder="https://api.supportbench.net or https://company.supportbench.com"
+                  placeholder="https://api.supportbench.net (Default)"
                   className="w-full px-3.5 py-2 rounded-xl border border-stone-200 dark:border-stone-700 bg-white dark:bg-[#1a1b1e] text-xs text-stone-900 dark:text-stone-100 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-teal-500"
                 />
                 <p className="text-[11px] text-stone-500 dark:text-stone-400 mt-1">
-                  Default: <code>https://api.supportbench.net</code> (or your company subdomain e.g. <code>mycompany</code>)
+                  Default: <code>https://api.supportbench.net</code> (Official API). If you enter <code>app.supportbench.net</code> or leave it blank, it automatically uses <code>https://api.supportbench.net</code>.
                 </p>
               </div>
 
