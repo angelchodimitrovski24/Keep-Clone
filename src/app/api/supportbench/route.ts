@@ -544,7 +544,7 @@ async function fetchCaseData(
 
 /**
  * Returns activities/comments embedded in the case object.
- * (No guessed endpoints are called â€” only /case/{id} is a real read endpoint.)
+ * (No guessed endpoints are called — only /case/{id} is a real read endpoint.)
  */
 async function fetchCaseActivities(
   _baseUrl: string,
@@ -780,11 +780,11 @@ async function processSupportbenchCaseToNote(
   }
 
   // Construct Clean Markdown Note
-  let markdown = `> ðŸŽ« **Supportbench Case:** [**#${caseNumber} - ${subject}**](${portalUrl})  \n`;
-  markdown += `> ðŸ“Š **Status:** \`${status}\` | âš¡ **Priority:** ${priority}${stage ? ` | ðŸ·ï¸ **Stage:** ${stage}` : ''}  \n`;
-  markdown += `> ðŸ‘¤ **Assignee:** ${assignee} | ðŸ‘¥ **Customer:** ${contact}${account ? ` (${account})` : ''}  \n`;
+  let markdown = `> 🎫 **Supportbench Case:** [**#${caseNumber} - ${subject}**](${portalUrl})  \n`;
+  markdown += `> 📊 **Status:** \`${status}\` | ⚡ **Priority:** ${priority}${stage ? ` | 🏷️ **Stage:** ${stage}` : ''}  \n`;
+  markdown += `> 👤 **Assignee:** ${assignee} | 👥 **Customer:** ${contact}${account ? ` (${account})` : ''}  \n`;
   if (createdDate || updatedDate) {
-    markdown += `> ðŸ•’ **Created:** ${createdDate ? new Date(createdDate).toLocaleString() : 'N/A'}${updatedDate ? ` | **Updated:** ${new Date(updatedDate).toLocaleString()}` : ''}  \n`;
+    markdown += `> 🕒 **Created:** ${createdDate ? new Date(createdDate).toLocaleString() : 'N/A'}${updatedDate ? ` | **Updated:** ${new Date(updatedDate).toLocaleString()}` : ''}  \n`;
   }
   markdown += `\n---\n\n`;
 
@@ -801,7 +801,7 @@ async function processSupportbenchCaseToNote(
       if (isImg) {
         markdown += `![${f.fileName}](${f.serveUrl})\n\n`;
       } else {
-        markdown += `- [ðŸ“Ž ${f.fileName}](${f.serveUrl})\n`;
+        markdown += `- [📎 ${f.fileName}](${f.serveUrl})\n`;
       }
     }
     markdown += '\n';
@@ -814,7 +814,7 @@ async function processSupportbenchCaseToNote(
       const act = activities[i];
       const parsed = formatActivityItem(act);
 
-      markdown += `#### ðŸ’¬ **${parsed.author}** Â· *${parsed.date || 'Recent'}* \`[${parsed.type}]\`\n\n`;
+      markdown += `#### 💬 **${parsed.author}** · *${parsed.date || 'Recent'}* \`[${parsed.type}]\`\n\n`;
       if (parsed.markdown) {
         markdown += `${parsed.markdown}\n\n`;
       } else {
