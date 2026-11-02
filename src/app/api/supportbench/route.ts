@@ -367,9 +367,46 @@ function extractCaseObject(data: any, targetId: string, numericTargetId: string)
  * Extracts the author name and email of an activity from the many shapes Supportbench may use
  * (nested objects like Author/User/CreatedBy/Agent, or flat fields like AgentName/FromEmail).
  */
-function extractActivityAuthor(act: any): { name: string; email: string } {
+function buildUserDirectory(caseObj: any): Map<string, { name: string; email: string }> {
+  const map = new Map<string, { name: string; email: string }>();
+  if (!caseObj || typeof caseObj !== 'object') return map;
+
+  const register = (o: any) => {
+    if (!o || typeof o !== 'object') return;
+    const first = typeof o.FirstName === 'string' ? o.FirstName.trim() : typeof o.firstName === 'string' ? o.firstName.trim() : '';
+    const last = typeof o.LastName === 'string' ? o.LastName.trim() : typeof o.lastName === 'string' ? o.lastName.trim() : '';
+    const name = (typeof o.Name === 'string' ? o.Name.trim() : typeof o.name === 'string' ? o.name.trim() : '') ||
+      (typeof o.DisplayName === 'string' ? o.DisplayName.trim() : typeof o.displayName === 'string' ? o.displayName.trim() : '') ||
+      [first, last].filter(Boolean).join(' ');
+    const email = typeof o.Email === 'string' ? o.Email.trim() : typeof o.email === 'string' ? o.email.trim() : '';
+    const id = String(o.Id || o.id || o.UserId || o.userId || o.AgentId || o.agentId || '').trim();
+
+    if (id && (name || email)) {
+      map.set(id.toLowerCase(), { name, email });
+    }
+  };
+
+  const pool = [
+    caseObj.Users, caseObj.users, caseObj.Agents, caseObj.agents, caseObj.Members, caseObj.members,
+    caseObj.Assignee, caseObj.assignee, caseObj.AssignedTo, caseObj.assigned_to, caseObj.Agent, caseObj.agent,
+    caseObj.Owner, caseObj.owner, caseObj.CreatedBy, caseObj.created_by, caseObj.Contact, caseObj.contact
+  ];
+
+  for (const item of pool) {
+    if (Array.isArray(item)) {
+      item.forEach(register);
+    } else if (item && typeof item === 'object') {
+      register(item);
+    }
+  }
+
+  return map;
+}
+
+function extractActivityAuthor(act: any, caseObj?: any, userDirectory?: Map<string, { name: string; email: string }>): { name: string; email: string } {
   const str = (v: any): string => (typeof v === 'string' ? v.trim() : typeof v === 'number' ? String(v) : '');
   const isEmail = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
+  const isGeneric = (s: string) => /^(agent|user|staff|support|system|admin|jira|supportbench)$/i.test(s.trim());
 
   const nameFromObj = (o: any): string => {
     if (!o || typeof o !== 'object') return '';
@@ -384,29 +421,35 @@ function extractActivityAuthor(act: any): { name: string; email: string } {
     o && typeof o === 'object' ? str(o.Email ?? o.email ?? o.EmailAddress ?? o.emailAddress ?? o.email_address) : '';
 
   const personKeys = [
-    'Author', 'author', 'Agent', 'agent', 'User', 'user', 'CreatedBy', 'createdBy', 'created_by',
-    'Owner', 'owner', 'Sender', 'sender', 'From', 'from', 'PostedBy', 'postedBy', 'Contact', 'contact',
+    'Author', 'author', 'Creator', 'creator', 'CreatedBy', 'createdBy', 'created_by',
+    'User', 'user', 'Agent', 'agent', 'Sender', 'sender', 'From', 'from',
+    'PostedBy', 'postedBy', 'Owner', 'owner', 'Contact', 'contact', 'Actor', 'actor',
   ];
 
   let name = '';
   let email = '';
 
-  // 1. Nested objects or plain string values on person keys
+  // 1. Check nested objects on person keys
   for (const k of personKeys) {
     const v = act?.[k];
     if (!v) continue;
     if (typeof v === 'object') {
-      name = name || nameFromObj(v);
-      email = email || emailFromObj(v);
+      const objName = nameFromObj(v);
+      const objEmail = emailFromObj(v);
+      if (objName && !isGeneric(objName)) name = name || objName;
+      if (objEmail && isEmail(objEmail)) email = email || objEmail;
     } else {
       const s = str(v);
-      if (isEmail(s)) email = email || s;
-      else name = name || s;
+      if (isEmail(s)) {
+        email = email || s;
+      } else if (s && !isGeneric(s)) {
+        name = name || s;
+      }
     }
     if (name && email) break;
   }
 
-  // 2. Flat fields like AgentName, CreatedByName, FromEmail, UserEmail...
+  // 2. Flat fields (AgentName, CreatedByName, FromEmail, UserEmail, AuthorName, etc.)
   if (!name || !email) {
     for (const [k, v] of Object.entries(act || {})) {
       const s = str(v);
@@ -415,15 +458,52 @@ function extractActivityAuthor(act: any): { name: string; email: string } {
         email = s;
       } else if (
         !name &&
-        /(author|agent|user|createdby|created_by|owner|sender|from|postedby|contact).*name|^name$|displayname|fullname/i.test(k) &&
-        !isEmail(s)
+        /(author|creator|agent|user|createdby|created_by|owner|sender|from|postedby|actor).*name|^name$|displayname|fullname/i.test(k) &&
+        !isEmail(s) &&
+        !isGeneric(s)
       ) {
         name = s;
       }
     }
   }
 
-  // "John Doe <john@x.com>" style strings
+  // 3. User directory lookup by author/user/agent ID
+  if ((!name || !email) && userDirectory) {
+    const idCandidates = [
+      act?.UserId, act?.userId, act?.AuthorId, act?.authorId, act?.AgentId, act?.agentId,
+      act?.CreatedById, act?.createdById, act?.CreatorId, act?.creatorId, act?.ActorId, act?.actorId
+    ];
+    for (const id of idCandidates) {
+      if (id && userDirectory.has(String(id).toLowerCase())) {
+        const found = userDirectory.get(String(id).toLowerCase())!;
+        if (!name && found.name && !isGeneric(found.name)) name = found.name;
+        if (!email && found.email) email = found.email;
+        if (name && email) break;
+      }
+    }
+  }
+
+  // 4. Fallback to case assignee / agent if note was created by internal staff
+  if (!name && caseObj) {
+    const caseAgentName =
+      caseObj.Assignee?.Name || caseObj.Assignee?.DisplayName || caseObj.assignee?.name || caseObj.assignee?.displayName ||
+      caseObj.AssignedTo?.Name || caseObj.AssignedTo?.DisplayName || caseObj.assigned_to?.name ||
+      caseObj.Agent?.Name || caseObj.Agent?.DisplayName || caseObj.agent?.name ||
+      (typeof caseObj.Assignee === 'string' && !isGeneric(caseObj.Assignee) ? caseObj.Assignee : '') ||
+      (typeof caseObj.assigned_to === 'string' && !isGeneric(caseObj.assigned_to) ? caseObj.assigned_to : '');
+
+    const caseAgentEmail =
+      caseObj.Assignee?.Email || caseObj.assignee?.email ||
+      caseObj.AssignedTo?.Email || caseObj.assigned_to?.email ||
+      caseObj.Agent?.Email || caseObj.agent?.email || '';
+
+    if (caseAgentName) {
+      name = caseAgentName;
+      if (!email && caseAgentEmail) email = caseAgentEmail;
+    }
+  }
+
+  // Handle "John Doe <john@x.com>" style strings
   const angle = name.match(/^(.*?)\s*<([^>]+@[^>]+)>$/);
   if (angle) {
     name = angle[1].trim();
@@ -433,8 +513,8 @@ function extractActivityAuthor(act: any): { name: string; email: string } {
   return { name, email };
 }
 
-function formatActivityItem(act: any): { author: string; date: string; type: string; markdown: string } {
-  const { name, email } = extractActivityAuthor(act);
+function formatActivityItem(act: any, caseObj?: any, userDirectory?: Map<string, { name: string; email: string }>): { author: string; date: string; type: string; markdown: string } {
+  const { name, email } = extractActivityAuthor(act, caseObj, userDirectory);
   const author = name && email && name !== email ? `${name} (${email})` : name || email || 'Agent';
 
   const date =
@@ -515,7 +595,14 @@ function resolveApiBase(baseUrl: string): string {
  * Returns { json } on success or { text } if the body is not JSON.
  */
 async function readBodyAsJson(res: Response): Promise<{ json?: any; text: string }> {
-  const text = await res.text();
+  let text = '';
+  try {
+    const arrayBuffer = await res.arrayBuffer();
+    const decoder = new TextDecoder('utf-8');
+    text = decoder.decode(arrayBuffer);
+  } catch {
+    text = await res.text();
+  }
   const trimmed = text.trim();
   if (!trimmed) return { text };
   try {
@@ -862,13 +949,14 @@ async function processSupportbenchCaseToNote(
   }
 
   // Activities & Comments Section (Chronological)
+  const userDirectory = buildUserDirectory(caseObj);
   if (activities.length > 0) {
     markdown += `### Case Timeline & Comments (${activities.length})\n\n`;
     for (let i = 0; i < activities.length; i++) {
       const act = activities[i];
-      const parsed = formatActivityItem(act);
+      const parsed = formatActivityItem(act, caseObj, userDirectory);
 
-      markdown += `#### 💬 **${parsed.author}** · *${parsed.date || 'Recent'}* \`[${parsed.type}]\`\n\n`;
+      markdown += `#### 💬 **${parsed.author}** • *${parsed.date || 'Recent'}* \`[${parsed.type}]\`\n\n`;
       if (parsed.markdown) {
         markdown += `${parsed.markdown}\n\n`;
       } else {

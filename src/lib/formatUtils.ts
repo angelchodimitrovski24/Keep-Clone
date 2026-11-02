@@ -325,6 +325,27 @@ export function isDataviewCode(code: string, lang?: string): boolean {
  * task list checkboxes, bullet/number lists, tables, blockquotes, code blocks,
  * and inline formatting (bold, italic, strikethrough, code, links).
  */
+export function healMojibake(text: string): string {
+  if (!text) return '';
+  return text
+    .replace(/ðŸ[’'´`]?¬/g, '💬')
+    .replace(/ðŸŽ«/g, '🎫')
+    .replace(/ðŸ“Š/g, '📊')
+    .replace(/âš¡/g, '⚡')
+    .replace(/ðŸ‘¤/g, '👤')
+    .replace(/ðŸ‘¥/g, '👥')
+    .replace(/ðŸ•’/g, '🕒')
+    .replace(/ðŸ“Ž/g, '📎')
+    .replace(/Â·/g, '•')
+    .replace(/Â /g, ' ')
+    .replace(/â€™/g, "'")
+    .replace(/â€˜/g, "'")
+    .replace(/â€œ/g, '"')
+    .replace(/â€ /g, '"')
+    .replace(/â€”/g, '—')
+    .replace(/â€“/g, '–');
+}
+
 export function convertMarkdownToHtml(content: string): string {
   if (!content) return '';
 
@@ -335,7 +356,7 @@ export function convertMarkdownToHtml(content: string): string {
     return `___KEEP_PRE_BLOCK_${idx}___`;
   };
 
-  let text = content;
+  let text = healMojibake(content);
 
   // 1. Browser DOMParser pre-pass: flawlessly extracts Notion code blocks, pre tags, and syntax blocks without regex nesting bugs
   if (typeof DOMParser !== 'undefined' && /<[a-z][\s\S]*>/i.test(text)) {

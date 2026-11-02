@@ -351,6 +351,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
         {/* Choose Local Paste Folder (Desktop / Tablet) */}
         <button
           type="button"
+          suppressHydrationWarning
           onClick={() => setIsLocalFolderModalOpen(true)}
           className="hidden sm:flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-full bg-amber-400/15 hover:bg-amber-400/25 text-amber-800 dark:text-amber-300 border border-amber-400/30 transition-colors text-xs font-medium mr-0.5 sm:mr-1 shrink-0"
           title={
@@ -360,7 +361,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
           }
         >
           <FolderOpen className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400" />
-          <span className="hidden md:inline max-w-[120px] truncate">
+          <span suppressHydrationWarning className="hidden md:inline max-w-[120px] truncate">
             {localMediaFolder
               ? localMediaFolder.split(/[\\/]/).filter(Boolean).pop() || 'Local Folder'
               : 'Choose Folder'}
