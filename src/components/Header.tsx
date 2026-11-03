@@ -8,31 +8,20 @@ import {
   Rows,
   Moon,
   Sun,
-  RefreshCw,
   X,
   Archive,
   Trash2,
   Palette,
-  Download,
-  Upload,
-  FolderDown,
-  FolderOpen,
   Copy,
   Settings as SettingsIcon,
-  Timer,
-  Play,
-  Pause,
-  Cloud,
   FileText,
-  Smartphone,
-  BarChart2,
-  CalendarRange,
-  Sparkles,
   Bot,
+  ArrowLeft,
+  FolderOpen,
+  Sparkles,
   GitMerge,
   Globe,
   FileSpreadsheet,
-  ArrowLeft,
 } from 'lucide-react';
 import { useKeep } from '@/context/KeepContext';
 import { NOTE_COLORS } from '@/lib/constants';
@@ -58,37 +47,17 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
     batchDuplicate,
     batchSetCategory,
     categories,
-    exportDataZip,
-    importDataSmart,
     currentFilter,
     setCurrentFilter,
     setEditingNote,
-    localMediaFolder,
-    setIsLocalFolderModalOpen,
     setIsSettingsOpen,
-    setIsGoogleDriveModalOpen,
-    setIsPdfExportModalOpen,
-    setIsJiraModalOpen,
-    setIsSupportbenchModalOpen,
     openGeneralAiChat,
     openBulkSummarize,
-    setIsDateCompileModalOpen,
-    setIsNotionTemplateModalOpen,
     setIsMergeNotesModalOpen,
     setIsWebExportModalOpen,
     setIsExcelExportModalOpen,
-    isInstallModalOpen,
-    setIsInstallModalOpen,
-    canInstallPwa,
-    isPwaInstalled,
-    promptInstallPwa,
-    activeStopwatch,
-    pauseReadingStopwatch,
-    resumeReadingStopwatch,
-    stopAndSaveReadingStopwatch,
   } = useKeep();
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [isMobileSearchActive, setIsMobileSearchActive] = React.useState(false);
 
@@ -107,15 +76,6 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
-
-  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    await importDataSmart(file);
-    // Reset file input
-    e.target.value = '';
-  };
 
   const isSelectionActive = selectedNoteIds.length > 0;
 
@@ -285,7 +245,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
   // Mobile Full-Width Search Header
   if (isMobileSearchActive) {
     return (
-      <header className="sticky top-0 z-40 bg-white/95 dark:bg-[#202124]/95 backdrop-blur-md border-b border-stone-200 dark:border-stone-800 px-2 sm:px-4 h-14 sm:h-16 flex items-center gap-2">
+      <header className="sticky top-0 z-40 bg-white dark:bg-[#202124] border-b border-stone-200 dark:border-stone-800 px-2 sm:px-4 h-14 sm:h-16 flex items-center gap-2 animate-in fade-in duration-100">
         <button
           type="button"
           onClick={() => {
@@ -334,21 +294,30 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
     );
   }
 
-  // Normal Header
+  // Clean, Decluttered Normal Header
   return (
-    <header className="sticky top-0 z-40 bg-white/90 dark:bg-[#202124]/90 backdrop-blur-md border-b border-stone-200 dark:border-stone-800 px-2 sm:px-4 h-14 sm:h-16 flex items-center justify-between gap-1.5 sm:gap-4">
+    <header className="sticky top-0 z-40 bg-white/95 dark:bg-[#202124]/95 backdrop-blur-md border-b border-stone-200 dark:border-stone-800 px-2 sm:px-4 h-14 sm:h-16 flex items-center justify-between gap-1.5 sm:gap-4">
       {/* Brand logo & sidebar toggle */}
       <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
         <button
           type="button"
           onClick={onToggleSidebar}
-          className="p-2 sm:p-2.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-600 dark:text-stone-300 transition-colors"
+          className="p-2 sm:p-2.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-600 dark:text-stone-300 transition-colors cursor-pointer"
           title="Main menu"
         >
           <Menu className="w-5 h-5" />
         </button>
 
-        <div onClick={() => { setEditingNote(null); setCurrentFilter('notes'); if (window.location.pathname.startsWith('/note/')) { window.history.pushState(null, '', '/'); } }} className="flex items-center gap-1.5 sm:gap-2 cursor-pointer select-none">
+        <div
+          onClick={() => {
+            setEditingNote(null);
+            setCurrentFilter('notes');
+            if (window.location.pathname.startsWith('/note/')) {
+              window.history.pushState(null, '', '/');
+            }
+          }}
+          className="flex items-center gap-1.5 sm:gap-2 cursor-pointer select-none"
+        >
           <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-amber-400 flex items-center justify-center text-white shadow-md shadow-amber-400/20">
             <span className="font-black text-lg sm:text-xl leading-none">💡</span>
           </div>
@@ -358,8 +327,8 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
         </div>
       </div>
 
-      {/* Search Bar */}
-      <div className="flex-1 min-w-[120px] max-w-2xl mx-1 sm:mx-2">
+      {/* Prominent Center Search Bar (Always visible & spacious on all screens) */}
+      <div className="flex-1 min-w-[120px] max-w-2xl mx-1 sm:mx-4">
         <div
           onClick={() => {
             if (typeof window !== 'undefined' && window.innerWidth < 640) {
@@ -409,82 +378,16 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
         </div>
       </div>
 
-      {/* Action controls */}
-      <div className="flex items-center gap-0.5 sm:gap-1 text-stone-600 dark:text-stone-300 shrink-0">
-        {/* Active Reading Stopwatch Live Bar */}
-        {activeStopwatch && (
-          <div className="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-800 dark:text-emerald-300 mr-1 sm:mr-2 text-xs font-medium animate-in fade-in">
-            <span className="relative flex h-2 w-2">
-              {activeStopwatch.isRunning && (
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              )}
-              <span className={`relative inline-flex rounded-full h-2 w-2 ${activeStopwatch.isRunning ? 'bg-emerald-500' : 'bg-amber-500'}`}></span>
-            </span>
-            <span className="hidden md:inline max-w-[110px] truncate" title={activeStopwatch.noteTitle}>
-              {activeStopwatch.noteTitle}
-            </span>
-            <span className="font-mono font-bold tracking-tight">
-              {Math.floor(activeStopwatch.elapsedSeconds / 60).toString().padStart(2, '0')}:{(activeStopwatch.elapsedSeconds % 60).toString().padStart(2, '0')}
-            </span>
-            {activeStopwatch.isRunning ? (
-              <button
-                type="button"
-                onClick={pauseReadingStopwatch}
-                className="p-1 hover:bg-emerald-500/20 rounded-full transition-colors"
-                title="Pause stopwatch"
-              >
-                <Pause className="w-3.5 h-3.5 fill-current" />
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={resumeReadingStopwatch}
-                className="p-1 hover:bg-emerald-500/20 rounded-full transition-colors"
-                title="Resume stopwatch"
-              >
-                <Play className="w-3.5 h-3.5 fill-current" />
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={async () => {
-                await stopAndSaveReadingStopwatch();
-              }}
-              className="px-2 py-0.5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-semibold transition-colors"
-              title="Stop and save reading session"
-            >
-              Stop
-            </button>
-          </div>
-        )}
-        {/* Choose Local Paste Folder (Desktop / Tablet) */}
-        <button
-          type="button"
-          suppressHydrationWarning
-          onClick={() => setIsLocalFolderModalOpen(true)}
-          className="hidden sm:flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-full bg-amber-400/15 hover:bg-amber-400/25 text-amber-800 dark:text-amber-300 border border-amber-400/30 transition-colors text-xs font-medium mr-0.5 sm:mr-1 shrink-0"
-          title={
-            localMediaFolder
-              ? `Local Paste Folder: ${localMediaFolder} (Click to change)`
-              : 'Choose local folder for pasted images & files'
-          }
-        >
-          <FolderOpen className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400" />
-          <span suppressHydrationWarning className="hidden md:inline max-w-[120px] truncate">
-            {localMediaFolder
-              ? localMediaFolder.split(/[\\/]/).filter(Boolean).pop() || 'Local Folder'
-              : 'Choose Folder'}
-          </span>
-        </button>
-
-        {/* Layout Toggle */}
+      {/* Clean, Streamlined Action Controls */}
+      <div className="flex items-center gap-0.5 sm:gap-1.5 text-stone-600 dark:text-stone-300 shrink-0">
+        {/* Layout Toggle (Grid / List / Notion) */}
         <button
           type="button"
           onClick={() => {
             const nextMode = layoutMode === 'grid' ? 'list' : layoutMode === 'list' ? 'notion' : 'grid';
             setLayoutMode(nextMode);
           }}
-          className={`hidden sm:flex p-1.5 sm:p-2.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors shrink-0 ${
+          className={`hidden sm:flex p-1.5 sm:p-2.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors shrink-0 cursor-pointer ${
             layoutMode === 'notion' ? 'text-amber-600 dark:text-amber-400 font-semibold' : ''
           }`}
           title={
@@ -508,102 +411,17 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
         <button
           type="button"
           onClick={() => setDarkMode(!darkMode)}
-          className="p-1.5 sm:p-2.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors shrink-0"
+          className="p-1.5 sm:p-2.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors shrink-0 cursor-pointer"
           title={darkMode ? 'Light mode' : 'Dark mode'}
         >
           {darkMode ? <Sun className="w-5 h-5 text-amber-400" /> : <Moon className="w-5 h-5" />}
-        </button>
-
-        {/* Reading Stats & Graph per Day */}
-        <button
-          type="button"
-          onClick={() => {
-            if (currentFilter === 'stats') {
-              setCurrentFilter('notes');
-              if (typeof window !== 'undefined') window.history.pushState(null, '', '/');
-            } else {
-              setCurrentFilter('stats');
-              if (typeof window !== 'undefined') window.history.pushState(null, '', '/stats');
-            }
-          }}
-          className={`hidden sm:flex p-1.5 sm:p-2.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors shrink-0 ${
-            currentFilter === 'stats'
-              ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-500/10'
-              : 'text-stone-600 dark:text-stone-300'
-          }`}
-          title="Reading Stats & Daily Graph"
-        >
-          <BarChart2 className="w-5 h-5" />
-        </button>
-
-        {/* Install on Android & Mobile Toggle */}
-        <button
-          type="button"
-          onClick={() => {
-            if (canInstallPwa) {
-              promptInstallPwa();
-            } else {
-              setIsInstallModalOpen(true);
-            }
-          }}
-          className={`hidden sm:flex p-1.5 sm:p-2.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors shrink-0 ${
-            isPwaInstalled
-              ? 'text-emerald-600 dark:text-emerald-400'
-              : 'text-amber-600 dark:text-amber-400'
-          }`}
-          title={isPwaInstalled ? 'App is installed on your device ✓' : 'Install on Android / Mobile (1-tap offline app)'}
-        >
-          <Smartphone className="w-5 h-5" />
-        </button>
-
-        {/* Create Note from Date Range */}
-        <button
-          type="button"
-          onClick={() => setIsDateCompileModalOpen(true)}
-          className="hidden md:flex p-1.5 sm:p-2.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors text-blue-600 dark:text-blue-400 shrink-0"
-          title="Create note from date range (Today, 7d, 14d, 30d, 60d, 90d, 6m, 1y)"
-        >
-          <CalendarRange className="w-5 h-5" />
-        </button>
-
-        {/* Create Notion Template Hub Note */}
-        <button
-          type="button"
-          onClick={() => setIsNotionTemplateModalOpen(true)}
-          className="hidden md:flex p-1.5 sm:p-2.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors text-amber-600 dark:text-amber-400 shrink-0"
-          title="Create Notion Template Hub (Today's Notes, Days, Per Keyword)"
-        >
-          <Sparkles className="w-5 h-5" />
-        </button>
-
-        {/* Atlassian Jira Manager */}
-        <button
-          type="button"
-          onClick={() => setIsJiraModalOpen(true)}
-          className="hidden lg:flex p-1.5 sm:p-2 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors shrink-0 flex items-center justify-center font-bold text-xs"
-          title="Atlassian Jira Manager (Download tickets, API token & JQL search)"
-        >
-          <span className="w-5 h-5 rounded-md bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center font-black text-xs shadow-xs">
-            J
-          </span>
-        </button>
-        {/* Supportbench Manager */}
-        <button
-          type="button"
-          onClick={() => setIsSupportbenchModalOpen(true)}
-          className="hidden lg:flex p-1.5 sm:p-2 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors shrink-0 flex items-center justify-center font-bold text-xs"
-          title="Supportbench Manager (Download cases, API token/key & multi-case scrape)"
-        >
-          <span className="w-5 h-5 rounded-md bg-teal-600 hover:bg-teal-700 text-white flex items-center justify-center font-black text-[10px] shadow-xs">
-            SB
-          </span>
         </button>
 
         {/* Ollama Local AI Assistant & Chat */}
         <button
           type="button"
           onClick={openGeneralAiChat}
-          className="p-1.5 sm:p-2 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors shrink-0 flex items-center justify-center font-bold text-xs"
+          className="p-1.5 sm:p-2 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors shrink-0 flex items-center justify-center font-bold text-xs cursor-pointer"
           title="Ollama Local AI (Chat, Summarize, Attach Files & Ask Questions)"
         >
           <span className="w-5 h-5 rounded-md bg-gradient-to-tr from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white flex items-center justify-center shadow-xs">
@@ -611,82 +429,15 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
           </span>
         </button>
 
-        {/* Settings Dialog Toggle */}
+        {/* Settings Dialog Toggle (Hosts all tools in organized tabs) */}
         <button
           type="button"
           onClick={() => setIsSettingsOpen(true)}
-          className="p-1.5 sm:p-2.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors shrink-0"
-          title="Settings (Font size, Theme, Backup)"
+          className="p-1.5 sm:p-2.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors shrink-0 cursor-pointer"
+          title="Settings, Tools & Integrations Hub"
         >
           <SettingsIcon className="w-5 h-5" />
         </button>
-
-        {/* Google Drive Cloud Backup & Restore */}
-        <button
-          type="button"
-          onClick={() => setIsGoogleDriveModalOpen(true)}
-          className="p-2.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors text-blue-600 dark:text-blue-400 hidden sm:flex"
-          title="Google Drive Cloud Backup & Restore (Export & Import)"
-        >
-          <Cloud className="w-5 h-5" />
-        </button>
-
-        {/* Export Notes as Web Page */}
-        <button
-          type="button"
-          onClick={() => setIsWebExportModalOpen(true)}
-          className="p-2.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors text-amber-600 dark:text-amber-400 hidden sm:flex"
-          title="Export notes as Web Page (Table of Contents + separate note pages)"
-        >
-          <Globe className="w-5 h-5" />
-        </button>
-
-        {/* Export Notes to Excel */}
-        <button
-          type="button"
-          onClick={() => setIsExcelExportModalOpen(true)}
-          className="p-2.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors text-emerald-600 dark:text-emerald-400 hidden sm:flex"
-          title="Export notes to Excel (.xlsx / .csv) - All, Selected, Labels, or Categories"
-        >
-          <FileSpreadsheet className="w-5 h-5" />
-        </button>
-
-        {/* Export Notes to PDF (NotebookLM Ready) */}
-        <button
-          type="button"
-          onClick={() => setIsPdfExportModalOpen(true)}
-          className="p-2.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors text-red-600 dark:text-red-400 hidden sm:flex"
-          title="Export notes to PDF (NotebookLM ready with 200-page auto-splitting)"
-        >
-          <FileText className="w-5 h-5" />
-        </button>
-
-        {/* Export Backup Bundle (ZIP) */}
-        <button
-          type="button"
-          onClick={exportDataZip}
-          className="p-2.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors hidden md:flex"
-          title="Export notes backup archive (ZIP with images and files)"
-        >
-          <FolderDown className="w-5 h-5" />
-        </button>
-
-        {/* Intelligent Import Backup */}
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          className="p-2.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors hidden md:flex"
-          title="Intelligent import backup (ZIP, JSON, ICS, MHTML webpage)"
-        >
-          <Upload className="w-5 h-5" />
-        </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".zip,.json,.mhtml,.mht,.ics,application/zip,application/x-zip-compressed,application/json,multipart/related,message/rfc822,text/calendar"
-          onChange={handleImportFile}
-          className="hidden"
-        />
       </div>
     </header>
   );
