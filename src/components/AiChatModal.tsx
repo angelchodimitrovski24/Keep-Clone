@@ -121,7 +121,9 @@ export const AiChatModal: React.FC = () => {
   const [selectedLabelFilter, setSelectedLabelFilter] = useState<string>('');
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('');
   const [bulkSearchQuery, setBulkSearchQuery] = useState<string>('');
+  const [noteListQuickFilter, setNoteListQuickFilter] = useState<string>('');
   const [manuallyCheckedIds, setManuallyCheckedIds] = useState<Set<string>>(new Set());
+  const prevFilterKeyRef = useRef<string>('');
   const [bulkSummaryStyle, setBulkSummaryStyle] = useState<SummaryStyle>('bullet');
   const [bulkCustomPrompt, setBulkCustomPrompt] = useState<string>('');
   const [masterNoteCustomTitle, setMasterNoteCustomTitle] = useState<string>('');
@@ -166,9 +168,13 @@ export const AiChatModal: React.FC = () => {
     if (bulkSummarizeInitialNoteIds && bulkSummarizeInitialNoteIds.length > 0) {
       setBulkScope('selected');
       setManuallyCheckedIds(new Set(bulkSummarizeInitialNoteIds));
+      prevFilterKeyRef.current = 'selected:::';
     } else if (selectedNoteIds && selectedNoteIds.length > 0) {
       setBulkScope('selected');
       setManuallyCheckedIds(new Set(selectedNoteIds));
+      prevFilterKeyRef.current = 'selected:::';
+    } else {
+      setBulkScope('all');
     }
   }, [bulkSummarizeInitialNoteIds, selectedNoteIds]);
 
@@ -308,16 +314,29 @@ export const AiChatModal: React.FC = () => {
     activeNonTrashedNotes,
   ]);
 
-  // Synchronize manuallyCheckedIds whenever candidateNotesForBulk changes due to scope switch
+  // Synchronize manuallyCheckedIds ONLY when the filter criteria change (scope, category, label, or search)
+  const currentFilterKey = `${bulkScope}:${selectedLabelFilter}:${selectedCategoryFilter}:${bulkSearchQuery}`;
   useEffect(() => {
     if (isBulkRunning) return;
-    setManuallyCheckedIds(new Set(candidateNotesForBulk.map((n) => n.id)));
-  }, [candidateNotesForBulk, isBulkRunning]);
+    if (prevFilterKeyRef.current !== currentFilterKey) {
+      prevFilterKeyRef.current = currentFilterKey;
+      setManuallyCheckedIds(new Set(candidateNotesForBulk.map((n) => n.id)));
+    }
+  }, [currentFilterKey, candidateNotesForBulk, isBulkRunning]);
 
   // Final list of notes selected to be summarized in bulk
   const finalNotesToSummarize = useMemo(() => {
     return candidateNotesForBulk.filter((n) => manuallyCheckedIds.has(n.id));
   }, [candidateNotesForBulk, manuallyCheckedIds]);
+
+  // Filter candidates displayed in Section 2 if quick search filter is entered
+  const displayedCandidateNotes = useMemo(() => {
+    if (!noteListQuickFilter.trim()) return candidateNotesForBulk;
+    const q = noteListQuickFilter.toLowerCase();
+    return candidateNotesForBulk.filter(
+      (n) => (n.title || '').toLowerCase().includes(q) || (n.content || '').toLowerCase().includes(q)
+    );
+  }, [candidateNotesForBulk, noteListQuickFilter]);
 
   // Toggle individual note checkbox in bulk list
   const toggleNoteChecked = (id: string) => {
@@ -335,6 +354,18 @@ export const AiChatModal: React.FC = () => {
 
   const deselectAllBulkNotes = () => {
     setManuallyCheckedIds(new Set());
+  };
+
+  const invertBulkSelection = () => {
+    setManuallyCheckedIds((prev) => {
+      const next = new Set<string>();
+      for (const n of candidateNotesForBulk) {
+        if (!prev.has(n.id)) {
+          next.add(n.id);
+        }
+      }
+      return next;
+    });
   };
 
   // Handle Model Selection
@@ -1912,7 +1943,7 @@ The user will be able to apply your changes directly to the note with a single c
 
             {/* SECTION 2: MATCHED NOTES PREVIEW & SELECTION */}
             <div className="space-y-2">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-bold text-stone-900 dark:text-stone-100">
                     2. Notes to Summarize ({finalNotesToSummarize.length} of {candidateNotesForBulk.length} selected):
@@ -1922,7 +1953,7 @@ The user will be able to apply your changes directly to the note with a single c
                   <button
                     type="button"
                     onClick={selectAllBulkNotes}
-                    className="text-amber-600 dark:text-amber-400 font-semibold hover:underline"
+                    className="text-amber-600 dark:text-amber-400 font-semibold hover:underline cursor-pointer"
                   >
                     Select All
                   </button>
@@ -1930,12 +1961,43 @@ The user will be able to apply your changes directly to the note with a single c
                   <button
                     type="button"
                     onClick={deselectAllBulkNotes}
-                    className="text-stone-500 hover:text-stone-800 dark:hover:text-stone-200"
+                    className="text-stone-500 hover:text-stone-800 dark:hover:text-stone-200 hover:underline cursor-pointer"
                   >
                     Deselect All
                   </button>
+                  <span className="text-stone-400">·</span>
+                  <button
+                    type="button"
+                    onClick={invertBulkSelection}
+                    className="text-stone-500 hover:text-stone-800 dark:hover:text-stone-200 hover:underline cursor-pointer"
+                  >
+                    Invert
+                  </button>
                 </div>
               </div>
+
+              {/* Quick filter input if there are multiple candidate notes */}
+              {candidateNotesForBulk.length > 3 && (
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-stone-400 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={noteListQuickFilter}
+                    onChange={(e) => setNoteListQuickFilter(e.target.value)}
+                    placeholder="Quick filter notes in list below by title or text..."
+                    className="w-full pl-8 pr-8 py-1.5 rounded-lg border border-stone-200 dark:border-stone-800 bg-stone-50/50 dark:bg-[#1a1b1e]/50 text-xs text-stone-900 dark:text-stone-100 placeholder:text-stone-400 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                  />
+                  {noteListQuickFilter && (
+                    <button
+                      type="button"
+                      onClick={() => setNoteListQuickFilter('')}
+                      className="absolute right-2.5 top-2 text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 text-xs"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              )}
 
               {candidateNotesForBulk.length === 0 ? (
                 <div className="p-6 rounded-xl border border-dashed border-stone-300 dark:border-stone-700 text-center text-xs text-stone-400">
@@ -1943,24 +2005,32 @@ The user will be able to apply your changes directly to the note with a single c
                     ? 'No notes currently selected. Select notes in the main Keep grid or pick another scope above.'
                     : 'No matching notes found for this filter.'}
                 </div>
+              ) : displayedCandidateNotes.length === 0 ? (
+                <div className="p-4 rounded-xl border border-dashed border-stone-300 dark:border-stone-700 text-center text-xs text-stone-400">
+                  No notes match "{noteListQuickFilter}". Clear search to view all {candidateNotesForBulk.length} candidate notes.
+                </div>
               ) : (
-                <div className="max-h-52 overflow-y-auto border border-stone-200 dark:border-stone-800 rounded-xl divide-y divide-stone-100 dark:divide-stone-800/60 bg-stone-50/50 dark:bg-[#1a1b1e]/50">
-                  {candidateNotesForBulk.map((n) => {
+                <div className="max-h-56 overflow-y-auto border border-stone-200 dark:border-stone-800 rounded-xl divide-y divide-stone-100 dark:divide-stone-800/60 bg-stone-50/50 dark:bg-[#1a1b1e]/50">
+                  {displayedCandidateNotes.map((n) => {
                     const isChecked = manuallyCheckedIds.has(n.id);
                     return (
                       <div
                         key={n.id}
                         onClick={() => toggleNoteChecked(n.id)}
-                        className={`p-2.5 px-3 flex items-center justify-between gap-3 text-xs cursor-pointer hover:bg-stone-100 dark:hover:bg-stone-800/80 transition-colors ${
-                          isChecked ? 'bg-amber-500/5' : 'opacity-60'
+                        className={`p-2.5 px-3 flex items-center justify-between gap-3 text-xs cursor-pointer hover:bg-stone-100 dark:hover:bg-stone-800/80 transition-colors select-none ${
+                          isChecked ? 'bg-amber-500/10 font-medium' : 'opacity-60'
                         }`}
                       >
                         <div className="flex items-center gap-2.5 min-w-0">
                           <input
                             type="checkbox"
                             checked={isChecked}
-                            onChange={() => toggleNoteChecked(n.id)}
-                            className="rounded text-amber-500 focus:ring-amber-500 shrink-0 cursor-pointer"
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              toggleNoteChecked(n.id);
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            className="rounded text-amber-500 focus:ring-amber-500 shrink-0 cursor-pointer w-4 h-4"
                           />
                           <span className="font-semibold text-stone-900 dark:text-stone-100 truncate">
                             {n.title || 'Untitled Note'}
