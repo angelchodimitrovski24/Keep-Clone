@@ -1128,8 +1128,21 @@ export async function generateSinglePageWebExport(
       toggleMobileSidebar(false);
     }
 
+    function syncSearchInputs(val) {
+      const sideInput = document.getElementById('searchInput');
+      const topInput = document.getElementById('topSearchInput');
+      if (sideInput && sideInput.value !== val) sideInput.value = val;
+      if (topInput && topInput.value !== val) topInput.value = val;
+      filterNotes();
+      if (val.trim() && window.innerWidth < 1024) {
+        toggleMobileSidebar(true);
+      }
+    }
+
     function filterNotes() {
-      const query = (document.getElementById('searchInput')?.value || '').toLowerCase().trim();
+      const q1 = document.getElementById('searchInput')?.value || '';
+      const q2 = document.getElementById('topSearchInput')?.value || '';
+      const query = (q1 || q2).toLowerCase().trim();
       const items = document.querySelectorAll('.toc-item');
       let visibleCount = 0;
 
@@ -1408,11 +1421,20 @@ export async function generateMultiPageWebExportZip(
 </head>
 <body>
   <div style="max-width: 860px; margin: 0 auto; padding: 24px 20px 80px 20px;">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; padding-bottom: 12px; border-bottom: 1px solid var(--border-color);">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; padding-bottom: 12px; border-bottom: 1px solid var(--border-color); gap: 12px; flex-wrap: wrap;">
       <a href="../index.html" style="text-decoration: none; font-weight: 700; color: var(--accent-text); display: inline-flex; align-items: center; gap: 6px;">
         <span>← All Notes (Index)</span>
       </a>
-      <button onclick="window.print()" class="action-btn" style="cursor: pointer;">🖨️ Print Note</button>
+
+      <!-- Quick Search input on note page that redirects to index with query -->
+      <form action="../index.html" method="GET" style="display: flex; align-items: center; gap: 6px; flex: 1; max-width: 320px; margin: 0 12px;">
+        <input type="text" name="q" placeholder="Search all notes... (/ to focus)" style="width: 100%; padding: 6px 12px; font-size: 0.85rem; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-card); color: var(--text-main); outline: none;" />
+      </form>
+
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <button id="themeToggleBtn" class="theme-toggle-btn" onclick="toggleTheme()" title="Toggle theme">🌙</button>
+        <button onclick="window.print()" class="action-btn" style="cursor: pointer;">🖨️ Print Note</button>
+      </div>
     </div>
 
     <div class="note-header">
@@ -1435,26 +1457,70 @@ export async function generateMultiPageWebExportZip(
       ${nextBtn}
     </div>
   </div>
+  <script>
+    function initTheme() {
+      const saved = localStorage.getItem('keep_export_theme');
+      if (saved) {
+        document.documentElement.setAttribute('data-theme', saved);
+        updateThemeIcon(saved);
+      }
+    }
+    function toggleTheme() {
+      const current = document.documentElement.getAttribute('data-theme') || 'light';
+      const next = current === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      localStorage.setItem('keep_export_theme', next);
+      updateThemeIcon(next);
+    }
+    function updateThemeIcon(theme) {
+      const btn = document.getElementById('themeToggleBtn');
+      if (btn) btn.textContent = theme === 'dark' ? '☀️' : '🌙';
+    }
+    document.addEventListener('DOMContentLoaded', initTheme);
+    document.addEventListener('keydown', (e) => {
+      if (e.key === '/' && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
+        e.preventDefault();
+        document.querySelector('input[name="q"]')?.focus();
+      }
+    });
+  </script>
 </body>
 </html>`;
 
     zip.file(`notes/${note.filename}`, notePageHtml);
   }
 
-  // Generate index.html (Table of Contents Home Page)
+  // Categories in multi-page export
+  const usedCategoriesMulti = Array.from(
+    new Set(
+      notes
+        .map((n) => n.category?.trim())
+        .filter((c): c is string => Boolean(c && c.length > 0))
+    )
+  ).sort((a, b) => a.localeCompare(b));
+
+  const multiCategoryChipsHtml = usedCategoriesMulti.length > 0
+    ? `<button class="chip-btn active" onclick="filterByCategory('all', this)">All</button>` +
+      usedCategoriesMulti
+        .map((c) => `<button class="chip-btn" onclick="filterByCategory('${escapeHtml(c)}', this)">📁 ${escapeHtml(c)}</button>`)
+        .join('')
+    : '';
+
+  // Generate index.html (Table of Contents Home Page with Live Search)
   const indexCardsHtml = processedNotes
     .map(
       (n) => `
-      <a href="notes/${n.filename}" class="toc-item" style="border: 1px solid var(--border-color); margin-bottom: 10px; background: var(--bg-card);">
-        <div class="toc-item-header">
-          <span class="toc-item-title" style="font-size: 1.05rem;">${escapeHtml(n.title)}</span>
+      <a href="notes/${n.filename}" class="toc-item note-card-item" data-title="${escapeHtml(n.title.toLowerCase())}" data-category="${escapeHtml((n.category || '').toLowerCase())}" data-labels="${escapeHtml((n.labels || []).join(' ').toLowerCase())}" data-snippet="${escapeHtml(n.snippet.toLowerCase())}" style="border: 1px solid var(--border-color); margin-bottom: 10px; background: var(--bg-card); text-decoration: none; display: block; border-radius: 12px; padding: 14px 18px; transition: transform 0.1s, border-color 0.15s;">
+        <div class="toc-item-header" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
+          <span class="toc-item-title" style="font-size: 1.05rem; font-weight: 700; color: var(--text-main);">${escapeHtml(n.title)}</span>
           ${n.category ? `<span class="category-badge">📁 ${escapeHtml(n.category)}</span>` : ''}
         </div>
-        <div class="toc-item-meta" style="margin-bottom: 6px;">
+        <div class="toc-item-meta" style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 6px; display: flex; align-items: center; gap: 8px;">
           ${n.updatedAt ? `<span>${formatDate(n.updatedAt)}</span>` : ''}
           <span>• ${n.wordCount} words</span>
+          ${n.labels && n.labels.length > 0 ? `<span style="margin-left: 4px;">${n.labels.map(l => `<span class="label-pill">#${escapeHtml(l)}</span>`).join(' ')}</span>` : ''}
         </div>
-        ${n.snippet ? `<div class="toc-item-desc">${escapeHtml(n.snippet)}</div>` : ''}
+        ${n.snippet ? `<div class="toc-item-desc" style="font-size: 0.875rem; color: var(--text-muted); line-height: 1.45;">${escapeHtml(n.snippet)}</div>` : ''}
       </a>
     `
     )
@@ -1469,25 +1535,145 @@ export async function generateMultiPageWebExportZip(
   <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
-  <div style="max-width: 860px; margin: 0 auto; padding: 40px 20px 80px 20px;">
-    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 1px solid var(--border-color);">
+  <div style="max-width: 860px; margin: 0 auto; padding: 32px 20px 80px 20px;">
+    <!-- Top Header Bar -->
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; padding-bottom: 20px; border-bottom: 1px solid var(--border-color); flex-wrap: wrap; gap: 12px;">
       <div style="display: flex; align-items: center; gap: 12px;">
         <div class="sidebar-logo-icon">💡</div>
         <div>
-          <h1 style="font-size: 1.6rem; font-weight: 800;">${escapeHtml(siteTitle)}</h1>
-          <p style="font-size: 0.85rem; color: var(--text-muted);">${total} Notes Exported</p>
+          <h1 style="font-size: 1.6rem; font-weight: 800; margin: 0;">${escapeHtml(siteTitle)}</h1>
+          <p style="font-size: 0.85rem; color: var(--text-muted); margin: 2px 0 0 0;">${total} Notes Exported</p>
         </div>
       </div>
-      <button onclick="window.print()" class="action-btn" style="cursor: pointer;">🖨️ Print Index</button>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <button id="themeToggleBtn" class="theme-toggle-btn" onclick="toggleTheme()" title="Toggle theme">🌙</button>
+        <button onclick="window.print()" class="action-btn" style="cursor: pointer;">🖨️ Print Index</button>
+      </div>
     </div>
 
+    <!-- Live Search & Filtering Section -->
     <div style="margin-bottom: 24px;">
-      <h2 style="font-size: 1.15rem; font-weight: 700; margin-bottom: 12px;">Table of Contents</h2>
-      <div style="display: flex; flex-direction: column;">
+      <div class="search-box" style="padding: 0 0 16px 0; border: none; position: relative;">
+        <span class="search-icon" style="position: absolute; left: 14px; top: 14px; font-size: 1rem; pointer-events: none;">🔍</span>
+        <input
+          type="text"
+          id="searchInput"
+          class="search-input"
+          placeholder="Search all notes by title, content, category, or #label... (Press / to focus)"
+          oninput="filterMultiNotes()"
+          style="padding: 10px 14px 10px 42px; font-size: 0.95rem; border-radius: 12px; height: 44px; box-shadow: 0 2px 8px rgba(0,0,0,0.04);"
+        />
+      </div>
+
+      ${multiCategoryChipsHtml ? `<div class="filter-chips" style="padding: 0 0 16px 0;">${multiCategoryChipsHtml}</div>` : ''}
+
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;">
+        <h2 style="font-size: 1.15rem; font-weight: 700; margin: 0;">Table of Contents</h2>
+        <span id="filteredCount" style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Showing ${total} of ${total} notes</span>
+      </div>
+
+      <div id="notesContainer" style="display: flex; flex-direction: column;">
         ${indexCardsHtml}
+      </div>
+
+      <div id="emptyNotice" style="display: none; padding: 48px 20px; text-align: center; color: var(--text-muted);">
+        <div style="font-size: 2.5rem; margin-bottom: 8px;">🔍</div>
+        <p style="font-weight: 600; font-size: 1rem; margin-bottom: 4px;">No matching notes found</p>
+        <p style="font-size: 0.85rem;">Try typing another keyword, label name, or category.</p>
+        <button onclick="clearSearch()" class="action-btn" style="margin-top: 12px; cursor: pointer;">Clear Search</button>
       </div>
     </div>
   </div>
+
+  <script>
+    let currentCategory = 'all';
+
+    function initTheme() {
+      const saved = localStorage.getItem('keep_export_theme');
+      if (saved) {
+        document.documentElement.setAttribute('data-theme', saved);
+        updateThemeIcon(saved);
+      }
+    }
+
+    function toggleTheme() {
+      const current = document.documentElement.getAttribute('data-theme') || 'light';
+      const next = current === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      localStorage.setItem('keep_export_theme', next);
+      updateThemeIcon(next);
+    }
+
+    function updateThemeIcon(theme) {
+      const btn = document.getElementById('themeToggleBtn');
+      if (btn) btn.textContent = theme === 'dark' ? '☀️' : '🌙';
+    }
+
+    function filterMultiNotes() {
+      const q = (document.getElementById('searchInput')?.value || '').toLowerCase().trim();
+      const items = document.querySelectorAll('.note-card-item');
+      let visible = 0;
+
+      items.forEach(item => {
+        const title = (item.getAttribute('data-title') || '').toLowerCase();
+        const cat = (item.getAttribute('data-category') || '').toLowerCase();
+        const labels = (item.getAttribute('data-labels') || '').toLowerCase();
+        const snippet = (item.getAttribute('data-snippet') || '').toLowerCase();
+
+        const matchQ = !q || title.includes(q) || cat.includes(q) || labels.includes(q) || snippet.includes(q);
+        const matchCat = currentCategory === 'all' || cat === currentCategory.toLowerCase();
+
+        if (matchQ && matchCat) {
+          item.style.display = 'block';
+          visible++;
+        } else {
+          item.style.display = 'none';
+        }
+      });
+
+      const countEl = document.getElementById('filteredCount');
+      if (countEl) countEl.textContent = 'Showing ' + visible + ' of ${total} notes';
+
+      const emptyEl = document.getElementById('emptyNotice');
+      if (emptyEl) emptyEl.style.display = visible === 0 ? 'block' : 'none';
+    }
+
+    function filterByCategory(cat, btn) {
+      currentCategory = cat;
+      document.querySelectorAll('.chip-btn').forEach(b => b.classList.remove('active'));
+      if (btn) btn.classList.add('active');
+      filterMultiNotes();
+    }
+
+    function clearSearch() {
+      const input = document.getElementById('searchInput');
+      if (input) input.value = '';
+      currentCategory = 'all';
+      document.querySelectorAll('.chip-btn').forEach(b => b.classList.remove('active'));
+      document.querySelector('.chip-btn')?.classList.add('active');
+      filterMultiNotes();
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      initTheme();
+      const params = new URLSearchParams(window.location.search);
+      const initialQ = params.get('q');
+      if (initialQ) {
+        const input = document.getElementById('searchInput');
+        if (input) {
+          input.value = initialQ;
+          filterMultiNotes();
+        }
+      }
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === '/' && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
+        e.preventDefault();
+        document.getElementById('searchInput')?.focus();
+      }
+    });
+  </script>
 </body>
 </html>`;
 

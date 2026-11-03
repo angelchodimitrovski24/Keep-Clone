@@ -88,6 +88,23 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
   } = useKeep();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (
+        e.key === '/' &&
+        document.activeElement?.tagName !== 'INPUT' &&
+        document.activeElement?.tagName !== 'TEXTAREA' &&
+        !(document.activeElement as HTMLElement)?.isContentEditable
+      ) {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -294,10 +311,20 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
             <Search className="w-4 h-4" />
           </div>
           <input
+            ref={searchInputRef}
             type="text"
-            placeholder="Search notes..."
+            placeholder="Search notes... (Press / to focus)"
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => {
+              const val = e.target.value;
+              setSearchQuery(val);
+              if (val.trim()) {
+                setEditingNote(null);
+                if (currentFilter === 'calendar' || currentFilter === 'stats') {
+                  setCurrentFilter('notes');
+                }
+              }
+            }}
             className="w-full py-1.5 sm:py-2.5 text-xs sm:text-sm text-stone-800 dark:text-stone-100 placeholder:text-stone-400 outline-none truncate"
           />
           {searchQuery && (

@@ -69,6 +69,7 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
     isSupportbenchModalOpen,
     setIsSupportbenchModalOpen,
     setCurrentFilter,
+    searchQuery,
   } = useKeep();
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -76,6 +77,14 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
   const [noteNotFoundId, setNoteNotFoundId] = useState<string | null>(null);
   const [openTabIds, setOpenTabIds] = useState<string[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
+
+  // When search query is entered, reset active note tab to display search results in grid
+  useEffect(() => {
+    if (searchQuery.trim() && activeTabId) {
+      setActiveTabId(null);
+      setEditingNote(null);
+    }
+  }, [searchQuery, activeTabId, setEditingNote]);
 
   // Read URL parameters on mount if no initialNoteId prop was passed
   useEffect(() => {
