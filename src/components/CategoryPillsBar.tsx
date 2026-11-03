@@ -14,6 +14,8 @@ export const CategoryPillsBar: React.FC = () => {
   const {
     categories,
     notes,
+    totalActiveNotesCount,
+    categoryCounts,
     currentFilter,
     selectedCategory,
     setCurrentFilter,
@@ -50,14 +52,14 @@ export const CategoryPillsBar: React.FC = () => {
               : 'bg-black/5 dark:bg-white/10 text-stone-500'
           }`}
         >
-          {notes.filter((n) => !n.isTrash && !n.isArchived).length}
+          {totalActiveNotesCount.toLocaleString()}
         </span>
       </button>
 
       {/* Category Pills */}
       {categories.map((cat) => {
         const isActive = currentFilter === 'category' && selectedCategory === cat.name;
-        const count = notes.filter((n) => n.category === cat.name && !n.isTrash && !n.isArchived).length;
+        const count = categoryCounts[cat.name] || 0;
         const isLocked = !!cat.isLocked;
         const isUnlocked = unlockedCategoryNames.includes(cat.name.toLowerCase());
 

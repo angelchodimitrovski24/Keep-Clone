@@ -136,13 +136,7 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
     setActiveTabId(noteId);
     setEditingNote(found);
     setNoteNotFoundId(null);
-    const targetPath = `/note/${encodeURIComponent(noteId)}`;
-    if (typeof window !== 'undefined' && window.location.pathname !== targetPath) {
-      window.history.pushState({ noteId }, '', targetPath);
-    }
-    if (typeof document !== 'undefined') {
-      document.title = `${found.title || 'Untitled'} - Keep Clone`;
-    }
+    // URL and title sync handled asynchronously in useEffect
   };
 
   const closeNoteTab = (noteId: string) => {
@@ -155,18 +149,9 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
         setActiveTabId(nextActiveId);
         const nextNote = notes.find((n) => n.id === nextActiveId) || null;
         setEditingNote(nextNote);
-        if (nextNote && typeof window !== 'undefined') {
-          window.history.pushState({ noteId: nextActiveId }, '', `/note/${encodeURIComponent(nextActiveId)}`);
-          document.title = `${nextNote.title || 'Note'} - Keep Clone`;
-        }
       } else {
         setActiveTabId(null);
         setEditingNote(null);
-        if (typeof window !== 'undefined') {
-          const revertPath = currentFilter === 'calendar' ? '/calendar' : currentFilter === 'stats' ? '/stats' : '/';
-          window.history.pushState(null, '', revertPath);
-          document.title = currentFilter === 'calendar' ? 'Calendar - Keep Clone' : currentFilter === 'stats' ? 'Reading Stats - Keep Clone' : 'Google Keep Clone';
-        }
       }
     }
   };
@@ -174,13 +159,6 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
   const handleSelectMainTab = () => {
     setActiveTabId(null);
     setEditingNote(null);
-    if (typeof window !== 'undefined') {
-      const revertPath = currentFilter === 'calendar' ? '/calendar' : currentFilter === 'stats' ? '/stats' : '/';
-      if (window.location.pathname !== revertPath) {
-        window.history.pushState(null, '', revertPath);
-      }
-      document.title = currentFilter === 'calendar' ? 'Calendar - Keep Clone' : currentFilter === 'stats' ? 'Reading Stats - Keep Clone' : 'Google Keep Clone';
-    }
   };
 
   const handleNewNoteTab = async () => {
@@ -191,25 +169,37 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
     openNoteInTab(newNote.id);
   };
 
-  // Synchronize editingNote with browser URL address bar
+  // Synchronize editingNote with browser URL address bar asynchronously outside React render
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    const currentPath = window.location.pathname;
+    const timer = setTimeout(() => {
+      const currentPath = window.location.pathname;
 
-    if (activeTabId) {
-      const targetPath = `/note/${encodeURIComponent(activeTabId)}`;
-      if (currentPath !== targetPath) {
-        window.history.pushState({ noteId: activeTabId }, '', targetPath);
+      if (activeTabId) {
+        const targetPath = `/note/${encodeURIComponent(activeTabId)}`;
+        if (currentPath !== targetPath) {
+          window.history.pushState({ noteId: activeTabId }, '', targetPath);
+        }
+        const activeNote = notes.find((n) => n.id === activeTabId);
+        if (typeof document !== 'undefined') {
+          document.title = `${activeNote?.title || 'Note'} - Keep Clone`;
+        }
+      } else {
+        if (currentPath.startsWith('/note/')) {
+          const revertPath = currentFilter === 'calendar' ? '/calendar' : currentFilter === 'stats' ? '/stats' : '/';
+          if (currentPath !== revertPath) {
+            window.history.pushState(null, '', revertPath);
+          }
+          if (typeof document !== 'undefined') {
+            document.title = currentFilter === 'calendar' ? 'Calendar - Keep Clone' : currentFilter === 'stats' ? 'Reading Stats - Keep Clone' : 'Google Keep Clone';
+          }
+        }
       }
-    } else {
-      if (currentPath.startsWith('/note/')) {
-        const revertPath = currentFilter === 'calendar' ? '/calendar' : currentFilter === 'stats' ? '/stats' : '/';
-        window.history.pushState(null, '', revertPath);
-        document.title = currentFilter === 'calendar' ? 'Calendar - Keep Clone' : currentFilter === 'stats' ? 'Reading Stats - Keep Clone' : 'Google Keep Clone';
-      }
-    }
-  }, [activeTabId, currentFilter]);
+    }, 0);
+
+    return () => clearTimeout(timer);
+  }, [activeTabId, currentFilter, notes]);
 
   // Listen to browser Back / Forward buttons (popstate)
   useEffect(() => {

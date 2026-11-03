@@ -7,7 +7,7 @@ import { NotionNotesList } from './NotionNotesList';
 import { Note } from '@/types/note';
 import { Trash2, Lock, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 
-const PAGE_SIZE = 20;
+const pageSize = 20;
 
 function getPageNumbers(current: number, total: number): (number | string)[] {
   if (total <= 7) {
@@ -43,60 +43,18 @@ export const NotesGrid: React.FC<NotesGridProps> = ({
     unlockedCategoryNames,
     setUnlockCategoryModalTarget,
     isLoading,
+    currentPage,
+    pageSize,
+    totalPages,
+    totalNotesCount,
+    setCurrentPage,
   } = useKeep();
 
-  const [currentPage, setCurrentPage] = useState<number>(1);
   const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
     setIsMounted(true);
   }, []);
-
-  // Reset to page 1 whenever search query, filter view, label, or category changes
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [currentFilter, selectedLabel, selectedCategory, searchQuery]);
-
-  // Filter notes based on current view & search query, and sort by updatedAt descending
-  const filteredNotes = useMemo(() => {
-    return notes
-      .filter((note) => {
-        // 1. Trash filter check
-        if (currentFilter === 'trash') {
-          if (!note.isTrash) return false;
-        } else {
-          if (note.isTrash) return false;
-        }
-
-        // 2. View specific check
-        if (currentFilter === 'notes') {
-          if (note.isArchived) return false;
-        } else if (currentFilter === 'reminders') {
-          if (!note.reminder || note.isArchived) return false;
-        } else if (currentFilter === 'archive') {
-          if (!note.isArchived) return false;
-        } else if (currentFilter === 'label') {
-          if (!selectedLabel || !note.labels?.includes(selectedLabel)) return false;
-        } else if (currentFilter === 'category') {
-          if (!selectedCategory || note.category !== selectedCategory) return false;
-          if (note.isArchived) return false;
-        }
-
-        // 3. Search query check
-        if (searchQuery.trim()) {
-          const query = searchQuery.toLowerCase();
-          const matchesTitle = note.title?.toLowerCase().includes(query);
-          const matchesContent = note.content?.toLowerCase().includes(query);
-          const matchesTodos = note.todos?.some((t) => t.text.toLowerCase().includes(query));
-          const matchesLabels = note.labels?.some((l) => l.toLowerCase().includes(query));
-          const matchesCategory = note.category?.toLowerCase().includes(query);
-          return matchesTitle || matchesContent || matchesTodos || matchesLabels || matchesCategory;
-        }
-
-        return true;
-      })
-      .sort((a, b) => (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0));
-  }, [notes, currentFilter, selectedLabel, selectedCategory, searchQuery]);
 
   const activeCategory = useMemo(
     () => (selectedCategory ? categories.find((c) => c.name === selectedCategory) : null),
@@ -111,45 +69,28 @@ export const NotesGrid: React.FC<NotesGridProps> = ({
   // Separate pinned vs unpinned notes (relevant for notes and category view)
   const isNotesOrCategory = currentFilter === 'notes' || currentFilter === 'category';
 
-  // Order notes so pinned appear first, followed by others
-  const orderedNotes = useMemo(() => {
-    if (!isNotesOrCategory) return filteredNotes;
-    const pinned = filteredNotes.filter((n) => n.isPinned);
-    const unpinned = filteredNotes.filter((n) => !n.isPinned);
-    return [...pinned, ...unpinned];
-  }, [filteredNotes, isNotesOrCategory]);
-
-  const totalNotes = orderedNotes.length;
-  const totalPages = Math.max(1, Math.ceil(totalNotes / PAGE_SIZE));
-  const effectivePage = Math.min(currentPage, totalPages);
-
-  const startIndex = (effectivePage - 1) * PAGE_SIZE;
-  const endIndex = Math.min(startIndex + PAGE_SIZE, totalNotes);
-
-  // Exact 20 notes slice for the current page
-  const pagedNotes = useMemo(() => {
-    return orderedNotes.slice(startIndex, endIndex);
-  }, [orderedNotes, startIndex, endIndex]);
-
   const pagedPinnedNotes = useMemo(() => {
-    return isNotesOrCategory ? pagedNotes.filter((n) => n.isPinned) : [];
-  }, [pagedNotes, isNotesOrCategory]);
+    return isNotesOrCategory ? notes.filter((n) => n.isPinned) : [];
+  }, [notes, isNotesOrCategory]);
 
   const pagedUnpinnedNotes = useMemo(() => {
-    return isNotesOrCategory ? pagedNotes.filter((n) => !n.isPinned) : pagedNotes;
-  }, [pagedNotes, isNotesOrCategory]);
+    return isNotesOrCategory ? notes.filter((n) => !n.isPinned) : notes;
+  }, [notes, isNotesOrCategory]);
 
   const handlePageChange = (newPage: number) => {
-    if (newPage < 1 || newPage > totalPages || newPage === effectivePage) return;
+    if (newPage < 1 || newPage > totalPages || newPage === currentPage) return;
     setCurrentPage(newPage);
     if (typeof window !== 'undefined') {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
 
+  const startIndex = (currentPage - 1) * pageSize;
+  const endIndex = Math.min(startIndex + pageSize, totalNotesCount);
+
   const pageNumbers = useMemo(() => {
-    return getPageNumbers(effectivePage, totalPages);
-  }, [effectivePage, totalPages]);
+    return getPageNumbers(currentPage, totalPages);
+  }, [currentPage, totalPages]);
 
   const gridLayoutClasses =
     layoutMode === 'grid'
@@ -214,7 +155,7 @@ export const NotesGrid: React.FC<NotesGridProps> = ({
         {currentFilter === 'trash' && (
           <div className="max-w-3xl mx-auto flex items-center justify-between p-3 mb-4 bg-stone-100 dark:bg-stone-800/60 rounded-xl text-stone-600 dark:text-stone-300 text-sm italic">
             <span>Notes in Trash are kept local. You can empty it anytime.</span>
-            {filteredNotes.length > 0 && (
+            {totalNotesCount > 0 && (
               <button
                 type="button"
                 onClick={emptyTrash}
@@ -232,14 +173,14 @@ export const NotesGrid: React.FC<NotesGridProps> = ({
           <div className="max-w-3xl mx-auto flex items-center justify-between pb-3 mb-3 border-b border-stone-200 dark:border-stone-800 text-xs text-stone-500">
             <span>
               Showing <strong className="text-stone-800 dark:text-stone-200">{startIndex + 1}–{endIndex}</strong> of{' '}
-              <strong className="text-stone-800 dark:text-stone-200">{totalNotes}</strong> notes
+              <strong className="text-stone-800 dark:text-stone-200">{totalNotesCount}</strong> notes
             </span>
-            <span>Page {effectivePage} of {totalPages} (20 per page)</span>
+            <span>Page {currentPage} of {totalPages} (20 per page)</span>
           </div>
         )}
 
         <NotionNotesList
-          notes={pagedNotes}
+          notes={notes}
           onSelectNote={onSelectNote}
           onOpenDrawingModal={onOpenDrawingModal}
         />
@@ -248,15 +189,15 @@ export const NotesGrid: React.FC<NotesGridProps> = ({
         {totalPages > 1 && (
           <div className="max-w-3xl mx-auto mt-6 flex flex-col sm:flex-row items-center justify-between gap-3 p-3 rounded-2xl bg-stone-100 dark:bg-stone-800/60 border border-stone-200 dark:border-stone-700 shadow-2xs">
             <span className="text-xs text-stone-600 dark:text-stone-300">
-              Page <strong>{effectivePage}</strong> of <strong>{totalPages}</strong> ({PAGE_SIZE} notes per page)
+              Page <strong>{currentPage}</strong> of <strong>{totalPages}</strong> ({pageSize} notes per page)
             </span>
             <div className="flex items-center gap-1">
               <button
                 type="button"
-                onClick={() => handlePageChange(effectivePage - 1)}
-                disabled={effectivePage <= 1}
+                onClick={() => handlePageChange(currentPage - 1)}
+                disabled={currentPage <= 1}
                 className={`p-1.5 rounded-lg text-xs font-medium flex items-center gap-1 transition-colors ${
-                  effectivePage <= 1
+                  currentPage <= 1
                     ? 'text-stone-400 dark:text-stone-600 cursor-not-allowed'
                     : 'text-stone-700 dark:text-stone-200 hover:bg-stone-200 dark:hover:bg-stone-700 cursor-pointer'
                 }`}
@@ -276,7 +217,7 @@ export const NotesGrid: React.FC<NotesGridProps> = ({
                       type="button"
                       onClick={() => handlePageChange(Number(p))}
                       className={`min-w-8 h-8 px-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                        effectivePage === p
+                        currentPage === p
                           ? 'bg-amber-500 text-stone-950 font-bold shadow-xs'
                           : 'text-stone-700 dark:text-stone-200 hover:bg-stone-200 dark:hover:bg-stone-700'
                       }`}
@@ -288,10 +229,10 @@ export const NotesGrid: React.FC<NotesGridProps> = ({
               </div>
               <button
                 type="button"
-                onClick={() => handlePageChange(effectivePage + 1)}
-                disabled={effectivePage >= totalPages}
+                onClick={() => handlePageChange(currentPage + 1)}
+                disabled={currentPage >= totalPages}
                 className={`p-1.5 rounded-lg text-xs font-medium flex items-center gap-1 transition-colors ${
-                  effectivePage >= totalPages
+                  currentPage >= totalPages
                     ? 'text-stone-400 dark:text-stone-600 cursor-not-allowed'
                     : 'text-stone-700 dark:text-stone-200 hover:bg-stone-200 dark:hover:bg-stone-700 cursor-pointer'
                 }`}
@@ -312,7 +253,7 @@ export const NotesGrid: React.FC<NotesGridProps> = ({
       {currentFilter === 'trash' && (
         <div className="flex items-center justify-between p-3 mb-6 bg-stone-100 dark:bg-stone-800/60 rounded-xl text-stone-600 dark:text-stone-300 text-sm italic">
           <span>Notes in Trash are kept local. You can empty it anytime.</span>
-          {filteredNotes.length > 0 && (
+          {totalNotesCount > 0 && (
             <button
               type="button"
               onClick={emptyTrash}
@@ -326,7 +267,7 @@ export const NotesGrid: React.FC<NotesGridProps> = ({
       )}
 
       {/* Empty State */}
-      {filteredNotes.length === 0 && (
+      {totalNotesCount === 0 && (
         <div className="flex flex-col items-center justify-center py-20 text-stone-400 select-none">
           <div className="text-6xl mb-4">
             {currentFilter === 'notes' && '💡'}
@@ -350,17 +291,17 @@ export const NotesGrid: React.FC<NotesGridProps> = ({
         <div className="flex items-center justify-between pb-3 mb-4 px-2 text-xs text-stone-500 border-b border-stone-200/60 dark:border-stone-800/60">
           <span className="flex items-center gap-1.5">
             Showing <strong className="text-stone-800 dark:text-stone-200">{startIndex + 1}–{endIndex}</strong> of{' '}
-            <strong className="text-stone-800 dark:text-stone-200">{totalNotes}</strong> notes
+            <strong className="text-stone-800 dark:text-stone-200">{totalNotesCount}</strong> notes
           </span>
           <div className="flex items-center gap-3">
-            <span className="hidden sm:inline">Page {effectivePage} of {totalPages} (20 notes/page)</span>
+            <span className="hidden sm:inline">Page {currentPage} of {totalPages} (20 notes/page)</span>
             <div className="flex items-center gap-1">
               <button
                 type="button"
-                onClick={() => handlePageChange(effectivePage - 1)}
-                disabled={effectivePage <= 1}
+                onClick={() => handlePageChange(currentPage - 1)}
+                disabled={currentPage <= 1}
                 className={`p-1 rounded-md transition-colors ${
-                  effectivePage <= 1
+                  currentPage <= 1
                     ? 'text-stone-300 dark:text-stone-700 cursor-not-allowed'
                     : 'text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700 cursor-pointer'
                 }`}
@@ -368,13 +309,13 @@ export const NotesGrid: React.FC<NotesGridProps> = ({
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
-              <span className="font-semibold text-stone-700 dark:text-stone-300 px-1 text-xs">{effectivePage}/{totalPages}</span>
+              <span className="font-semibold text-stone-700 dark:text-stone-300 px-1 text-xs">{currentPage}/{totalPages}</span>
               <button
                 type="button"
-                onClick={() => handlePageChange(effectivePage + 1)}
-                disabled={effectivePage >= totalPages}
+                onClick={() => handlePageChange(currentPage + 1)}
+                disabled={currentPage >= totalPages}
                 className={`p-1 rounded-md transition-colors ${
-                  effectivePage >= totalPages
+                  currentPage >= totalPages
                     ? 'text-stone-300 dark:text-stone-700 cursor-not-allowed'
                     : 'text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700 cursor-pointer'
                 }`}
@@ -432,15 +373,20 @@ export const NotesGrid: React.FC<NotesGridProps> = ({
       {totalPages > 1 && (
         <div className="mt-10 mb-6 flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 rounded-2xl bg-stone-100/90 dark:bg-stone-800/80 border border-stone-200 dark:border-stone-700 shadow-2xs backdrop-blur-xs">
           <div className="text-xs font-medium text-stone-500 dark:text-stone-400">
-            Showing <span className="font-semibold text-stone-800 dark:text-stone-200">{startIndex + 1}–{endIndex}</span> of{' '}
-            <span className="font-semibold text-stone-800 dark:text-stone-200">{totalNotes}</span> notes
+            Showing{' '}
+            <span className="font-semibold text-stone-800 dark:text-stone-200">
+              {totalNotesCount > 0 ? (currentPage - 1) * pageSize + 1 : 0}–{Math.min(currentPage * pageSize, totalNotesCount)}
+            </span>{' '}
+            of{' '}
+            <span className="font-semibold text-stone-800 dark:text-stone-200">{totalNotesCount.toLocaleString()}</span> notes
             <span className="mx-2 text-stone-300 dark:text-stone-600">•</span>
-            Page <span className="font-semibold text-stone-800 dark:text-stone-200">{effectivePage}</span> of {totalPages}
+            Page <span className="font-semibold text-stone-800 dark:text-stone-200">{currentPage}</span> of{' '}
+            <span className="font-semibold text-stone-800 dark:text-stone-200">{totalPages.toLocaleString()}</span>
           </div>
 
           <div className="flex items-center gap-1">
             {/* First Page */}
-            {effectivePage > 2 && (
+            {currentPage > 2 && (
               <button
                 type="button"
                 onClick={() => handlePageChange(1)}
@@ -454,10 +400,10 @@ export const NotesGrid: React.FC<NotesGridProps> = ({
             {/* Prev Page */}
             <button
               type="button"
-              onClick={() => handlePageChange(effectivePage - 1)}
-              disabled={effectivePage <= 1}
+              onClick={() => handlePageChange(currentPage - 1)}
+              disabled={currentPage <= 1}
               className={`px-2.5 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1 transition-colors ${
-                effectivePage <= 1
+                currentPage <= 1
                   ? 'text-stone-400 dark:text-stone-600 cursor-not-allowed'
                   : 'text-stone-700 dark:text-stone-200 hover:bg-stone-200 dark:hover:bg-stone-700 cursor-pointer'
               }`}
@@ -480,7 +426,7 @@ export const NotesGrid: React.FC<NotesGridProps> = ({
                     type="button"
                     onClick={() => handlePageChange(Number(p))}
                     className={`min-w-8 h-8 px-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                      effectivePage === p
+                      currentPage === p
                         ? 'bg-amber-500 text-stone-950 font-bold shadow-xs'
                         : 'text-stone-700 dark:text-stone-200 hover:bg-stone-200 dark:hover:bg-stone-700'
                     }`}
@@ -494,10 +440,10 @@ export const NotesGrid: React.FC<NotesGridProps> = ({
             {/* Next Page */}
             <button
               type="button"
-              onClick={() => handlePageChange(effectivePage + 1)}
-              disabled={effectivePage >= totalPages}
+              onClick={() => handlePageChange(currentPage + 1)}
+              disabled={currentPage >= totalPages}
               className={`px-2.5 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1 transition-colors ${
-                effectivePage >= totalPages
+                currentPage >= totalPages
                   ? 'text-stone-400 dark:text-stone-600 cursor-not-allowed'
                   : 'text-stone-700 dark:text-stone-200 hover:bg-stone-200 dark:hover:bg-stone-700 cursor-pointer'
               }`}
@@ -508,7 +454,7 @@ export const NotesGrid: React.FC<NotesGridProps> = ({
             </button>
 
             {/* Last Page */}
-            {effectivePage < totalPages - 1 && (
+            {currentPage < totalPages - 1 && (
               <button
                 type="button"
                 onClick={() => handlePageChange(totalPages)}

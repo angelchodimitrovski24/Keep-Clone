@@ -4,6 +4,13 @@ import React, { createContext, useContext, useEffect, useState, useCallback, use
 import { Note, NoteVersion, Label, Category, ViewFilter, LayoutViewMode, FontSizeOption, AppThemeMode, ReadingSession, ActiveStopwatch, CalendarItem, CalendarEvent, CalendarTask, CalendarReminderNotice } from '@/types/note';
 import {
   getAllNotesFromDB,
+  getNoteByIdFromDB,
+  getNotesPagedFromDB,
+  getNotesCountsSummaryFromDB,
+  bulkInsertBenchmarkNotes,
+  clearBenchmarkNotesFromDB,
+  getBenchmarkNotesCountFromDB,
+  getDatabaseStatsFromDB,
   getAllLabelsFromDB,
   getAllCategoriesFromDB,
   saveCategoryToDB,
@@ -95,6 +102,28 @@ interface KeepContextType {
   setBulkSummarizeInitialNoteIds: (ids: string[]) => void;
   openBulkSummarize: (initialNoteIds?: string[]) => void;
   sharingNote: Note | null;
+
+  // 1-Million Notes Scalability & Paging
+  currentPage: number;
+  pageSize: number;
+  totalPages: number;
+  totalNotesCount: number;
+  totalActiveNotesCount: number;
+  categoryCounts: Record<string, number>;
+  setCurrentPage: (page: number) => void;
+  setPageSize: (size: number) => void;
+  getNoteById: (id: string) => Promise<Note | undefined>;
+  refreshNotesList: () => Promise<void>;
+  databaseStats: {
+    totalNotes: number;
+    benchmarkNotes: number;
+    activeNotes: number;
+    labelsCount: number;
+    categoriesCount: number;
+  } | null;
+  refreshDatabaseStats: () => Promise<void>;
+  runBenchmarkGeneration: (count: number, onProgress?: (done: number, total: number) => void) => Promise<void>;
+  clearBenchmarkNotes: (onProgress?: (done: number) => void) => Promise<number>;
 
   // Setters
   setCurrentFilter: (filter: ViewFilter, paramName?: string) => void;
@@ -222,6 +251,19 @@ export function KeepProvider({
   initialFilter?: ViewFilter;
 }) {
   const [notes, setNotes] = useState<Note[]>([]);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(30);
+  const [totalPages, setTotalPages] = useState<number>(1);
+  const [totalNotesCount, setTotalNotesCount] = useState<number>(0);
+  const [totalActiveNotesCount, setTotalActiveNotesCount] = useState<number>(0);
+  const [categoryCounts, setCategoryCounts] = useState<Record<string, number>>({});
+  const [databaseStats, setDatabaseStats] = useState<{
+    totalNotes: number;
+    benchmarkNotes: number;
+    activeNotes: number;
+    labelsCount: number;
+    categoriesCount: number;
+  } | null>(null);
   const [labels, setLabels] = useState<Label[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [readingSessions, setReadingSessions] = useState<ReadingSession[]>([]);
@@ -234,7 +276,11 @@ export function KeepProvider({
   const [currentFilter, setCurrentFilterState] = useState<ViewFilter>(initialFilter);
   const [selectedLabel, setSelectedLabel] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQueryState] = useState('');
+  const setSearchQuery = useCallback((query: string) => {
+    setSearchQueryState(query);
+    setCurrentPage(1);
+  }, []);
   const [layoutMode, setLayoutModeState] = useState<LayoutViewMode>('grid');
   const [darkMode, setDarkModeState] = useState(false);
   const [themeMode, setThemeModeState] = useState<AppThemeMode>('system');
@@ -364,7 +410,7 @@ export function KeepProvider({
     try {
       setIsLoading(true);
       const [
-        storedNotes,
+        pagedResult,
         storedLabels,
         storedCategories,
         storedLayout,
@@ -375,7 +421,7 @@ export function KeepProvider({
         storedReadingSessions,
         storedCalendarItems,
       ] = await Promise.all([
-        getAllNotesFromDB(),
+        getNotesPagedFromDB({ filter: 'notes', page: 1, pageSize: 30 }),
         getAllLabelsFromDB(),
         getAllCategoriesFromDB(),
         getSettingFromDB<LayoutViewMode>('layoutMode', 'grid'),
@@ -386,6 +432,18 @@ export function KeepProvider({
         getAllReadingSessionsFromDB(),
         getAllCalendarItemsFromDB(),
       ]);
+
+      const storedNotes = pagedResult.notes;
+      setTotalNotesCount(pagedResult.totalCount);
+      setTotalPages(pagedResult.totalPages);
+
+      // Fast summary counts via index
+      getNotesCountsSummaryFromDB(storedCategories.map((c) => c.name)).then((counts) => {
+        setTotalActiveNotesCount(counts.totalActive);
+        setCategoryCounts(counts.byCategory);
+      }).catch(() => {});
+
+      getDatabaseStatsFromDB().then((stats) => setDatabaseStats(stats)).catch(() => {});
 
       // Initialize in-memory blob URLs from offline IndexedDB media store
       await initLocalMediaCache().catch(() => {});
@@ -466,7 +524,7 @@ export function KeepProvider({
       }
 
       // Seed with sample welcome notes if empty
-      if (storedNotes.length === 0 && storedLabels.length === 0) {
+      if (pagedResult.totalCount === 0 && storedLabels.length === 0) {
         const welcomeLabel: Label = {
           id: 'label-' + Date.now(),
           name: 'Welcome',
@@ -599,6 +657,90 @@ export function KeepProvider({
     loadInitialData();
   }, [loadInitialData]);
 
+  // 1-Million Scalable Helper: lookup note from visible memory or O(1) IndexedDB read
+  const getNoteById = useCallback(
+    async (id: string): Promise<Note | undefined> => {
+      const fromMem = notes.find((n) => n.id === id);
+      if (fromMem) return fromMem;
+      if (editingNote && editingNote.id === id) return editingNote;
+      return await getNoteByIdFromDB(id);
+    },
+    [notes, editingNote]
+  );
+
+  // Refresh current visible page slice and metadata
+  const refreshNotesList = useCallback(async () => {
+    try {
+      const res = await getNotesPagedFromDB({
+        filter: currentFilter,
+        category: selectedCategory,
+        label: selectedLabel,
+        searchQuery,
+        page: currentPage,
+        pageSize,
+      });
+      setNotes(res.notes);
+      setTotalNotesCount(res.totalCount);
+      setTotalPages(res.totalPages);
+
+      const catNames = categories.map((c) => c.name);
+      const summary = await getNotesCountsSummaryFromDB(catNames);
+      setTotalActiveNotesCount(summary.totalActive);
+      setCategoryCounts(summary.byCategory);
+
+      const stats = await getDatabaseStatsFromDB();
+      setDatabaseStats(stats);
+    } catch (err) {
+      console.warn('refreshNotesList error:', err);
+    }
+  }, [currentFilter, selectedCategory, selectedLabel, searchQuery, currentPage, pageSize, categories]);
+
+  // Auto-fetch paged notes slice whenever navigation, search, or pagination changes
+  useEffect(() => {
+    if (isLoading) return;
+    const timer = setTimeout(() => {
+      getNotesPagedFromDB({
+        filter: currentFilter,
+        category: selectedCategory,
+        label: selectedLabel,
+        searchQuery,
+        page: currentPage,
+        pageSize,
+      })
+        .then((res) => {
+          setNotes(res.notes);
+          setTotalNotesCount(res.totalCount);
+          setTotalPages(res.totalPages);
+        })
+        .catch(() => {});
+    }, searchQuery ? 120 : 0);
+
+    return () => clearTimeout(timer);
+  }, [currentFilter, selectedCategory, selectedLabel, searchQuery, currentPage, pageSize, isLoading]);
+
+  // Database stats and benchmark runner
+  const refreshDatabaseStats = useCallback(async () => {
+    const stats = await getDatabaseStatsFromDB();
+    setDatabaseStats(stats);
+  }, []);
+
+  const runBenchmarkGeneration = useCallback(
+    async (count: number, onProgress?: (done: number, total: number) => void) => {
+      await bulkInsertBenchmarkNotes(count, onProgress);
+      await refreshNotesList();
+    },
+    [refreshNotesList]
+  );
+
+  const clearBenchmarkNotes = useCallback(
+    async (onProgress?: (deleted: number) => void): Promise<number> => {
+      const deleted = await clearBenchmarkNotesFromDB(onProgress);
+      await refreshNotesList();
+      return deleted;
+    },
+    [refreshNotesList]
+  );
+
   // Listen to OS theme changes when themeMode is 'system'
   useEffect(() => {
     if (themeMode !== 'system' || typeof window === 'undefined') return;
@@ -619,6 +761,7 @@ export function KeepProvider({
   const setCurrentFilter = useCallback(
     (filter: ViewFilter, paramName?: string) => {
       setCurrentFilterState(filter);
+      setCurrentPage(1);
       if (filter === 'label') {
         setSelectedLabel(paramName || null);
         setSelectedCategory(null);
@@ -1823,6 +1966,20 @@ export function KeepProvider({
       promptInstallPwa,
       sharingNote,
       setSharingNote,
+      currentPage,
+      pageSize,
+      totalPages,
+      totalNotesCount,
+      totalActiveNotesCount,
+      categoryCounts,
+      setCurrentPage,
+      setPageSize,
+      getNoteById,
+      refreshNotesList,
+      databaseStats,
+      refreshDatabaseStats,
+      runBenchmarkGeneration,
+      clearBenchmarkNotes,
       setCurrentFilter,
       setSearchQuery,
       setLayoutMode,

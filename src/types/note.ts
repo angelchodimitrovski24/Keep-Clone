@@ -73,6 +73,7 @@ export interface Note {
   createdAt: number;
   updatedAt: number;
   order: number;
+  isBenchmark?: boolean;
 }
 
 export interface ReadingSession {
