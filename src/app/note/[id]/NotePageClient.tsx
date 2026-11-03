@@ -1,8 +1,12 @@
 'use client';
 
 import React, { Suspense } from 'react';
+import dynamic from 'next/dynamic';
 import { KeepProvider } from '@/context/KeepContext';
-import { KeepApp } from '@/components/KeepApp';
+
+const KeepApp = dynamic(() => import('@/components/KeepApp').then((mod) => mod.KeepApp), {
+  ssr: false,
+});
 
 interface NotePageClientProps {
   noteId: string;

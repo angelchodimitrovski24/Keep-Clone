@@ -32,6 +32,7 @@ import {
   GitMerge,
   Globe,
   FileSpreadsheet,
+  ArrowLeft,
 } from 'lucide-react';
 import { useKeep } from '@/context/KeepContext';
 import { NOTE_COLORS } from '@/lib/constants';
@@ -89,6 +90,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const [isMobileSearchActive, setIsMobileSearchActive] = React.useState(false);
 
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -280,6 +282,58 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
     );
   }
 
+  // Mobile Full-Width Search Header
+  if (isMobileSearchActive) {
+    return (
+      <header className="sticky top-0 z-40 bg-white/95 dark:bg-[#202124]/95 backdrop-blur-md border-b border-stone-200 dark:border-stone-800 px-2 sm:px-4 h-14 sm:h-16 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            setIsMobileSearchActive(false);
+          }}
+          className="p-2 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-600 dark:text-stone-300 transition-colors shrink-0"
+          title="Back"
+          aria-label="Back"
+        >
+          <ArrowLeft className="w-5 h-5" />
+        </button>
+
+        <div className="relative flex-1 flex items-center bg-stone-100 dark:bg-[#2c2d30] border border-stone-300 dark:border-stone-600 rounded-xl transition-all shadow-xs">
+          <div className="pl-3 pr-2 text-stone-500 pointer-events-none">
+            <Search className="w-4 h-4 shrink-0" />
+          </div>
+          <input
+            autoFocus
+            type="text"
+            placeholder="Search notes..."
+            value={searchQuery}
+            onChange={(e) => {
+              const val = e.target.value;
+              setSearchQuery(val);
+              if (val.trim()) {
+                setEditingNote(null);
+                if (currentFilter === 'calendar' || currentFilter === 'stats') {
+                  setCurrentFilter('notes');
+                }
+              }
+            }}
+            className="w-full py-2 text-sm text-stone-800 dark:text-stone-100 placeholder:text-stone-400 outline-none bg-transparent"
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              className="p-1.5 mr-2 rounded-full hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-400 shrink-0"
+              title="Clear search"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+      </header>
+    );
+  }
+
   // Normal Header
   return (
     <header className="sticky top-0 z-40 bg-white/90 dark:bg-[#202124]/90 backdrop-blur-md border-b border-stone-200 dark:border-stone-800 px-2 sm:px-4 h-14 sm:h-16 flex items-center justify-between gap-1.5 sm:gap-4">
@@ -305,16 +359,28 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
       </div>
 
       {/* Search Bar */}
-      <div className="flex-1 min-w-0 max-w-2xl mx-1 sm:mx-2">
-        <div className="relative flex items-center w-full bg-stone-100 dark:bg-[#2c2d30] hover:bg-stone-200/70 dark:hover:bg-[#343538] focus-within:bg-white dark:focus-within:bg-[#202124] focus-within:shadow-md focus-within:border-stone-300 dark:focus-within:border-stone-600 border border-transparent rounded-xl transition-all">
+      <div className="flex-1 min-w-[120px] max-w-2xl mx-1 sm:mx-2">
+        <div
+          onClick={() => {
+            if (typeof window !== 'undefined' && window.innerWidth < 640) {
+              setIsMobileSearchActive(true);
+            }
+          }}
+          className="relative flex items-center w-full bg-stone-100 dark:bg-[#2c2d30] hover:bg-stone-200/70 dark:hover:bg-[#343538] focus-within:bg-white dark:focus-within:bg-[#202124] focus-within:shadow-md focus-within:border-stone-300 dark:focus-within:border-stone-600 border border-transparent rounded-xl transition-all cursor-pointer sm:cursor-auto"
+        >
           <div className="pl-2.5 sm:pl-3.5 pr-1.5 sm:pr-2 text-stone-500 pointer-events-none">
-            <Search className="w-4 h-4" />
+            <Search className="w-4 h-4 shrink-0" />
           </div>
           <input
             ref={searchInputRef}
             type="text"
             placeholder="Search notes... (Press / to focus)"
             value={searchQuery}
+            onFocus={() => {
+              if (typeof window !== 'undefined' && window.innerWidth < 640) {
+                setIsMobileSearchActive(true);
+              }
+            }}
             onChange={(e) => {
               const val = e.target.value;
               setSearchQuery(val);
@@ -325,13 +391,17 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
                 }
               }
             }}
-            className="w-full py-1.5 sm:py-2.5 text-xs sm:text-sm text-stone-800 dark:text-stone-100 placeholder:text-stone-400 outline-none truncate"
+            className="w-full py-1.5 sm:py-2.5 text-xs sm:text-sm text-stone-800 dark:text-stone-100 placeholder:text-stone-400 outline-none truncate bg-transparent"
           />
           {searchQuery && (
             <button
               type="button"
-              onClick={() => setSearchQuery('')}
-              className="p-1 sm:p-1.5 mr-1.5 sm:mr-2 rounded-full hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-400"
+              onClick={(e) => {
+                e.stopPropagation();
+                setSearchQuery('');
+              }}
+              className="p-1 sm:p-1.5 mr-1.5 sm:mr-2 rounded-full hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-400 shrink-0"
+              title="Clear search"
             >
               <X className="w-4 h-4" />
             </button>
@@ -343,7 +413,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
       <div className="flex items-center gap-0.5 sm:gap-1 text-stone-600 dark:text-stone-300 shrink-0">
         {/* Active Reading Stopwatch Live Bar */}
         {activeStopwatch && (
-          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-800 dark:text-emerald-300 mr-1 sm:mr-2 text-xs font-medium animate-in fade-in">
+          <div className="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-800 dark:text-emerald-300 mr-1 sm:mr-2 text-xs font-medium animate-in fade-in">
             <span className="relative flex h-2 w-2">
               {activeStopwatch.isRunning && (
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -414,7 +484,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
             const nextMode = layoutMode === 'grid' ? 'list' : layoutMode === 'list' ? 'notion' : 'grid';
             setLayoutMode(nextMode);
           }}
-          className={`p-1.5 sm:p-2.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors shrink-0 ${
+          className={`hidden sm:flex p-1.5 sm:p-2.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors shrink-0 ${
             layoutMode === 'notion' ? 'text-amber-600 dark:text-amber-400 font-semibold' : ''
           }`}
           title={
@@ -456,7 +526,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
               if (typeof window !== 'undefined') window.history.pushState(null, '', '/stats');
             }
           }}
-          className={`p-1.5 sm:p-2.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors shrink-0 ${
+          className={`hidden sm:flex p-1.5 sm:p-2.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors shrink-0 ${
             currentFilter === 'stats'
               ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-500/10'
               : 'text-stone-600 dark:text-stone-300'
@@ -476,7 +546,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
               setIsInstallModalOpen(true);
             }
           }}
-          className={`p-1.5 sm:p-2.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors shrink-0 ${
+          className={`hidden sm:flex p-1.5 sm:p-2.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors shrink-0 ${
             isPwaInstalled
               ? 'text-emerald-600 dark:text-emerald-400'
               : 'text-amber-600 dark:text-amber-400'
@@ -490,7 +560,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
         <button
           type="button"
           onClick={() => setIsDateCompileModalOpen(true)}
-          className="p-1.5 sm:p-2.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors text-blue-600 dark:text-blue-400 shrink-0"
+          className="hidden md:flex p-1.5 sm:p-2.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors text-blue-600 dark:text-blue-400 shrink-0"
           title="Create note from date range (Today, 7d, 14d, 30d, 60d, 90d, 6m, 1y)"
         >
           <CalendarRange className="w-5 h-5" />
@@ -500,7 +570,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
         <button
           type="button"
           onClick={() => setIsNotionTemplateModalOpen(true)}
-          className="p-1.5 sm:p-2.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors text-amber-600 dark:text-amber-400 shrink-0"
+          className="hidden md:flex p-1.5 sm:p-2.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors text-amber-600 dark:text-amber-400 shrink-0"
           title="Create Notion Template Hub (Today's Notes, Days, Per Keyword)"
         >
           <Sparkles className="w-5 h-5" />
@@ -510,7 +580,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
         <button
           type="button"
           onClick={() => setIsJiraModalOpen(true)}
-          className="p-1.5 sm:p-2 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors shrink-0 flex items-center justify-center font-bold text-xs"
+          className="hidden lg:flex p-1.5 sm:p-2 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors shrink-0 flex items-center justify-center font-bold text-xs"
           title="Atlassian Jira Manager (Download tickets, API token & JQL search)"
         >
           <span className="w-5 h-5 rounded-md bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center font-black text-xs shadow-xs">
@@ -521,7 +591,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
         <button
           type="button"
           onClick={() => setIsSupportbenchModalOpen(true)}
-          className="p-1.5 sm:p-2 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors shrink-0 flex items-center justify-center font-bold text-xs"
+          className="hidden lg:flex p-1.5 sm:p-2 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors shrink-0 flex items-center justify-center font-bold text-xs"
           title="Supportbench Manager (Download cases, API token/key & multi-case scrape)"
         >
           <span className="w-5 h-5 rounded-md bg-teal-600 hover:bg-teal-700 text-white flex items-center justify-center font-black text-[10px] shadow-xs">
