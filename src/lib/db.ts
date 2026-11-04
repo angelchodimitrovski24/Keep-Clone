@@ -884,6 +884,74 @@ export async function deleteLabelFromDB(id: string, labelName: string): Promise<
   await tx.done;
 }
 
+/**
+ * Deletes all notes associated with a specific label.
+ * If permanent is false/omitted, notes are moved to trash (can be restored).
+ * If permanent is true, notes are completely removed from IndexedDB (including searchTokens).
+ * Returns the number of affected notes.
+ */
+export async function deleteNotesByLabelFromDB(
+  labelName: string,
+  permanent: boolean = false
+): Promise<number> {
+  const db = await getKeepDB();
+  if (!db) return 0;
+
+  const targetLabel = labelName.toLowerCase();
+  const hasSearchTokens = db.objectStoreNames.contains('searchTokens');
+  const storeNames: ('notes' | 'searchTokens')[] = hasSearchTokens ? ['notes', 'searchTokens'] : ['notes'];
+
+  let count = 0;
+  let hasMore = true;
+
+  while (hasMore) {
+    const tx = db.transaction(storeNames, 'readwrite');
+    const store = tx.objectStore('notes');
+    const searchStore = hasSearchTokens ? tx.objectStore('searchTokens') : null;
+    let batchCount = 0;
+    let cursor = await store.openCursor();
+
+    while (cursor && batchCount < 2000) {
+      const note = cursor.value;
+      const hasLabel = note.labels && note.labels.some((l: string) => l.toLowerCase() === targetLabel);
+      if (hasLabel) {
+        batchCount++;
+        count++;
+
+        if (permanent) {
+          const noteId = note.id;
+          await cursor.delete();
+          if (searchStore) {
+            try {
+              const tokenIndex = searchStore.index('by-noteId');
+              let tCursor = await tokenIndex.openKeyCursor(IDBKeyRange.only(noteId));
+              while (tCursor) {
+                await searchStore.delete(tCursor.primaryKey);
+                tCursor = await tCursor.continue();
+              }
+            } catch {}
+          }
+        } else {
+          note.isTrash = true;
+          note.trashedAt = Date.now();
+          note.isPinned = false;
+          await cursor.update(note);
+        }
+      }
+      cursor = await cursor.continue();
+    }
+
+    await tx.done;
+    if (batchCount === 0 || !cursor) {
+      hasMore = false;
+    } else {
+      await new Promise((r) => setTimeout(r, 0));
+    }
+  }
+
+  return count;
+}
+
 export async function renameLabelInDB(id: string, oldName: string, newName: string): Promise<void> {
   const db = await getKeepDB();
   if (!db) return;
@@ -940,6 +1008,73 @@ export async function deleteCategoryFromDB(id: string, categoryName: string): Pr
     cursor = await cursor.continue();
   }
   await tx.done;
+}
+
+/**
+ * Deletes all notes belonging to a specific category.
+ * If permanent is false/omitted, notes are moved to trash (can be restored).
+ * If permanent is true, notes are completely removed from IndexedDB (including searchTokens).
+ * Returns the number of affected notes.
+ */
+export async function deleteNotesByCategoryFromDB(
+  categoryName: string,
+  permanent: boolean = false
+): Promise<number> {
+  const db = await getKeepDB();
+  if (!db) return 0;
+
+  const targetCategory = categoryName.toLowerCase();
+  const hasSearchTokens = db.objectStoreNames.contains('searchTokens');
+  const storeNames: ('notes' | 'searchTokens')[] = hasSearchTokens ? ['notes', 'searchTokens'] : ['notes'];
+
+  let count = 0;
+  let hasMore = true;
+
+  while (hasMore) {
+    const tx = db.transaction(storeNames, 'readwrite');
+    const store = tx.objectStore('notes');
+    const searchStore = hasSearchTokens ? tx.objectStore('searchTokens') : null;
+    let batchCount = 0;
+    let cursor = await store.openCursor();
+
+    while (cursor && batchCount < 2000) {
+      const note = cursor.value;
+      if (note.category && note.category.toLowerCase() === targetCategory) {
+        batchCount++;
+        count++;
+
+        if (permanent) {
+          const noteId = note.id;
+          await cursor.delete();
+          if (searchStore) {
+            try {
+              const tokenIndex = searchStore.index('by-noteId');
+              let tCursor = await tokenIndex.openKeyCursor(IDBKeyRange.only(noteId));
+              while (tCursor) {
+                await searchStore.delete(tCursor.primaryKey);
+                tCursor = await tCursor.continue();
+              }
+            } catch {}
+          }
+        } else {
+          note.isTrash = true;
+          note.trashedAt = Date.now();
+          note.isPinned = false;
+          await cursor.update(note);
+        }
+      }
+      cursor = await cursor.continue();
+    }
+
+    await tx.done;
+    if (batchCount === 0 || !cursor) {
+      hasMore = false;
+    } else {
+      await new Promise((r) => setTimeout(r, 0));
+    }
+  }
+
+  return count;
 }
 
 export async function renameCategoryInDB(

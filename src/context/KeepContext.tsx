@@ -23,6 +23,8 @@ import {
   saveLabelToDB,
   deleteLabelFromDB,
   renameLabelInDB,
+  deleteNotesByLabelFromDB,
+  deleteNotesByCategoryFromDB,
   getSettingFromDB,
   saveSettingToDB,
   exportAllData,
@@ -194,11 +196,13 @@ interface KeepContextType {
   createLabel: (name: string) => Promise<Label | null>;
   deleteLabel: (id: string, name: string) => Promise<void>;
   renameLabel: (id: string, oldName: string, newName: string) => Promise<void>;
+  deleteAllNotesFromLabel: (labelName: string, permanent?: boolean) => Promise<number>;
 
   // Category CRUD & Locking
   createCategory: (name: string, color?: string, icon?: string) => Promise<Category | null>;
   updateCategory: (id: string, updates: { name: string; color?: string; icon?: string }) => Promise<void>;
   deleteCategory: (id: string, name: string) => Promise<void>;
+  deleteAllNotesFromCategory: (categoryName: string, permanent?: boolean) => Promise<number>;
   lockCategory: (categoryId: string, password: string, hint?: string) => Promise<void>;
   removeCategoryLock: (categoryId: string, password: string) => Promise<boolean>;
   unlockCategoryForSession: (categoryNameOrId: string, password: string) => Promise<boolean>;
@@ -1287,6 +1291,15 @@ export function KeepProvider({
     [selectedLabel]
   );
 
+  const deleteAllNotesFromLabel = useCallback(
+    async (labelName: string, permanent: boolean = false): Promise<number> => {
+      const affected = await deleteNotesByLabelFromDB(labelName, permanent);
+      await refreshNotesList();
+      return affected;
+    },
+    [refreshNotesList]
+  );
+
   // Categories CRUD
   const createCategory = useCallback(
     async (name: string, color?: string, icon?: string): Promise<Category | null> => {
@@ -1350,6 +1363,15 @@ export function KeepProvider({
       }
     },
     [selectedCategory, setCurrentFilter]
+  );
+
+  const deleteAllNotesFromCategory = useCallback(
+    async (categoryName: string, permanent: boolean = false): Promise<number> => {
+      const affected = await deleteNotesByCategoryFromDB(categoryName, permanent);
+      await refreshNotesList();
+      return affected;
+    },
+    [refreshNotesList]
   );
 
   const isCategoryLocked = useCallback(
@@ -2030,9 +2052,11 @@ export function KeepProvider({
       createLabel,
       deleteLabel,
       renameLabel,
+      deleteAllNotesFromLabel,
       createCategory,
       updateCategory,
       deleteCategory,
+      deleteAllNotesFromCategory,
       lockCategory,
       removeCategoryLock,
       unlockCategoryForSession,
@@ -2164,9 +2188,11 @@ export function KeepProvider({
       createLabel,
       deleteLabel,
       renameLabel,
+      deleteAllNotesFromLabel,
       createCategory,
       updateCategory,
       deleteCategory,
+      deleteAllNotesFromCategory,
       lockCategory,
       removeCategoryLock,
       unlockCategoryForSession,

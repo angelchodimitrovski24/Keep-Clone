@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useState } from 'react';
-import { X, Plus, Pencil, Trash2, Check, Folder, Lock, Unlock, Shield, AlertCircle, KeyRound, Eye, EyeOff } from 'lucide-react';
+import { X, Plus, Pencil, Trash2, Check, Folder, Lock, Unlock, Shield, AlertCircle, KeyRound, Eye, EyeOff, FolderX } from 'lucide-react';
 import { useKeep } from '@/context/KeepContext';
 import { Category } from '@/types/note';
+import { DeleteNotesConfirmModal } from './DeleteNotesConfirmModal';
 
 const PRESET_ICONS = ['📁', '💼', '👤', '💡', '💰', '🏠', '✈️', '🛒', '🎨', '💻', '⚡', '📌', '📚', '🎯', '🏋️', '🚀'];
 const PRESET_COLORS = [
@@ -33,6 +34,7 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
     createCategory,
     updateCategory,
     deleteCategory,
+    deleteAllNotesFromCategory,
     lockCategory,
     removeCategoryLock,
     isCategoryLocked,
@@ -40,6 +42,8 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
     unlockCategoryForSession,
     relockCategoryInSession,
   } = useKeep();
+
+  const [deleteNotesTarget, setDeleteNotesTarget] = useState<Category | null>(null);
 
   const [newName, setNewName] = useState('');
   const [newIcon, setNewIcon] = useState('📁');
@@ -436,11 +440,19 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleDelete(cat)}
-                          className="p-1.5 rounded-lg hover:bg-red-100 dark:hover:bg-red-950/50 text-red-600 dark:text-red-400 transition-colors"
-                          title="Delete category"
+                          onClick={() => setDeleteNotesTarget(cat)}
+                          className="p-1.5 rounded-lg hover:bg-red-100 dark:hover:bg-red-950/50 text-red-500 hover:text-red-700 transition-colors"
+                          title={`Delete all notes in "${cat.name}"`}
                         >
                           <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(cat)}
+                          className="p-1.5 rounded-lg hover:bg-stone-200 dark:hover:bg-stone-750 text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 transition-colors"
+                          title="Delete category only (keep notes)"
+                        >
+                          <FolderX className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     </div>
@@ -825,6 +837,19 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
               )}
             </div>
           </div>
+        )}
+
+        {deleteNotesTarget && (
+          <DeleteNotesConfirmModal
+            isOpen={!!deleteNotesTarget}
+            onClose={() => setDeleteNotesTarget(null)}
+            targetType="category"
+            targetName={deleteNotesTarget.name}
+            noteCount={notes.filter((n) => (n.category || '').toLowerCase() === deleteNotesTarget.name.toLowerCase()).length}
+            onConfirm={async (permanent) => {
+              await deleteAllNotesFromCategory(deleteNotesTarget.name, permanent);
+            }}
+          />
         )}
       </div>
     </div>

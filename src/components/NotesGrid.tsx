@@ -5,7 +5,8 @@ import { useKeep } from '@/context/KeepContext';
 import { NoteCard } from './NoteCard';
 import { NotionNotesList } from './NotionNotesList';
 import { Note } from '@/types/note';
-import { Trash2, Lock, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import { Trash2, Lock, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Tag } from 'lucide-react';
+import { DeleteNotesConfirmModal } from './DeleteNotesConfirmModal';
 
 const pageSize = 20;
 
@@ -48,9 +49,12 @@ export const NotesGrid: React.FC<NotesGridProps> = ({
     totalPages,
     totalNotesCount,
     setCurrentPage,
+    deleteAllNotesFromCategory,
+    deleteAllNotesFromLabel,
   } = useKeep();
 
   const [isMounted, setIsMounted] = useState(false);
+  const [deleteConfirmTarget, setDeleteConfirmTarget] = useState<{ type: 'category' | 'label'; name: string } | null>(null);
 
   useEffect(() => {
     setIsMounted(true);
@@ -148,26 +152,96 @@ export const NotesGrid: React.FC<NotesGridProps> = ({
     );
   }
 
+  const renderBanner = (maxWClass: string = 'w-full') => {
+    if (currentFilter === 'trash') {
+      return (
+        <div className={`${maxWClass} flex items-center justify-between p-3 mb-5 bg-stone-100 dark:bg-stone-800/60 rounded-xl text-stone-600 dark:text-stone-300 text-sm italic`}>
+          <span>Notes in Trash are kept local. You can empty it anytime.</span>
+          {totalNotesCount > 0 && (
+            <button
+              type="button"
+              onClick={emptyTrash}
+              className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded-lg not-italic font-medium text-xs flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Empty Trash
+            </button>
+          )}
+        </div>
+      );
+    }
+
+    if (currentFilter === 'category' && selectedCategory) {
+      return (
+        <div className={`${maxWClass} flex items-center justify-between p-3 mb-5 bg-stone-100/90 dark:bg-stone-800/60 rounded-xl text-stone-700 dark:text-stone-300 text-sm border border-stone-200/60 dark:border-stone-700/60 shadow-2xs`}>
+          <div className="flex items-center gap-2">
+            <span className="text-base">{activeCategory?.icon || '📁'}</span>
+            <span className="font-semibold text-stone-900 dark:text-stone-100">{selectedCategory}</span>
+            <span className="text-xs text-stone-400 dark:text-stone-500">• {totalNotesCount} {totalNotesCount === 1 ? 'note' : 'notes'}</span>
+          </div>
+          {totalNotesCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setDeleteConfirmTarget({ type: 'category', name: selectedCategory })}
+              className="px-2.5 py-1 bg-red-50 hover:bg-red-100 dark:bg-red-950/40 dark:hover:bg-red-900/50 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900/40 rounded-lg font-medium text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+              title={`Delete all notes in category "${selectedCategory}"`}
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Delete all notes</span>
+            </button>
+          )}
+        </div>
+      );
+    }
+
+    if (currentFilter === 'label' && selectedLabel) {
+      return (
+        <div className={`${maxWClass} flex items-center justify-between p-3 mb-5 bg-stone-100/90 dark:bg-stone-800/60 rounded-xl text-stone-700 dark:text-stone-300 text-sm border border-stone-200/60 dark:border-stone-700/60 shadow-2xs`}>
+          <div className="flex items-center gap-2">
+            <Tag className="w-4 h-4 text-amber-500" />
+            <span className="font-semibold text-stone-900 dark:text-stone-100">{selectedLabel}</span>
+            <span className="text-xs text-stone-400 dark:text-stone-500">• {totalNotesCount} {totalNotesCount === 1 ? 'note' : 'notes'}</span>
+          </div>
+          {totalNotesCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setDeleteConfirmTarget({ type: 'label', name: selectedLabel })}
+              className="px-2.5 py-1 bg-red-50 hover:bg-red-100 dark:bg-red-950/40 dark:hover:bg-red-900/50 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900/40 rounded-lg font-medium text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+              title={`Delete all notes tagged with "${selectedLabel}"`}
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Delete all notes</span>
+            </button>
+          )}
+        </div>
+      );
+    }
+
+    return null;
+  };
+
+  const confirmModal = deleteConfirmTarget ? (
+    <DeleteNotesConfirmModal
+      isOpen={!!deleteConfirmTarget}
+      onClose={() => setDeleteConfirmTarget(null)}
+      targetType={deleteConfirmTarget.type}
+      targetName={deleteConfirmTarget.name}
+      noteCount={totalNotesCount}
+      onConfirm={async (permanent) => {
+        if (deleteConfirmTarget.type === 'category') {
+          await deleteAllNotesFromCategory(deleteConfirmTarget.name, permanent);
+        } else {
+          await deleteAllNotesFromLabel(deleteConfirmTarget.name, permanent);
+        }
+      }}
+    />
+  ) : null;
+
   // Notion-style List View mode
   if (layoutMode === 'notion') {
     return (
       <div className="w-full">
-        {/* Trash View Top Notice */}
-        {currentFilter === 'trash' && (
-          <div className="max-w-3xl mx-auto flex items-center justify-between p-3 mb-4 bg-stone-100 dark:bg-stone-800/60 rounded-xl text-stone-600 dark:text-stone-300 text-sm italic">
-            <span>Notes in Trash are kept local. You can empty it anytime.</span>
-            {totalNotesCount > 0 && (
-              <button
-                type="button"
-                onClick={emptyTrash}
-                className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded-lg not-italic font-medium text-xs flex items-center gap-1.5 transition-colors shadow-sm"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                Empty Trash
-              </button>
-            )}
-          </div>
-        )}
+        {renderBanner('max-w-3xl mx-auto')}
 
         {/* Top Paging Info Bar if multiple pages */}
         {totalPages > 1 && (
@@ -244,28 +318,15 @@ export const NotesGrid: React.FC<NotesGridProps> = ({
             </div>
           </div>
         )}
+
+        {confirmModal}
       </div>
     );
   }
 
   return (
     <div className="w-full">
-      {/* Trash View Top Notice */}
-      {currentFilter === 'trash' && (
-        <div className="flex items-center justify-between p-3 mb-6 bg-stone-100 dark:bg-stone-800/60 rounded-xl text-stone-600 dark:text-stone-300 text-sm italic">
-          <span>Notes in Trash are kept local. You can empty it anytime.</span>
-          {totalNotesCount > 0 && (
-            <button
-              type="button"
-              onClick={emptyTrash}
-              className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded-lg not-italic font-medium text-xs flex items-center gap-1.5 transition-colors shadow-sm"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              Empty Trash
-            </button>
-          )}
-        </div>
-      )}
+      {renderBanner()}
 
       {/* Empty State */}
       {totalNotesCount === 0 && (
@@ -487,6 +548,8 @@ export const NotesGrid: React.FC<NotesGridProps> = ({
           </div>
         </div>
       )}
+
+      {confirmModal}
     </div>
   );
 };

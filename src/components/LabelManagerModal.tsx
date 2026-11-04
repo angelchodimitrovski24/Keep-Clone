@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { Tag, Trash2, Check, Plus, X, Pencil } from 'lucide-react';
 import { useKeep } from '@/context/KeepContext';
+import { DeleteNotesConfirmModal } from './DeleteNotesConfirmModal';
 
 interface LabelManagerModalProps {
   isOpen: boolean;
@@ -10,10 +11,11 @@ interface LabelManagerModalProps {
 }
 
 export const LabelManagerModal: React.FC<LabelManagerModalProps> = ({ isOpen, onClose }) => {
-  const { labels, createLabel, deleteLabel, renameLabel } = useKeep();
+  const { labels, notes, createLabel, deleteLabel, renameLabel, deleteAllNotesFromLabel } = useKeep();
   const [newLabelText, setNewLabelText] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editLabelText, setEditLabelText] = useState('');
+  const [deleteNotesTarget, setDeleteNotesTarget] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
@@ -131,11 +133,19 @@ export const LabelManagerModal: React.FC<LabelManagerModalProps> = ({ isOpen, on
                       </button>
                       <button
                         type="button"
-                        onClick={() => deleteLabel(lbl.id, lbl.name)}
-                        className="p-1 text-stone-400 hover:text-red-500 rounded"
-                        title="Delete"
+                        onClick={() => setDeleteNotesTarget(lbl.name)}
+                        className="p-1 text-red-400 hover:text-red-600 rounded transition-colors"
+                        title={`Delete all notes with label "${lbl.name}"`}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => deleteLabel(lbl.id, lbl.name)}
+                        className="p-1 text-stone-400 hover:text-stone-700 dark:hover:text-stone-300 rounded transition-colors"
+                        title="Delete label only (keep notes)"
+                      >
+                        <X className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   </>
@@ -154,6 +164,19 @@ export const LabelManagerModal: React.FC<LabelManagerModalProps> = ({ isOpen, on
             Done
           </button>
         </div>
+
+        {deleteNotesTarget && (
+          <DeleteNotesConfirmModal
+            isOpen={!!deleteNotesTarget}
+            onClose={() => setDeleteNotesTarget(null)}
+            targetType="label"
+            targetName={deleteNotesTarget}
+            noteCount={notes.filter((n) => (n.labels || []).some((l) => l.toLowerCase() === deleteNotesTarget.toLowerCase())).length}
+            onConfirm={async (permanent) => {
+              await deleteAllNotesFromLabel(deleteNotesTarget, permanent);
+            }}
+          />
+        )}
       </div>
     </div>
   );
