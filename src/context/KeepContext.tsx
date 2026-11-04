@@ -1294,6 +1294,25 @@ export function KeepProvider({
   const deleteAllNotesFromLabel = useCallback(
     async (labelName: string, permanent: boolean = false): Promise<number> => {
       const affected = await deleteNotesByLabelFromDB(labelName, permanent);
+      const targetLower = labelName.trim().toLowerCase();
+      const isBenchmark = targetLower === 'benchmark';
+      setNotes((prev) => {
+        if (permanent) {
+          return prev.filter(
+            (n) =>
+              !(n.labels || []).some((l) => l.trim().toLowerCase() === targetLower) &&
+              !(isBenchmark && n.isBenchmark)
+          );
+        } else {
+          return prev.map((n) => {
+            const hasLabel = (n.labels || []).some((l) => l.trim().toLowerCase() === targetLower);
+            if (hasLabel || (isBenchmark && n.isBenchmark)) {
+              return { ...n, isTrash: true, trashedAt: Date.now(), isPinned: false };
+            }
+            return n;
+          });
+        }
+      });
       await refreshNotesList();
       return affected;
     },
@@ -1368,6 +1387,28 @@ export function KeepProvider({
   const deleteAllNotesFromCategory = useCallback(
     async (categoryName: string, permanent: boolean = false): Promise<number> => {
       const affected = await deleteNotesByCategoryFromDB(categoryName, permanent);
+      const targetLower = categoryName.trim().toLowerCase();
+      const isBenchmark = targetLower === 'benchmark';
+      setNotes((prev) => {
+        if (permanent) {
+          return prev.filter(
+            (n) =>
+              (n.category || '').trim().toLowerCase() !== targetLower &&
+              !(isBenchmark && (n.isBenchmark || (n.labels || []).some((l) => l.toLowerCase() === 'benchmark')))
+          );
+        } else {
+          return prev.map((n) => {
+            const catLower = (n.category || '').trim().toLowerCase();
+            const matches =
+              catLower === targetLower ||
+              (isBenchmark && (n.isBenchmark || (n.labels || []).some((l) => l.toLowerCase() === 'benchmark')));
+            if (matches) {
+              return { ...n, isTrash: true, trashedAt: Date.now(), isPinned: false };
+            }
+            return n;
+          });
+        }
+      });
       await refreshNotesList();
       return affected;
     },

@@ -31,6 +31,7 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
   const {
     categories,
     notes,
+    categoryCounts,
     createCategory,
     updateCategory,
     deleteCategory,
@@ -845,7 +846,7 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
             onClose={() => setDeleteNotesTarget(null)}
             targetType="category"
             targetName={deleteNotesTarget.name}
-            noteCount={notes.filter((n) => (n.category || '').toLowerCase() === deleteNotesTarget.name.toLowerCase()).length}
+            noteCount={categoryCounts[deleteNotesTarget.name] ?? 0}
             onConfirm={async (permanent) => {
               await deleteAllNotesFromCategory(deleteNotesTarget.name, permanent);
             }}

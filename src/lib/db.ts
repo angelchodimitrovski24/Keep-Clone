@@ -805,46 +805,55 @@ export async function clearBenchmarkNotesFromDB(
   const db = await getKeepDB();
   if (!db) return 0;
 
-  const hasSearchTokens = db.objectStoreNames.contains('searchTokens');
-  const storeNames: ('notes' | 'searchTokens')[] = hasSearchTokens ? ['notes', 'searchTokens'] : ['notes'];
+  // 1. Gather all benchmark note IDs
+  const idsToDelete: string[] = [];
+  const readTx = db.transaction('notes', 'readonly');
+  let cursor = await readTx.store.openCursor();
+  while (cursor) {
+    if (cursor.value.isBenchmark) {
+      idsToDelete.push(cursor.value.id);
+    }
+    cursor = await cursor.continue();
+  }
+  await readTx.done;
 
+  if (idsToDelete.length === 0) return 0;
+
+  // 2. Batch delete from notes store
+  const BATCH_SIZE = 500;
   let totalDeleted = 0;
-  let hasMore = true;
 
-  while (hasMore) {
-    const tx = db.transaction(storeNames, 'readwrite');
-    const store = tx.objectStore('notes');
-    const searchStore = hasSearchTokens ? tx.objectStore('searchTokens') : null;
-    let countInBatch = 0;
-    let cursor = await store.openCursor();
-    while (cursor && countInBatch < 3000) {
-      if (cursor.value.isBenchmark) {
-        const noteId = cursor.value.id;
-        await cursor.delete();
-        countInBatch++;
-        totalDeleted++;
-
-        if (searchStore) {
-          try {
-            const tokenIndex = searchStore.index('by-noteId');
-            let tCursor = await tokenIndex.openKeyCursor(IDBKeyRange.only(noteId));
-            while (tCursor) {
-              await searchStore.delete(tCursor.primaryKey);
-              tCursor = await tCursor.continue();
-            }
-          } catch {}
-        }
-      }
-      cursor = await cursor.continue();
+  for (let i = 0; i < idsToDelete.length; i += BATCH_SIZE) {
+    const chunk = idsToDelete.slice(i, i + BATCH_SIZE);
+    const tx = db.transaction('notes', 'readwrite');
+    const store = tx.store;
+    for (const id of chunk) {
+      await store.delete(id);
     }
     await tx.done;
+    totalDeleted += chunk.length;
+    if (onProgress) onProgress(totalDeleted);
+    await new Promise((r) => setTimeout(r, 0));
+  }
 
-    if (countInBatch === 0) {
-      hasMore = false;
-    } else {
-      if (onProgress) onProgress(totalDeleted);
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    }
+  // 3. Clean up search tokens if present
+  if (db.objectStoreNames.contains('searchTokens')) {
+    try {
+      for (let i = 0; i < idsToDelete.length; i += BATCH_SIZE) {
+        const chunk = idsToDelete.slice(i, i + BATCH_SIZE);
+        const sTx = db.transaction('searchTokens', 'readwrite');
+        const sStore = sTx.store;
+        const noteIndex = sStore.index('by-noteId');
+        for (const noteId of chunk) {
+          const keys = await noteIndex.getAllKeys(IDBKeyRange.only(noteId));
+          for (const key of keys) {
+            await sStore.delete(key);
+          }
+        }
+        await sTx.done;
+        await new Promise((r) => setTimeout(r, 0));
+      }
+    } catch {}
   }
 
   return totalDeleted;
@@ -897,59 +906,80 @@ export async function deleteNotesByLabelFromDB(
   const db = await getKeepDB();
   if (!db) return 0;
 
-  const targetLabel = labelName.toLowerCase();
-  const hasSearchTokens = db.objectStoreNames.contains('searchTokens');
-  const storeNames: ('notes' | 'searchTokens')[] = hasSearchTokens ? ['notes', 'searchTokens'] : ['notes'];
+  const targetLabel = labelName.trim().toLowerCase();
+  const isBenchmarkTarget = targetLabel === 'benchmark';
 
-  let count = 0;
-  let hasMore = true;
+  // 1. Identify all matching note IDs in a single clean read pass
+  const idsToDelete: string[] = [];
+  const readTx = db.transaction('notes', 'readonly');
+  let cursor = await readTx.store.openCursor();
 
-  while (hasMore) {
-    const tx = db.transaction(storeNames, 'readwrite');
-    const store = tx.objectStore('notes');
-    const searchStore = hasSearchTokens ? tx.objectStore('searchTokens') : null;
-    let batchCount = 0;
-    let cursor = await store.openCursor();
+  while (cursor) {
+    const note = cursor.value;
+    const hasLabel = (note.labels || []).some((l) => l.trim().toLowerCase() === targetLabel);
+    const matches = hasLabel || (isBenchmarkTarget && note.isBenchmark);
 
-    while (cursor && batchCount < 2000) {
-      const note = cursor.value;
-      const hasLabel = note.labels && note.labels.some((l: string) => l.toLowerCase() === targetLabel);
-      if (hasLabel) {
-        batchCount++;
-        count++;
+    if (matches) {
+      idsToDelete.push(note.id);
+    }
+    cursor = await cursor.continue();
+  }
+  await readTx.done;
 
-        if (permanent) {
-          const noteId = note.id;
-          await cursor.delete();
-          if (searchStore) {
-            try {
-              const tokenIndex = searchStore.index('by-noteId');
-              let tCursor = await tokenIndex.openKeyCursor(IDBKeyRange.only(noteId));
-              while (tCursor) {
-                await searchStore.delete(tCursor.primaryKey);
-                tCursor = await tCursor.continue();
-              }
-            } catch {}
-          }
-        } else {
+  if (idsToDelete.length === 0) return 0;
+
+  // 2. Perform batched mutations safely without cursor state conflicts
+  const BATCH_SIZE = 500;
+  const now = Date.now();
+
+  for (let i = 0; i < idsToDelete.length; i += BATCH_SIZE) {
+    const chunk = idsToDelete.slice(i, i + BATCH_SIZE);
+    const tx = db.transaction('notes', 'readwrite');
+    const store = tx.store;
+
+    if (permanent) {
+      for (const id of chunk) {
+        await store.delete(id);
+      }
+    } else {
+      for (const id of chunk) {
+        const note = await store.get(id);
+        if (note) {
           note.isTrash = true;
-          note.trashedAt = Date.now();
+          note.trashedAt = now;
           note.isPinned = false;
-          await cursor.update(note);
+          await store.put(note);
         }
       }
-      cursor = await cursor.continue();
     }
 
     await tx.done;
-    if (batchCount === 0 || !cursor) {
-      hasMore = false;
-    } else {
-      await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+  }
+
+  // 3. Clean up search tokens if permanently deleting
+  if (permanent && db.objectStoreNames.contains('searchTokens')) {
+    try {
+      for (let i = 0; i < idsToDelete.length; i += BATCH_SIZE) {
+        const chunk = idsToDelete.slice(i, i + BATCH_SIZE);
+        const sTx = db.transaction('searchTokens', 'readwrite');
+        const sStore = sTx.store;
+        const noteIndex = sStore.index('by-noteId');
+        for (const noteId of chunk) {
+          const keys = await noteIndex.getAllKeys(IDBKeyRange.only(noteId));
+          for (const key of keys) {
+            await sStore.delete(key);
+          }
+        }
+        await sTx.done;
+        await new Promise((r) => setTimeout(r, 0));
+      }
+    } catch (err) {
+      console.warn('Non-fatal searchTokens cleanup error:', err);
     }
   }
 
-  return count;
+  return idsToDelete.length;
 }
 
 export async function renameLabelInDB(id: string, oldName: string, newName: string): Promise<void> {
@@ -1023,58 +1053,82 @@ export async function deleteNotesByCategoryFromDB(
   const db = await getKeepDB();
   if (!db) return 0;
 
-  const targetCategory = categoryName.toLowerCase();
-  const hasSearchTokens = db.objectStoreNames.contains('searchTokens');
-  const storeNames: ('notes' | 'searchTokens')[] = hasSearchTokens ? ['notes', 'searchTokens'] : ['notes'];
+  const targetCategory = categoryName.trim().toLowerCase();
+  const isBenchmarkTarget = targetCategory === 'benchmark';
 
-  let count = 0;
-  let hasMore = true;
+  // 1. Identify all matching note IDs in a single clean read pass
+  const idsToDelete: string[] = [];
+  const readTx = db.transaction('notes', 'readonly');
+  let cursor = await readTx.store.openCursor();
 
-  while (hasMore) {
-    const tx = db.transaction(storeNames, 'readwrite');
-    const store = tx.objectStore('notes');
-    const searchStore = hasSearchTokens ? tx.objectStore('searchTokens') : null;
-    let batchCount = 0;
-    let cursor = await store.openCursor();
+  while (cursor) {
+    const note = cursor.value;
+    const catLower = (note.category || '').trim().toLowerCase();
+    const matches =
+      catLower === targetCategory ||
+      (isBenchmarkTarget && (note.isBenchmark || (note.labels || []).some((l) => l.toLowerCase() === 'benchmark')));
 
-    while (cursor && batchCount < 2000) {
-      const note = cursor.value;
-      if (note.category && note.category.toLowerCase() === targetCategory) {
-        batchCount++;
-        count++;
+    if (matches) {
+      idsToDelete.push(note.id);
+    }
+    cursor = await cursor.continue();
+  }
+  await readTx.done;
 
-        if (permanent) {
-          const noteId = note.id;
-          await cursor.delete();
-          if (searchStore) {
-            try {
-              const tokenIndex = searchStore.index('by-noteId');
-              let tCursor = await tokenIndex.openKeyCursor(IDBKeyRange.only(noteId));
-              while (tCursor) {
-                await searchStore.delete(tCursor.primaryKey);
-                tCursor = await tCursor.continue();
-              }
-            } catch {}
-          }
-        } else {
+  if (idsToDelete.length === 0) return 0;
+
+  // 2. Perform batched mutations safely without cursor state conflicts
+  const BATCH_SIZE = 500;
+  const now = Date.now();
+
+  for (let i = 0; i < idsToDelete.length; i += BATCH_SIZE) {
+    const chunk = idsToDelete.slice(i, i + BATCH_SIZE);
+    const tx = db.transaction('notes', 'readwrite');
+    const store = tx.store;
+
+    if (permanent) {
+      for (const id of chunk) {
+        await store.delete(id);
+      }
+    } else {
+      for (const id of chunk) {
+        const note = await store.get(id);
+        if (note) {
           note.isTrash = true;
-          note.trashedAt = Date.now();
+          note.trashedAt = now;
           note.isPinned = false;
-          await cursor.update(note);
+          await store.put(note);
         }
       }
-      cursor = await cursor.continue();
     }
 
     await tx.done;
-    if (batchCount === 0 || !cursor) {
-      hasMore = false;
-    } else {
-      await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+  }
+
+  // 3. Clean up search tokens if permanently deleting
+  if (permanent && db.objectStoreNames.contains('searchTokens')) {
+    try {
+      for (let i = 0; i < idsToDelete.length; i += BATCH_SIZE) {
+        const chunk = idsToDelete.slice(i, i + BATCH_SIZE);
+        const sTx = db.transaction('searchTokens', 'readwrite');
+        const sStore = sTx.store;
+        const noteIndex = sStore.index('by-noteId');
+        for (const noteId of chunk) {
+          const keys = await noteIndex.getAllKeys(IDBKeyRange.only(noteId));
+          for (const key of keys) {
+            await sStore.delete(key);
+          }
+        }
+        await sTx.done;
+        await new Promise((r) => setTimeout(r, 0));
+      }
+    } catch (err) {
+      console.warn('Non-fatal searchTokens cleanup error:', err);
     }
   }
 
-  return count;
+  return idsToDelete.length;
 }
 
 export async function renameCategoryInDB(
