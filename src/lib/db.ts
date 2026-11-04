@@ -179,50 +179,75 @@ export function getKeepDB() {
 
 export function extractTokensFromText(text: string): string[] {
   if (!text) return [];
-  const words = text.toLowerCase().match(/[\p{L}\p{N}]{1,50}/gu) || [];
-  return Array.from(new Set(words));
+  const lower = text.toLowerCase();
+  const alphanumeric = lower.match(/[\p{L}\p{N}]{1,50}/gu) || [];
+  const tagged = lower.match(/[#@][\p{L}\p{N}]{1,50}/gu) || [];
+  return Array.from(new Set([...alphanumeric, ...tagged]));
 }
 
 /**
  * Checks whether a note matches a given search query.
  * Exhaustively checks Note Title, Note Content (body), Category name,
  * every Label, and every Todo/Checklist item text.
- * Also supports multi-word queries.
+ * 
+ * Supports:
+ * - Full text phrases (e.g. "Scalability & Performance")
+ * - Single words (e.g. "meeting", "benchmark")
+ * - Part of word / substrings (e.g. "999", "972", "bench", "scal")
+ * - Symbols & tagged tokens (e.g. "#99972", "99972", "#999")
+ * - Multi-word tokens across fields (e.g. "Note 99972 Work")
+ * - Case-insensitive and punctuation-normalized matching
  */
 export function noteMatchesSearchQuery(note: Note, query: string): boolean {
   if (!query || !query.trim()) return true;
-  const q = query.trim().toLowerCase();
+  const rawQ = query.trim().toLowerCase();
+  const cleanQ = rawQ.replace(/[^\p{L}\p{N}]/gu, '');
 
-  // 1. Title match
-  if (note.title && note.title.toLowerCase().includes(q)) {
+  const title = (note.title || '').toLowerCase();
+  const content = (note.content || '').toLowerCase();
+  const category = (note.category || '').toLowerCase();
+  const labels = (note.labels || []).map((l) => (l || '').toLowerCase());
+  const todos = (note.todos || []).map((t) => (t.text || '').toLowerCase());
+
+  // 1. Direct raw substring match (Full text, one word, part of word with or without symbols)
+  // E.g. "#99972" matches "Note #99972", "999" matches "Note #99972", "972" matches "Note #99972"
+  if (
+    title.includes(rawQ) ||
+    content.includes(rawQ) ||
+    category.includes(rawQ) ||
+    labels.some((l) => l.includes(rawQ)) ||
+    todos.some((t) => t.includes(rawQ))
+  ) {
     return true;
   }
 
-  // 2. Note content / body match
-  if (note.content && note.content.toLowerCase().includes(q)) {
-    return true;
+  // 2. Normalized clean match (Ignores punctuation differences like #, -, _, /, commas)
+  // E.g. Note has "Note #99972" and user searches "99972", or note has "Note 99972" and user searches "#99972"
+  if (cleanQ.length > 0) {
+    const cleanTitle = title.replace(/[^\p{L}\p{N}]/gu, '');
+    const cleanContent = content.replace(/[^\p{L}\p{N}]/gu, '');
+    const cleanCategory = category.replace(/[^\p{L}\p{N}]/gu, '');
+    if (
+      cleanTitle.includes(cleanQ) ||
+      cleanContent.includes(cleanQ) ||
+      cleanCategory.includes(cleanQ) ||
+      labels.some((l) => l.replace(/[^\p{L}\p{N}]/gu, '').includes(cleanQ)) ||
+      todos.some((t) => t.replace(/[^\p{L}\p{N}]/gu, '').includes(cleanQ))
+    ) {
+      return true;
+    }
   }
 
-  // 3. Category match
-  if (note.category && note.category.toLowerCase().includes(q)) {
-    return true;
-  }
-
-  // 4. Labels match
-  if (note.labels && note.labels.some((l) => l.toLowerCase().includes(q))) {
-    return true;
-  }
-
-  // 5. Todos / Checklist items match
-  if (note.todos && note.todos.some((t) => t.text && t.text.toLowerCase().includes(q))) {
-    return true;
-  }
-
-  // 6. Multi-word query support (e.g. "meeting work" or "finance budget")
-  const terms = q.split(/\s+/).filter(Boolean);
+  // 3. Multi-word query support (Every token must match somewhere in Title, Content, Category, Labels, Todos)
+  const terms = rawQ.split(/\s+/).filter(Boolean);
   if (terms.length > 1) {
-    const fullText = `${note.title || ''} ${note.content || ''} ${note.category || ''} ${(note.labels || []).join(' ')} ${(note.todos || []).map((t) => t.text).join(' ')}`.toLowerCase();
-    return terms.every((term) => fullText.includes(term));
+    const fullCombined = `${title} ${content} ${category} ${labels.join(' ')} ${todos.join(' ')}`;
+    const fullCleanCombined = fullCombined.replace(/[^\p{L}\p{N}\s]/gu, '');
+    const allMatch = terms.every((term) => {
+      const cleanTerm = term.replace(/[^\p{L}\p{N}]/gu, '');
+      return fullCombined.includes(term) || (cleanTerm.length > 0 && fullCleanCombined.includes(cleanTerm));
+    });
+    if (allMatch) return true;
   }
 
   return false;
@@ -327,66 +352,91 @@ export async function getNotesPagedFromDB(params: {
   // 1. FAST & COMPREHENSIVE SEARCH PATH (Title, Content, Category, Labels, Todos)
   if (q.length > 0) {
     const matchedNotes: Note[] = [];
-    const tx = db.transaction('notes', 'readonly');
-    const index = tx.store.index('by-updated');
-    let cursor = await index.openCursor(null, 'prev');
-    let scanned = 0;
+    const matchedIds = new Set<string>();
 
-    // Stream notes in by-updated order, scanning up to 10,000 notes or 1,000 matches
-    while (cursor && scanned < 10000 && matchedNotes.length < 1000) {
-      scanned++;
-      const note = cursor.value;
-
-      // Filter check based on current view:
-      // If user is currently in Trash, search Trash.
-      // If user is currently in Archive, search Archive.
-      // Otherwise, search across all active notes (across all categories, labels, etc.)
-      let isAllowed = false;
-      if (filter === 'trash') {
-        isAllowed = !!note.isTrash;
-      } else if (filter === 'archive') {
-        isAllowed = !!note.isArchived && !note.isTrash;
-      } else {
-        isAllowed = !note.isTrash && !note.isArchived;
-      }
-
-      if (isAllowed && noteMatchesSearchQuery(note, q)) {
+    const addMatch = (note: Note) => {
+      if (!matchedIds.has(note.id)) {
+        matchedIds.add(note.id);
         matchedNotes.push(note);
       }
+    };
 
-      cursor = await cursor.continue();
+    const isAllowed = (note: Note) => {
+      if (filter === 'trash') return !!note.isTrash;
+      if (filter === 'archive') return !!note.isArchived && !note.isTrash;
+      return !note.isTrash && !note.isArchived;
+    };
+
+    // A. DIRECT FAST INDEX & ID LOOKUPS (O(1) < 1ms)
+    // 1) Direct ID lookup
+    try {
+      const directNote = await db.get('notes', q);
+      if (directNote && isAllowed(directNote) && noteMatchesSearchQuery(directNote, q)) {
+        addMatch(directNote);
+      }
+    } catch {}
+
+    // 2) Benchmark Note ID lookup if query contains a number
+    // E.g. "#99972", "99972", "Note #99972" -> extracts "99972"
+    const numMatch = q.match(/\d+/);
+    if (numMatch) {
+      const numStr = numMatch[0];
+      try {
+        const benchKeyRange = IDBKeyRange.bound(`bench-note-${numStr}-`, `bench-note-${numStr}-\uffff`);
+        const benchCursor = await db.transaction('notes', 'readonly').store.openCursor(benchKeyRange);
+        if (benchCursor) {
+          const note = benchCursor.value;
+          if (isAllowed(note) && noteMatchesSearchQuery(note, q)) {
+            addMatch(note);
+          }
+        }
+      } catch {}
     }
 
-    // Secondary fallback for massive 100k+ benchmark datasets if scan limit was reached
-    if (matchedNotes.length < pageSize && scanned >= 10000 && db.objectStoreNames.contains('searchTokens')) {
+    // 3) Token Index Lookup via 'searchTokens' store (for instant exact token hits)
+    if (db.objectStoreNames.contains('searchTokens')) {
       const searchTokens = extractTokensFromText(q);
-      const existingIds = new Set(matchedNotes.map((n) => n.id));
       for (const token of searchTokens) {
         try {
           const records = await db.getAllFromIndex('searchTokens', 'by-token', token);
           for (const rec of records) {
-            if (!existingIds.has(rec.noteId)) {
-              existingIds.add(rec.noteId);
+            if (!matchedIds.has(rec.noteId)) {
               const note = await db.get('notes', rec.noteId);
-              if (note) {
-                let isAllowed = false;
-                if (filter === 'trash') {
-                  isAllowed = !!note.isTrash;
-                } else if (filter === 'archive') {
-                  isAllowed = !!note.isArchived && !note.isTrash;
-                } else {
-                  isAllowed = !note.isTrash && !note.isArchived;
-                }
-                if (isAllowed && noteMatchesSearchQuery(note, q)) {
-                  matchedNotes.push(note);
-                }
+              if (note && isAllowed(note) && noteMatchesSearchQuery(note, q)) {
+                addMatch(note);
+                if (matchedNotes.length >= 200) break;
               }
             }
           }
         } catch {}
       }
-      matchedNotes.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
     }
+
+    // B. COMPREHENSIVE STREAMING CURSOR SCAN
+    // Streams notes in by-updated order, inspecting Title, Content, Category, Labels, and Todos.
+    // If not enough matches have been found yet, scans up to 100,000 notes so that deep notes
+    // like Note #99972 are fully reached and returned.
+    const maxScanLimit = matchedNotes.length >= pageSize ? 10000 : 100000;
+    try {
+      const tx = db.transaction('notes', 'readonly');
+      const index = tx.store.index('by-updated');
+      let cursor = await index.openCursor(null, 'prev');
+      let scanned = 0;
+
+      while (cursor && scanned < maxScanLimit && matchedNotes.length < 2000) {
+        scanned++;
+        const note = cursor.value;
+
+        if (!matchedIds.has(note.id) && isAllowed(note) && noteMatchesSearchQuery(note, q)) {
+          addMatch(note);
+        }
+
+        cursor = await cursor.continue();
+      }
+    } catch {}
+
+    // Sort newest first
+    matchedNotes.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
 
     const totalCount = matchedNotes.length;
     const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
@@ -692,11 +742,15 @@ export async function bulkInsertBenchmarkNotes(
   const colors: NoteColor[] = ['default', 'coral', 'peach', 'sand', 'mint', 'sage', 'fog'];
   const now = Date.now();
 
+  const hasSearchTokens = db.objectStoreNames.contains('searchTokens');
+  const storeNames: ('notes' | 'searchTokens')[] = hasSearchTokens ? ['notes', 'searchTokens'] : ['notes'];
+
   let inserted = 0;
   while (inserted < count) {
     const currentBatchSize = Math.min(BATCH_SIZE, count - inserted);
-    const tx = db.transaction('notes', 'readwrite');
-    const store = tx.store;
+    const tx = db.transaction(storeNames, 'readwrite');
+    const store = tx.objectStore('notes');
+    const searchStore = hasSearchTokens ? tx.objectStore('searchTokens') : null;
 
     for (let i = 0; i < currentBatchSize; i++) {
       const idx = inserted + i + 1;
@@ -729,6 +783,11 @@ export async function bulkInsertBenchmarkNotes(
         isBenchmark: true,
       };
       store.put(note);
+
+      if (searchStore) {
+        searchStore.put({ id: `${idx}_${note.id}`, token: `${idx}`, noteId: note.id });
+        searchStore.put({ id: `hash_${idx}_${note.id}`, token: `#${idx}`, noteId: note.id });
+      }
     }
 
     await tx.done;
@@ -746,19 +805,35 @@ export async function clearBenchmarkNotesFromDB(
   const db = await getKeepDB();
   if (!db) return 0;
 
+  const hasSearchTokens = db.objectStoreNames.contains('searchTokens');
+  const storeNames: ('notes' | 'searchTokens')[] = hasSearchTokens ? ['notes', 'searchTokens'] : ['notes'];
+
   let totalDeleted = 0;
   let hasMore = true;
 
   while (hasMore) {
-    const tx = db.transaction('notes', 'readwrite');
-    const store = tx.store;
+    const tx = db.transaction(storeNames, 'readwrite');
+    const store = tx.objectStore('notes');
+    const searchStore = hasSearchTokens ? tx.objectStore('searchTokens') : null;
     let countInBatch = 0;
     let cursor = await store.openCursor();
     while (cursor && countInBatch < 3000) {
       if (cursor.value.isBenchmark) {
+        const noteId = cursor.value.id;
         await cursor.delete();
         countInBatch++;
         totalDeleted++;
+
+        if (searchStore) {
+          try {
+            const tokenIndex = searchStore.index('by-noteId');
+            let tCursor = await tokenIndex.openKeyCursor(IDBKeyRange.only(noteId));
+            while (tCursor) {
+              await searchStore.delete(tCursor.primaryKey);
+              tCursor = await tCursor.continue();
+            }
+          } catch {}
+        }
       }
       cursor = await cursor.continue();
     }

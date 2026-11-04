@@ -62,12 +62,13 @@ export const NotesGrid: React.FC<NotesGridProps> = ({
   );
 
   const isCurrentCategoryLocked = useMemo(() => {
+    if (searchQuery.trim().length > 0) return false;
     if (currentFilter !== 'category' || !activeCategory?.isLocked) return false;
     return !unlockedCategoryNames.includes(activeCategory.name.toLowerCase());
-  }, [currentFilter, activeCategory, unlockedCategoryNames]);
+  }, [currentFilter, activeCategory, unlockedCategoryNames, searchQuery]);
 
-  // Separate pinned vs unpinned notes (relevant for notes and category view)
-  const isNotesOrCategory = currentFilter === 'notes' || currentFilter === 'category';
+  // Separate pinned vs unpinned notes (relevant for notes, category view, and search)
+  const isNotesOrCategory = currentFilter === 'notes' || currentFilter === 'category' || searchQuery.trim().length > 0;
 
   const pagedPinnedNotes = useMemo(() => {
     return isNotesOrCategory ? notes.filter((n) => n.isPinned) : [];

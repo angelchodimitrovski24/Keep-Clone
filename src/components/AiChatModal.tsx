@@ -42,6 +42,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { useKeep } from '@/context/KeepContext';
+import { noteMatchesSearchQuery } from '@/lib/db';
 import {
   OllamaModelInfo,
   OllamaChatMessage,
@@ -297,10 +298,7 @@ export const AiChatModal: React.FC = () => {
 
     if (bulkScope === 'search') {
       if (!bulkSearchQuery.trim()) return [];
-      const q = bulkSearchQuery.toLowerCase();
-      return activeNonTrashedNotes.filter(
-        (n) => (n.title || '').toLowerCase().includes(q) || (n.content || '').toLowerCase().includes(q)
-      );
+      return activeNonTrashedNotes.filter((n) => noteMatchesSearchQuery(n, bulkSearchQuery));
     }
 
     return activeNonTrashedNotes;
