@@ -130,6 +130,45 @@ export const SettingsModal: React.FC = () => {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mhtmlInputRef = useRef<HTMLInputElement>(null);
+  const tabsRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  const checkScroll = () => {
+    if (tabsRef.current) {
+      const { scrollLeft, scrollWidth, clientWidth } = tabsRef.current;
+      setCanScrollLeft(scrollLeft > 2);
+      setCanScrollRight(scrollLeft + clientWidth < scrollWidth - 2);
+    }
+  };
+
+  useEffect(() => {
+    if (isSettingsOpen) {
+      checkScroll();
+      const timer = setTimeout(checkScroll, 100);
+      window.addEventListener('resize', checkScroll);
+      return () => {
+        clearTimeout(timer);
+        window.removeEventListener('resize', checkScroll);
+      };
+    }
+  }, [isSettingsOpen]);
+
+  const scrollTabs = (direction: 'left' | 'right') => {
+    if (tabsRef.current) {
+      tabsRef.current.scrollBy({
+        left: direction === 'left' ? -160 : 160,
+        behavior: 'smooth',
+      });
+      setTimeout(checkScroll, 250);
+    }
+  };
+
+  const handleTabClick = (tabId: SettingsTab, e: React.MouseEvent<HTMLButtonElement>) => {
+    setActiveTab(tabId);
+    e.currentTarget.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    setTimeout(checkScroll, 250);
+  };
 
   if (!isSettingsOpen) return null;
 
@@ -155,40 +194,6 @@ export const SettingsModal: React.FC = () => {
     if (!file) return;
     await importDataSmart(file);
     e.target.value = '';
-  };
-
-  const tabsRef = useRef<HTMLDivElement>(null);
-  const [canScrollLeft, setCanScrollLeft] = useState(false);
-  const [canScrollRight, setCanScrollRight] = useState(false);
-
-  const checkScroll = () => {
-    if (tabsRef.current) {
-      const { scrollLeft, scrollWidth, clientWidth } = tabsRef.current;
-      setCanScrollLeft(scrollLeft > 2);
-      setCanScrollRight(scrollLeft + clientWidth < scrollWidth - 2);
-    }
-  };
-
-  useEffect(() => {
-    checkScroll();
-    window.addEventListener('resize', checkScroll);
-    return () => window.removeEventListener('resize', checkScroll);
-  }, [isSettingsOpen]);
-
-  const scrollTabs = (direction: 'left' | 'right') => {
-    if (tabsRef.current) {
-      tabsRef.current.scrollBy({
-        left: direction === 'left' ? -160 : 160,
-        behavior: 'smooth',
-      });
-      setTimeout(checkScroll, 250);
-    }
-  };
-
-  const handleTabClick = (tabId: SettingsTab, e: React.MouseEvent<HTMLButtonElement>) => {
-    setActiveTab(tabId);
-    e.currentTarget.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-    setTimeout(checkScroll, 250);
   };
 
   const tabs: { id: SettingsTab; shortLabel: string; fullLabel?: string; icon: React.ReactNode }[] = [
