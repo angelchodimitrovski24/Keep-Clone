@@ -268,21 +268,40 @@ export const NotesGrid: React.FC<NotesGridProps> = ({
 
       {/* Empty State */}
       {totalNotesCount === 0 && (
-        <div className="flex flex-col items-center justify-center py-20 text-stone-400 select-none">
+        <div className="flex flex-col items-center justify-center py-20 text-stone-400 select-none text-center px-4">
           <div className="text-6xl mb-4">
-            {currentFilter === 'notes' && '💡'}
-            {currentFilter === 'reminders' && '⏰'}
-            {currentFilter === 'archive' && '📥'}
-            {currentFilter === 'trash' && '🗑️'}
-            {currentFilter === 'label' && '🏷️'}
+            {searchQuery.trim()
+              ? '🔍'
+              : currentFilter === 'notes'
+              ? '💡'
+              : currentFilter === 'reminders'
+              ? '⏰'
+              : currentFilter === 'archive'
+              ? '📥'
+              : currentFilter === 'trash'
+              ? '🗑️'
+              : '🏷️'}
           </div>
           <p className="text-lg font-medium text-stone-600 dark:text-stone-300">
-            {currentFilter === 'notes' && 'No notes yet. Add one above!'}
-            {currentFilter === 'reminders' && 'Notes with upcoming reminders appear here'}
-            {currentFilter === 'archive' && 'Your archived notes appear here'}
-            {currentFilter === 'trash' && 'No notes in Trash'}
-            {currentFilter === 'label' && `No notes tagged with "${selectedLabel}"`}
+            {searchQuery.trim()
+              ? `No notes matching "${searchQuery.trim()}"`
+              : currentFilter === 'notes'
+              ? 'No notes yet. Add one above!'
+              : currentFilter === 'reminders'
+              ? 'Notes with upcoming reminders appear here'
+              : currentFilter === 'archive'
+              ? 'Your archived notes appear here'
+              : currentFilter === 'trash'
+              ? 'No notes in Trash'
+              : currentFilter === 'label'
+              ? `No notes tagged with "${selectedLabel}"`
+              : 'No notes found'}
           </p>
+          {searchQuery.trim() && (
+            <p className="text-xs text-stone-400 dark:text-stone-500 mt-2">
+              Tip: Search matches Note Title, Content body, Category name, and Labels
+            </p>
+          )}
         </div>
       )}
 

@@ -265,7 +265,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
           <input
             autoFocus
             type="text"
-            placeholder="Search notes..."
+            placeholder="Search title, note, label, category..."
             value={searchQuery}
             onChange={(e) => {
               const val = e.target.value;
@@ -343,7 +343,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
           <input
             ref={searchInputRef}
             type="text"
-            placeholder="Search notes... (Press / to focus)"
+            placeholder="Search title, note, label, category... (Press / to focus)"
             value={searchQuery}
             onFocus={() => {
               if (typeof window !== 'undefined' && window.innerWidth < 640) {
