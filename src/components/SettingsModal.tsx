@@ -32,6 +32,8 @@ import {
   Wrench,
   Link2,
   HardDrive,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { useKeep, getFontSizeInPx } from '@/context/KeepContext';
 import { FontSizeOption, AppThemeMode } from '@/types/note';
@@ -155,12 +157,46 @@ export const SettingsModal: React.FC = () => {
     e.target.value = '';
   };
 
-  const tabs: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
-    { id: 'appearance', label: 'Appearance', icon: <Palette className="w-4 h-4" /> },
-    { id: 'tools', label: 'Tools & Templates', icon: <Wrench className="w-4 h-4" /> },
-    { id: 'integrations', label: 'Integrations', icon: <Link2 className="w-4 h-4" /> },
-    { id: 'backup', label: 'Data & Export', icon: <HardDrive className="w-4 h-4" /> },
-    { id: 'engine', label: '1M Engine', icon: <Zap className="w-4 h-4" /> },
+  const tabsRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  const checkScroll = () => {
+    if (tabsRef.current) {
+      const { scrollLeft, scrollWidth, clientWidth } = tabsRef.current;
+      setCanScrollLeft(scrollLeft > 2);
+      setCanScrollRight(scrollLeft + clientWidth < scrollWidth - 2);
+    }
+  };
+
+  useEffect(() => {
+    checkScroll();
+    window.addEventListener('resize', checkScroll);
+    return () => window.removeEventListener('resize', checkScroll);
+  }, [isSettingsOpen]);
+
+  const scrollTabs = (direction: 'left' | 'right') => {
+    if (tabsRef.current) {
+      tabsRef.current.scrollBy({
+        left: direction === 'left' ? -160 : 160,
+        behavior: 'smooth',
+      });
+      setTimeout(checkScroll, 250);
+    }
+  };
+
+  const handleTabClick = (tabId: SettingsTab, e: React.MouseEvent<HTMLButtonElement>) => {
+    setActiveTab(tabId);
+    e.currentTarget.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    setTimeout(checkScroll, 250);
+  };
+
+  const tabs: { id: SettingsTab; shortLabel: string; fullLabel?: string; icon: React.ReactNode }[] = [
+    { id: 'appearance', shortLabel: 'Appearance', icon: <Palette className="w-4 h-4" /> },
+    { id: 'tools', shortLabel: 'Tools', fullLabel: ' & Templates', icon: <Wrench className="w-4 h-4" /> },
+    { id: 'integrations', shortLabel: 'Integrations', icon: <Link2 className="w-4 h-4" /> },
+    { id: 'backup', shortLabel: 'Export & Data', icon: <HardDrive className="w-4 h-4" /> },
+    { id: 'engine', shortLabel: '1M Engine', icon: <Zap className="w-4 h-4" /> },
   ];
 
   return (
@@ -170,7 +206,7 @@ export const SettingsModal: React.FC = () => {
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-2xl bg-white dark:bg-[#202124] rounded-2xl shadow-2xl border border-stone-200 dark:border-stone-700 flex flex-col overflow-hidden max-h-[92vh]"
+        className="w-full max-w-2xl lg:max-w-3xl bg-white dark:bg-[#202124] rounded-2xl shadow-2xl border border-stone-200 dark:border-stone-700 flex flex-col overflow-hidden max-h-[92vh]"
       >
         {/* Header */}
         <div className="flex items-center justify-between px-5 sm:px-6 py-4 border-b border-stone-200 dark:border-stone-800">
@@ -191,26 +227,61 @@ export const SettingsModal: React.FC = () => {
           </button>
         </div>
 
-        {/* Navigation Tabs Bar */}
-        <div className="flex items-center gap-1.5 px-4 sm:px-6 pt-3 pb-2.5 border-b border-stone-200 dark:border-stone-800 overflow-x-auto no-scrollbar bg-stone-50/50 dark:bg-stone-900/30">
-          {tabs.map((tab) => {
-            const isActive = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-medium whitespace-nowrap transition-all cursor-pointer ${
-                  isActive
-                    ? 'bg-amber-500 text-stone-950 font-bold shadow-xs'
-                    : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-stone-200/60 dark:hover:bg-stone-800/80'
-                }`}
-              >
-                {tab.icon}
-                <span>{tab.label}</span>
-              </button>
-            );
-          })}
+        {/* Navigation Tabs Bar with responsive horizontal scroll and indicators */}
+        <div className="relative border-b border-stone-200 dark:border-stone-800 bg-stone-50/70 dark:bg-stone-900/40 flex items-center">
+          {canScrollLeft && (
+            <button
+              type="button"
+              onClick={() => scrollTabs('left')}
+              className="absolute left-1 z-10 p-1 rounded-full bg-white/95 dark:bg-[#202124]/95 shadow-md border border-stone-200 dark:border-stone-700 text-stone-600 dark:text-stone-300 hover:scale-105 transition-all cursor-pointer"
+              title="Scroll left"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+          )}
+
+          <div
+            ref={tabsRef}
+            onScroll={checkScroll}
+            className="flex items-center gap-1.5 px-3 sm:px-6 pt-3 pb-2.5 overflow-x-auto select-none w-full scroll-smooth"
+            style={{
+              scrollbarWidth: 'thin',
+              scrollbarColor: 'rgba(150, 150, 150, 0.4) transparent',
+            }}
+          >
+            {tabs.map((tab) => {
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={(e) => handleTabClick(tab.id, e)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-medium whitespace-nowrap transition-all cursor-pointer shrink-0 ${
+                    isActive
+                      ? 'bg-amber-500 text-stone-950 font-bold shadow-xs'
+                      : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-stone-200/60 dark:hover:bg-stone-800/80'
+                  }`}
+                >
+                  {tab.icon}
+                  <span>
+                    {tab.shortLabel}
+                    {tab.fullLabel && <span className="hidden sm:inline">{tab.fullLabel}</span>}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {canScrollRight && (
+            <button
+              type="button"
+              onClick={() => scrollTabs('right')}
+              className="absolute right-1 z-10 p-1 rounded-full bg-white/95 dark:bg-[#202124]/95 shadow-md border border-stone-200 dark:border-stone-700 text-stone-600 dark:text-stone-300 hover:scale-105 transition-all cursor-pointer"
+              title="Scroll right"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          )}
         </div>
 
         {/* Tab Content Body */}
