@@ -315,6 +315,42 @@ export const NoteModal: React.FC<NoteModalProps> = ({
     (childNoteIds && childNoteIds.length > 0)
   );
 
+  const noteTextStats = useMemo(() => {
+    const titleText = (title || '').trim();
+
+    let bodyText = '';
+    if (isList) {
+      bodyText = (todos || [])
+        .map((t) => t.text || '')
+        .filter(Boolean)
+        .join('\n');
+    } else {
+      const raw = editorRef.current?.getHTML() || content || '';
+      bodyText = raw
+        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+        .replace(/<\/p>|<\/div>|<br\s*\/?>|<\/li>|<\/h[1-6]>/gi, '\n')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/&amp;/gi, '&')
+        .replace(/&lt;/gi, '<')
+        .replace(/&gt;/gi, '>')
+        .replace(/&quot;/gi, '"')
+        .replace(/&#39;/gi, "'")
+        .replace(/[ \t]+/g, ' ')
+        .replace(/\n\s*\n/g, '\n')
+        .trim();
+    }
+
+    const combinedText = [titleText, bodyText].filter(Boolean).join('\n');
+    const words = combinedText.trim()
+      ? combinedText.trim().split(/\s+/).filter(Boolean).length
+      : 0;
+    const characters = combinedText.length;
+
+    return { words, characters };
+  }, [title, content, isList, todos]);
+
   // Sync state when note opens or note changes
   useEffect(() => {
     if (note) {
@@ -962,7 +998,15 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
           </button>
 
           <div className="flex items-center gap-2 text-xs text-stone-500 dark:text-stone-400">
-            <span>{note.updatedAt ? `Last edited ${new Date(note.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}</span>
+            <span>{noteTextStats.words.toLocaleString()} {noteTextStats.words === 1 ? 'word' : 'words'}</span>
+            <span>•</span>
+            <span>{noteTextStats.characters.toLocaleString()} {noteTextStats.characters === 1 ? 'character' : 'characters'}</span>
+            {note.updatedAt && (
+              <>
+                <span>•</span>
+                <span>Last edited {new Date(note.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -1873,9 +1917,20 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
                 </button>
               </div>
 
-              <div className="flex items-center gap-1">
-                <Clock className="w-3 h-3" />
-                Edited {new Date(note.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              <div className="flex items-center gap-2.5 sm:gap-3 flex-wrap">
+                <div
+                  className="flex items-center gap-1.5 text-stone-500 dark:text-stone-400 select-none"
+                  title={`${noteTextStats.words.toLocaleString()} words, ${noteTextStats.characters.toLocaleString()} characters`}
+                >
+                  <span>{noteTextStats.words.toLocaleString()} {noteTextStats.words === 1 ? 'word' : 'words'}</span>
+                  <span className="opacity-40">•</span>
+                  <span>{noteTextStats.characters.toLocaleString()} {noteTextStats.characters === 1 ? 'character' : 'characters'}</span>
+                </div>
+
+                <div className="flex items-center gap-1">
+                  <Clock className="w-3 h-3" />
+                  Edited {new Date(note.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </div>
               </div>
             </div>
           </div>
