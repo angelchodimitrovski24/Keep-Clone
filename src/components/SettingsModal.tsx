@@ -145,14 +145,16 @@ export const SettingsModal: React.FC = () => {
   useEffect(() => {
     if (isSettingsOpen) {
       checkScroll();
-      const timer = setTimeout(checkScroll, 100);
+      const t1 = setTimeout(checkScroll, 50);
+      const t2 = setTimeout(checkScroll, 200);
       window.addEventListener('resize', checkScroll);
       return () => {
-        clearTimeout(timer);
+        clearTimeout(t1);
+        clearTimeout(t2);
         window.removeEventListener('resize', checkScroll);
       };
     }
-  }, [isSettingsOpen]);
+  }, [isSettingsOpen, activeTab]);
 
   const scrollTabs = (direction: 'left' | 'right') => {
     if (tabsRef.current) {
@@ -200,7 +202,7 @@ export const SettingsModal: React.FC = () => {
     { id: 'appearance', shortLabel: 'Appearance', icon: <Palette className="w-4 h-4" /> },
     { id: 'tools', shortLabel: 'Tools', fullLabel: ' & Templates', icon: <Wrench className="w-4 h-4" /> },
     { id: 'integrations', shortLabel: 'Integrations', icon: <Link2 className="w-4 h-4" /> },
-    { id: 'backup', shortLabel: 'Export & Data', icon: <HardDrive className="w-4 h-4" /> },
+    { id: 'backup', shortLabel: 'Data & Export', icon: <HardDrive className="w-4 h-4" /> },
     { id: 'engine', shortLabel: '1M Engine', icon: <Zap className="w-4 h-4" /> },
   ];
 
@@ -211,7 +213,7 @@ export const SettingsModal: React.FC = () => {
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-2xl lg:max-w-3xl bg-white dark:bg-[#202124] rounded-2xl shadow-2xl border border-stone-200 dark:border-stone-700 flex flex-col overflow-hidden max-h-[92vh]"
+        className="w-full max-w-3xl lg:max-w-4xl bg-white dark:bg-[#202124] rounded-2xl shadow-2xl border border-stone-200 dark:border-stone-700 flex flex-col overflow-hidden max-h-[92vh]"
       >
         {/* Header */}
         <div className="flex items-center justify-between px-5 sm:px-6 py-4 border-b border-stone-200 dark:border-stone-800">
@@ -226,7 +228,7 @@ export const SettingsModal: React.FC = () => {
           <button
             type="button"
             onClick={() => setIsSettingsOpen(false)}
-            className="p-1.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-500 hover:text-stone-800 dark:hover:text-stone-200 transition-colors"
+            className="p-1.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-500 hover:text-stone-800 dark:hover:text-stone-200 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -234,25 +236,34 @@ export const SettingsModal: React.FC = () => {
 
         {/* Navigation Tabs Bar with responsive horizontal scroll and indicators */}
         <div className="relative border-b border-stone-200 dark:border-stone-800 bg-stone-50/70 dark:bg-stone-900/40 flex items-center">
+          {/* Left scroll chevron & fade indicator */}
           {canScrollLeft && (
-            <button
-              type="button"
-              onClick={() => scrollTabs('left')}
-              className="absolute left-1 z-10 p-1 rounded-full bg-white/95 dark:bg-[#202124]/95 shadow-md border border-stone-200 dark:border-stone-700 text-stone-600 dark:text-stone-300 hover:scale-105 transition-all cursor-pointer"
-              title="Scroll left"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
+            <>
+              <div className="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-stone-100 dark:from-stone-900 to-transparent pointer-events-none z-5" />
+              <button
+                type="button"
+                onClick={() => scrollTabs('left')}
+                className="absolute left-1 z-10 p-1 rounded-full bg-white/95 dark:bg-[#202124]/95 shadow-md border border-stone-200 dark:border-stone-700 text-stone-600 dark:text-stone-300 hover:scale-105 transition-all cursor-pointer"
+                title="Scroll left"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+            </>
           )}
 
           <div
             ref={tabsRef}
             onScroll={checkScroll}
-            className="flex items-center gap-1.5 px-3 sm:px-6 pt-3 pb-2.5 overflow-x-auto select-none w-full scroll-smooth"
-            style={{
-              scrollbarWidth: 'thin',
-              scrollbarColor: 'rgba(150, 150, 150, 0.4) transparent',
+            onWheel={(e) => {
+              if (tabsRef.current) {
+                if (e.deltaY !== 0) {
+                  tabsRef.current.scrollLeft += e.deltaY;
+                } else if (e.deltaX !== 0) {
+                  tabsRef.current.scrollLeft += e.deltaX;
+                }
+              }
             }}
+            className="keep-tabs-scroll flex items-center gap-1.5 px-3 sm:px-6 pt-3 pb-2.5 overflow-x-auto select-none w-full scroll-smooth"
           >
             {tabs.map((tab) => {
               const isActive = activeTab === tab.id;
@@ -261,7 +272,7 @@ export const SettingsModal: React.FC = () => {
                   key={tab.id}
                   type="button"
                   onClick={(e) => handleTabClick(tab.id, e)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-medium whitespace-nowrap transition-all cursor-pointer shrink-0 ${
+                  className={`flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-medium whitespace-nowrap transition-all cursor-pointer shrink-0 ${
                     isActive
                       ? 'bg-stone-900 text-white dark:bg-stone-700 dark:text-white dark:border dark:border-stone-600 font-semibold shadow-xs'
                       : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-stone-200/60 dark:hover:bg-stone-800/80'
@@ -270,22 +281,26 @@ export const SettingsModal: React.FC = () => {
                   {tab.icon}
                   <span>
                     {tab.shortLabel}
-                    {tab.fullLabel && <span className="hidden sm:inline">{tab.fullLabel}</span>}
+                    {tab.fullLabel && <span className="hidden md:inline">{tab.fullLabel}</span>}
                   </span>
                 </button>
               );
             })}
           </div>
 
+          {/* Right scroll chevron & fade indicator */}
           {canScrollRight && (
-            <button
-              type="button"
-              onClick={() => scrollTabs('right')}
-              className="absolute right-1 z-10 p-1 rounded-full bg-white/95 dark:bg-[#202124]/95 shadow-md border border-stone-200 dark:border-stone-700 text-stone-600 dark:text-stone-300 hover:scale-105 transition-all cursor-pointer"
-              title="Scroll right"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
+            <>
+              <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-stone-100 dark:from-stone-900 to-transparent pointer-events-none z-5" />
+              <button
+                type="button"
+                onClick={() => scrollTabs('right')}
+                className="absolute right-1 z-10 p-1 rounded-full bg-white/95 dark:bg-[#202124]/95 shadow-md border border-stone-200 dark:border-stone-700 text-stone-600 dark:text-stone-300 hover:scale-105 transition-all cursor-pointer"
+                title="Scroll right"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </>
           )}
         </div>
 

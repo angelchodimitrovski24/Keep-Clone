@@ -1,4 +1,4 @@
-import { saveMediaToDB } from '@/lib/db';
+import { saveMediaToDB, saveSettingToDB } from '@/lib/db';
 import { registerMediaBlobUrl, getSyncLocalMediaFolder } from '@/lib/localPaste';
 
 export interface JiraConfig {
@@ -57,12 +57,13 @@ export function getSavedJiraConfig(): JiraConfig | null {
 }
 
 /**
- * Saves Jira configuration to localStorage
+ * Saves Jira configuration to localStorage and IndexedDB
  */
 export function saveJiraConfig(config: JiraConfig): void {
   if (typeof window === 'undefined') return;
   try {
     localStorage.setItem(JIRA_CONFIG_STORAGE_KEY, JSON.stringify(config));
+    saveSettingToDB(JIRA_CONFIG_STORAGE_KEY, config).catch(() => {});
   } catch (err) {
     console.warn('Failed saving Jira config:', err);
   }
@@ -75,6 +76,7 @@ export function clearJiraConfig(): void {
   if (typeof window === 'undefined') return;
   try {
     localStorage.removeItem(JIRA_CONFIG_STORAGE_KEY);
+    saveSettingToDB(JIRA_CONFIG_STORAGE_KEY, null).catch(() => {});
   } catch (err) {
     console.warn('Failed clearing Jira config:', err);
   }

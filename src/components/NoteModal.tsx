@@ -700,9 +700,8 @@ export const NoteModal: React.FC<NoteModalProps> = ({
     [note, updateNote]
   );
 
-  if (!isOpen || !note) return null;
-
   const saveCurrentNote = async (snapshotReason?: string) => {
+    if (!note) return;
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     if (maxWaitTimerRef.current) clearTimeout(maxWaitTimerRef.current);
 
@@ -781,12 +780,16 @@ export const NoteModal: React.FC<NoteModalProps> = ({
   };
 
   const handleSaveAndClose = useCallback(async () => {
+    if (!note) {
+      onClose();
+      return;
+    }
     await saveCurrentNote('Auto snapshot on close');
     onClose();
   }, [note, notes, setEditingNote, onClose, saveCurrentNote]);
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || !note) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         const hasOpenSubModal =
@@ -978,6 +981,8 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
   const activeTodos = todos.filter((t) => !t.completed);
   const completedTodos = todos.filter((t) => t.completed);
   const colorClasses = getNoteColorClasses(color, theme);
+
+  if (!isOpen || !note) return null;
 
   return (
     <div

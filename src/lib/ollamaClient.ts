@@ -1,4 +1,5 @@
 import { Note } from '@/types/note';
+import { saveSettingToDB } from '@/lib/db';
 
 export interface OllamaModelDetails {
   parent_model?: string;
@@ -183,6 +184,7 @@ export function saveOllamaConfig(config: Partial<OllamaConfig>): OllamaConfig {
   if (typeof window !== 'undefined') {
     try {
       localStorage.setItem(OLLAMA_CONFIG_KEY, JSON.stringify(updated));
+      saveSettingToDB(OLLAMA_CONFIG_KEY, updated).catch(() => {});
     } catch (err) {
       console.warn('Failed to save Ollama config:', err);
     }

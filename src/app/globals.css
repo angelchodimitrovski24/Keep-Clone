@@ -546,3 +546,22 @@ body {
   -webkit-overflow-scrolling: touch;
 }
 
+/* Elegant horizontal tab scrollbar */
+.keep-tabs-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(140, 140, 140, 0.45) transparent;
+}
+.keep-tabs-scroll::-webkit-scrollbar {
+  height: 4px;
+}
+.keep-tabs-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.keep-tabs-scroll::-webkit-scrollbar-thumb {
+  background: rgba(140, 140, 140, 0.4);
+  border-radius: 9999px;
+}
+.keep-tabs-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(140, 140, 140, 0.7);
+}
+

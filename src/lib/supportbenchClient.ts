@@ -1,4 +1,4 @@
-import { saveMediaToDB } from '@/lib/db';
+import { saveMediaToDB, saveSettingToDB } from '@/lib/db';
 import { registerMediaBlobUrl, getSyncLocalMediaFolder } from '@/lib/localPaste';
 
 export interface SupportbenchConfig {
@@ -58,12 +58,13 @@ export function getSavedSupportbenchConfig(): SupportbenchConfig | null {
 }
 
 /**
- * Saves Supportbench configuration to localStorage
+ * Saves Supportbench configuration to localStorage and IndexedDB
  */
 export function saveSupportbenchConfig(config: SupportbenchConfig): void {
   if (typeof window === 'undefined') return;
   try {
     localStorage.setItem(SUPPORTBENCH_CONFIG_STORAGE_KEY, JSON.stringify(config));
+    saveSettingToDB(SUPPORTBENCH_CONFIG_STORAGE_KEY, config).catch(() => {});
   } catch (err) {
     console.warn('Failed saving Supportbench config:', err);
   }
@@ -76,6 +77,7 @@ export function clearSupportbenchConfig(): void {
   if (typeof window === 'undefined') return;
   try {
     localStorage.removeItem(SUPPORTBENCH_CONFIG_STORAGE_KEY);
+    saveSettingToDB(SUPPORTBENCH_CONFIG_STORAGE_KEY, null).catch(() => {});
   } catch (err) {
     console.warn('Failed clearing Supportbench config:', err);
   }

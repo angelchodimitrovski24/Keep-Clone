@@ -452,6 +452,34 @@ export function KeepProvider({
       // Initialize in-memory blob URLs from offline IndexedDB media store
       await initLocalMediaCache().catch(() => {});
 
+      // Sync stored integration configurations (Jira, Supportbench, Ollama, Google Drive) from IndexedDB to localStorage if not yet set
+      const syncSettingKeys = [
+        'keep_jira_config',
+        'keep_supportbench_config',
+        'keep_ollama_config',
+        'keep_gdrive_client_id',
+        'keep_gdrive_export_folder',
+        'keep_gdrive_import_folder',
+        'keep_local_media_folder',
+      ];
+      for (const k of syncSettingKeys) {
+        getSettingFromDB(k, null).then((val) => {
+          if (val && typeof window !== 'undefined') {
+            try {
+              if (!localStorage.getItem(k)) {
+                if (typeof val === 'string') {
+                  localStorage.setItem(k, val);
+                } else {
+                  localStorage.setItem(k, JSON.stringify(val));
+                }
+              }
+            } catch {
+              // ignore
+            }
+          }
+        }).catch(() => {});
+      }
+
       setReadingSessions(storedReadingSessions);
 
       // Seed initial calendar items if empty

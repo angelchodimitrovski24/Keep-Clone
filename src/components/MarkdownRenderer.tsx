@@ -27,8 +27,6 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(
     onToggleHtmlCheckbox,
     onOpenLinkedNote,
   }) => {
-    if (!content) return null;
-
     // Memoize the heavy HTML conversion pipeline based on content
     const renderedHtml = useMemo(() => {
       if (!content) return '';
@@ -138,6 +136,8 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(
         }
       }
     };
+
+    if (!content || !renderedHtml) return null;
 
     if (!segments) {
       return (

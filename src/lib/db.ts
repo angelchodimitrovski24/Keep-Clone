@@ -1252,6 +1252,35 @@ export async function exportAllData(): Promise<{
     }
   }
 
+  // Merge active integration configurations & folders from localStorage if not already present
+  if (typeof window !== 'undefined') {
+    const syncKeys = [
+      'keep_jira_config',
+      'keep_supportbench_config',
+      'keep_ollama_config',
+      'keep_gdrive_client_id',
+      'keep_gdrive_export_folder',
+      'keep_gdrive_import_folder',
+      'keep_local_media_folder',
+    ];
+    for (const key of syncKeys) {
+      if (!settings[key]) {
+        try {
+          const val = localStorage.getItem(key);
+          if (val) {
+            try {
+              settings[key] = JSON.parse(val);
+            } catch {
+              settings[key] = val;
+            }
+          }
+        } catch {
+          // ignore
+        }
+      }
+    }
+  }
+
   return {
     notes,
     labels,

@@ -312,6 +312,21 @@ export async function generateBackupZipBlob(): Promise<{
   };
   zip.file('data.json', JSON.stringify(backupJson, null, 2));
 
+  // Dedicated integrations export for easy transparency and cross-system restore
+  const integrationsManifest = {
+    jira: rawData.settings?.['keep_jira_config'] || null,
+    supportbench: rawData.settings?.['keep_supportbench_config'] || null,
+    ollama: rawData.settings?.['keep_ollama_config'] || null,
+    gdrive: {
+      clientId: rawData.settings?.['keep_gdrive_client_id'] || null,
+      exportFolder: rawData.settings?.['keep_gdrive_export_folder'] || null,
+      importFolder: rawData.settings?.['keep_gdrive_import_folder'] || null,
+    },
+    localMediaFolder: rawData.settings?.['keep_local_media_folder'] || null,
+    exportedAt: new Date().toISOString(),
+  };
+  zip.file('integrations.json', JSON.stringify(integrationsManifest, null, 2));
+
   // Add README.txt in root of ZIP
   const readme = `Google Keep Offline Backup
 Exported on: ${new Date().toLocaleString()}
@@ -325,6 +340,7 @@ Total Calendar Tasks: ${tasks.length}
 
 Archive Structure:
 - data.json: Primary application database used for intelligent restore
+- integrations.json: Dedicated configuration manifest for Jira, Supportbench, Ollama AI, and Google Drive
 - media/images/: Image attachments extracted from your notes
 - media/drawings/: Canvas drawings extracted as standalone PNG files
 - notes/: Individual Markdown (.md) documents readable in any text or markdown editor
@@ -417,6 +433,45 @@ export async function importBackupSmart(file: File): Promise<ImportResult> {
         try {
           const icsText = await icsZipFile.async('string');
           parsedData.calendarItems = parseIcsContent(icsText);
+        } catch {
+          // Ignore
+        }
+      }
+
+      // Check if ZIP has an integrations.json file
+      const integrationsZipFile = zip.file('integrations.json');
+      if (integrationsZipFile) {
+        try {
+          const rawIntegrations = await integrationsZipFile.async('string');
+          const parsedIntegrations = JSON.parse(rawIntegrations);
+          if (parsedIntegrations.jira) {
+            await saveSettingToDB('keep_jira_config', parsedIntegrations.jira);
+            if (typeof window !== 'undefined') localStorage.setItem('keep_jira_config', JSON.stringify(parsedIntegrations.jira));
+          }
+          if (parsedIntegrations.supportbench) {
+            await saveSettingToDB('keep_supportbench_config', parsedIntegrations.supportbench);
+            if (typeof window !== 'undefined') localStorage.setItem('keep_supportbench_config', JSON.stringify(parsedIntegrations.supportbench));
+          }
+          if (parsedIntegrations.ollama) {
+            await saveSettingToDB('keep_ollama_config', parsedIntegrations.ollama);
+            if (typeof window !== 'undefined') localStorage.setItem('keep_ollama_config', JSON.stringify(parsedIntegrations.ollama));
+          }
+          if (parsedIntegrations.gdrive?.clientId) {
+            await saveSettingToDB('keep_gdrive_client_id', parsedIntegrations.gdrive.clientId);
+            if (typeof window !== 'undefined') localStorage.setItem('keep_gdrive_client_id', parsedIntegrations.gdrive.clientId);
+          }
+          if (parsedIntegrations.gdrive?.exportFolder) {
+            await saveSettingToDB('keep_gdrive_export_folder', parsedIntegrations.gdrive.exportFolder);
+            if (typeof window !== 'undefined') localStorage.setItem('keep_gdrive_export_folder', parsedIntegrations.gdrive.exportFolder);
+          }
+          if (parsedIntegrations.gdrive?.importFolder) {
+            await saveSettingToDB('keep_gdrive_import_folder', parsedIntegrations.gdrive.importFolder);
+            if (typeof window !== 'undefined') localStorage.setItem('keep_gdrive_import_folder', parsedIntegrations.gdrive.importFolder);
+          }
+          if (parsedIntegrations.localMediaFolder) {
+            await saveSettingToDB('keep_local_media_folder', parsedIntegrations.localMediaFolder);
+            if (typeof window !== 'undefined') localStorage.setItem('keep_local_media_folder', parsedIntegrations.localMediaFolder);
+          }
         } catch {
           // Ignore
         }
@@ -864,13 +919,24 @@ export async function importBackupSmart(file: File): Promise<ImportResult> {
     }
   }
 
-  // 7. Intelligent Reconciliation for Settings (e.g. layout, themes, drive folders)
+  // 7. Intelligent Reconciliation for Settings (e.g. layout, themes, drive folders, integrations)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const importedSettings = (parsedData as any)?.settings;
   if (importedSettings && typeof importedSettings === 'object') {
     for (const [key, val] of Object.entries(importedSettings)) {
       if (val !== undefined && val !== null) {
         await saveSettingToDB(key, val);
+        if (typeof window !== 'undefined') {
+          try {
+            if (typeof val === 'string') {
+              localStorage.setItem(key, val);
+            } else {
+              localStorage.setItem(key, JSON.stringify(val));
+            }
+          } catch {
+            // ignore
+          }
+        }
       }
     }
   }
