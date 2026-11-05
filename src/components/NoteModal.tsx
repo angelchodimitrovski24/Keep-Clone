@@ -845,14 +845,17 @@ export const NoteModal: React.FC<NoteModalProps> = ({
 
   const handleToggleChecklist = () => {
     if (isList) {
-      // Convert list items to HTML
-      const htmlFromTodos = todos
-        .map((t) =>
-          t.completed
-            ? `<ul data-type="taskList"><li data-type="taskItem" data-checked="true"><label><input type="checkbox" checked="checked"><span></span></label><div><p>${t.text}</p></div></li></ul>`
-            : `<p>${t.text}</p>`
-        )
-        .join('');
+      // Convert list items to a single clean task list HTML block
+      const htmlFromTodos = todos.length > 0
+        ? `<ul data-type="taskList">${todos
+            .map(
+              (t) =>
+                `<li data-type="taskItem" data-checked="${Boolean(t.completed)}"><label><input type="checkbox"${
+                  t.completed ? ' checked="checked"' : ''
+                }><span></span></label><div><p>${t.text}</p></div></li>`
+            )
+            .join('')}</ul>`
+        : '';
       setContent(htmlFromTodos || content);
       setIsList(false);
     } else {
@@ -880,6 +883,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
             .replace(/^[-*+]\s+\[[ xX]\]\s*/, '')
             .replace(/^\[[ xX]\]\s*/, '')
             .replace(/^[-*+]\s+/, '')
+            .replace(/^\d+\.\s+/, '')
             .trim();
           return {
             id: 'todo-' + Date.now() + '-' + idx,

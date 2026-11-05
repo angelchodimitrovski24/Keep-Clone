@@ -17,7 +17,7 @@ import {
   saveSettingToDB,
 } from './db';
 import { extractAllImagesFromNote } from './pdfExport';
-import { resolveLocalMediaUrl } from './formatUtils';
+import { resolveLocalMediaUrl, convertHtmlToMarkdown, cleanMarkdown } from './formatUtils';
 import {
   registerMediaBlobUrl,
   getMediaBlobUrl,
@@ -256,7 +256,10 @@ export async function generateBackupZipBlob(): Promise<{
           mdContent += `- [${t.completed ? 'x' : ' '}] ${t.text}\n`;
         });
       } else if (note.content) {
-        mdContent += `${note.content}\n`;
+        const pureMd = /<[a-z][\s\S]*>/i.test(note.content)
+          ? convertHtmlToMarkdown(note.content)
+          : cleanMarkdown(note.content);
+        mdContent += `${pureMd}\n`;
       }
 
       const noteFilename = `${safeTitle}_${note.id.slice(-5)}.md`;

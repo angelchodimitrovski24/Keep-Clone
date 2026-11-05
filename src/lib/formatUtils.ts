@@ -351,6 +351,70 @@ export function healMojibake(text: string): string {
     .replace(/(?:â€“|Ã¢â‚¬â€œ)/g, '–');
 }
 
+/**
+ * Normalizes and tightens Markdown content:
+ * - Eliminates unwanted empty lines between consecutive list items (bullets, tasks, numbers)
+ * - Eliminates empty lines inside table rows
+ * - Collapses excessive blank lines (3+ newlines -> at most 2 newlines)
+ * - Cleans trailing whitespace on lines
+ * - Removes residual empty HTML tags (<p></p>, <p><br></p>, etc.)
+ */
+export function cleanMarkdown(md: string): string {
+  if (!md) return '';
+  let cleaned = md.replace(/\r\n/g, '\n');
+
+  // Strip empty HTML paragraph / div artifacts
+  cleaned = cleaned.replace(/<(?:p|div)[^>]*>\s*(?:<br\s*\/?>|&nbsp;|\s)*<\/(?:p|div)>/gi, '\n');
+
+  const lines = cleaned.split('\n');
+  const result: string[] = [];
+  let prevIsList = false;
+  let prevIsTable = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+
+    const isBullet = /^\s*[-*+]\s+/.test(line);
+    const isTask = /^\s*(?:[-*+]\s+)?\[[ xX]\]\s+/.test(line);
+    const isNumber = /^\s*\d+\.\s+/.test(line);
+    const isList = isBullet || isTask || isNumber;
+    const isTable = trimmed.startsWith('|') && (trimmed.endsWith('|') || trimmed.includes('|'));
+
+    if (trimmed === '') {
+      // Look ahead to find next non-empty line
+      let nextLine = '';
+      for (let j = i + 1; j < lines.length; j++) {
+        if (lines[j].trim() !== '') {
+          nextLine = lines[j];
+          break;
+        }
+      }
+      const nextIsList = /^\s*(?:[-*+]\s+|\d+\.\s+|(?:[-*+]\s+)?\[[ xX]\]\s+)/.test(nextLine);
+      const nextIsTable = nextLine.trim().startsWith('|') && (nextLine.trim().endsWith('|') || nextLine.trim().includes('|'));
+
+      // If between list items of the same list or table rows, skip the empty line!
+      if ((prevIsList && nextIsList) || (prevIsTable && nextIsTable)) {
+        continue;
+      }
+
+      // Avoid more than 1 consecutive blank line anywhere in text
+      if (result.length > 0 && result[result.length - 1].trim() === '') {
+        continue;
+      }
+
+      result.push('');
+      continue;
+    }
+
+    result.push(line.replace(/[ \t]+$/, ''));
+    prevIsList = isList;
+    prevIsTable = isTable;
+  }
+
+  return result.join('\n').trim();
+}
+
 export function convertMarkdownToHtml(content: string): string {
   if (!content) return '';
 
@@ -458,12 +522,60 @@ export function convertMarkdownToHtml(content: string): string {
     return `\n\n${addProtected(`<pre><code>${clean.trim()}</code></pre>`)}\n\n`;
   });
 
-  // 4. Unpack <p> and <div> blocks to normal discrete lines
+  // 4. Convert any HTML list markup to Markdown before line splitting so tags are never broken
+  // Strip <p> inside <li> so list item contents stay compact
+  text = text.replace(/<li\b[^>]*>([\s\S]*?)<\/li>/gi, (_match, inner) => {
+    const cleanedInner = inner.replace(/<p\b[^>]*>([\s\S]*?)<\/p>/gi, '$1').trim();
+    return `<li>${cleanedInner}</li>`;
+  });
+
+  // Convert HTML task lists to markdown before line splitting
+  text = text.replace(/<ul\b[^>]*data-type="taskList"[^>]*>([\s\S]*?)<\/ul>/gi, (_match, inner) => {
+    const items: string[] = [];
+    const itemRegex = /<li\b[^>]*>([\s\S]*?)<\/li>/gi;
+    let itemMatch: RegExpExecArray | null;
+    while ((itemMatch = itemRegex.exec(inner)) !== null) {
+      const isChecked = /data-checked="true"|\bchecked\b(?!="false")/i.test(itemMatch[0]);
+      const content = itemMatch[1].replace(/<label[\s\S]*?<\/label>/gi, '').replace(/<[^>]+>/g, '').trim();
+      items.push(`- [${isChecked ? 'x' : ' '}] ${content}`);
+    }
+    return `\n\n${items.join('\n')}\n\n`;
+  });
+
+  // Convert HTML ordered lists to markdown before line splitting
+  text = text.replace(/<ol\b[^>]*>([\s\S]*?)<\/ol>/gi, (_match, inner) => {
+    const items: string[] = [];
+    const itemRegex = /<li\b[^>]*>([\s\S]*?)<\/li>/gi;
+    let itemMatch: RegExpExecArray | null;
+    let idx = 1;
+    while ((itemMatch = itemRegex.exec(inner)) !== null) {
+      const content = itemMatch[1].replace(/<[^>]+>/g, '').trim();
+      items.push(`${idx++}. ${content}`);
+    }
+    return `\n\n${items.join('\n')}\n\n`;
+  });
+
+  // Convert HTML bullet lists to markdown before line splitting
+  text = text.replace(/<ul\b[^>]*>([\s\S]*?)<\/ul>/gi, (_match, inner) => {
+    const items: string[] = [];
+    const itemRegex = /<li\b[^>]*>([\s\S]*?)<\/li>/gi;
+    let itemMatch: RegExpExecArray | null;
+    while ((itemMatch = itemRegex.exec(inner)) !== null) {
+      const content = itemMatch[1].replace(/<[^>]+>/g, '').trim();
+      items.push(`- ${content}`);
+    }
+    return `\n\n${items.join('\n')}\n\n`;
+  });
+
+  // Unpack <p> and <div> blocks to normal discrete lines
   text = text
     .replace(/<\/(?:p|div)>\s*<(?:p|div)[^>]*>/gi, '\n')
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<\/(?:p|div)>/gi, '\n')
     .replace(/<(?:p|div)[^>]*>/gi, '');
+
+  // Pre-clean with cleanMarkdown to tighten loose lists and remove surplus empty lines
+  text = cleanMarkdown(text);
 
   const lines = text.split(/\r?\n/);
   let result = '';
@@ -588,6 +700,24 @@ export function convertMarkdownToHtml(content: string): string {
     }
 
     if (!trimmed) {
+      // Look ahead: does the next non-empty line continue the current open list?
+      let nextLine = '';
+      for (let j = i + 1; j < lines.length; j++) {
+        if (lines[j].trim() !== '') {
+          nextLine = lines[j];
+          break;
+        }
+      }
+      const continuesTask = inTaskList && /^\s*(?:[-*+]\s+)?\[[ xX]\]\s+/.test(nextLine);
+      const continuesBullet = inBulletList && /^\s*[-*+]\s+/.test(nextLine);
+      const continuesNumber = inNumberList && /^\s*\d+\.\s+/.test(nextLine);
+
+      if (continuesTask || continuesBullet || continuesNumber) {
+        // Keep current list open across blank lines!
+        i++;
+        continue;
+      }
+
       closeOpenLists();
       i++;
       continue;
@@ -1046,51 +1176,81 @@ export function convertHtmlToMarkdown(html: string): string {
     return tableMd + '\n\n';
   });
 
-  // 3. Task list items: <li data-type="taskItem" data-checked="true/false">...
+  // 3. Task lists: <ul data-type="taskList">...</ul>
+  md = md.replace(/<ul\b[^>]*data-type="taskList"[^>]*>([\s\S]*?)<\/ul>/gi, (_m, inner) => {
+    const items: string[] = [];
+    const itemRegex = /<li\b[^>]*>([\s\S]*?)<\/li>/gi;
+    let itemMatch: RegExpExecArray | null;
+    while ((itemMatch = itemRegex.exec(inner)) !== null) {
+      const isChecked = /data-checked="true"|\bchecked\b(?!="false")/i.test(itemMatch[0]);
+      const text = itemMatch[1].replace(/<label[\s\S]*?<\/label>/gi, '').replace(/<[^>]+>/g, '').trim();
+      items.push(`- [${isChecked ? 'x' : ' '}] ${text}`);
+    }
+    return items.length > 0 ? `\n\n${items.join('\n')}\n\n` : '';
+  });
+
+  // 4. Ordered lists: <ol>...
+  md = md.replace(/<ol\b[^>]*>([\s\S]*?)<\/ol>/gi, (_m, inner) => {
+    const items: string[] = [];
+    const itemRegex = /<li\b[^>]*>([\s\S]*?)<\/li>/gi;
+    let itemMatch: RegExpExecArray | null;
+    let idx = 1;
+    while ((itemMatch = itemRegex.exec(inner)) !== null) {
+      const text = itemMatch[1].replace(/<[^>]+>/g, '').trim();
+      items.push(`${idx++}. ${text}`);
+    }
+    return items.length > 0 ? `\n\n${items.join('\n')}\n\n` : '';
+  });
+
+  // 5. Bullet lists: <ul>...
+  md = md.replace(/<ul\b[^>]*>([\s\S]*?)<\/ul>/gi, (_m, inner) => {
+    const items: string[] = [];
+    const itemRegex = /<li\b[^>]*>([\s\S]*?)<\/li>/gi;
+    let itemMatch: RegExpExecArray | null;
+    while ((itemMatch = itemRegex.exec(inner)) !== null) {
+      const text = itemMatch[1].replace(/<[^>]+>/g, '').trim();
+      items.push(`- ${text}`);
+    }
+    return items.length > 0 ? `\n\n${items.join('\n')}\n\n` : '';
+  });
+
+  // 6. Stray <li> elements not wrapped in ul/ol
   md = md.replace(/<li[^>]*data-type="taskItem"[^>]*data-checked="(true|false)"[^>]*>([\s\S]*?)<\/li>/gi, (_m, checked, inner) => {
     const isChecked = checked === 'true';
     const text = inner.replace(/<label[\s\S]*?<\/label>/gi, '').replace(/<[^>]+>/g, '').trim();
-    return `\n- [${isChecked ? 'x' : ' '}] ${text}\n`;
+    return `\n- [${isChecked ? 'x' : ' '}] ${text}`;
   });
-
-  // 4. Checkbox inputs inside <li>: <li><input type="checkbox" checked?> text</li>
-  md = md.replace(/<li[^>]*>[\s\S]*?<input[^>]*type="checkbox"([^>]*)>([\s\S]*?)<\/li>/gi, (_m, inputAttrs, text) => {
-    const isChecked = /checked/i.test(inputAttrs);
+  md = md.replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, (_m, text) => {
     const cleanText = text.replace(/<[^>]+>/g, '').trim();
-    return `\n- [${isChecked ? 'x' : ' '}] ${cleanText}\n`;
+    return `\n- ${cleanText}`;
   });
 
-  // 5. Headings: <h1> to <h6>
+  // 7. Headings: <h1> to <h6>
   md = md.replace(/<h([1-6])[^>]*>([\s\S]*?)<\/h\1>/gi, (_m, level, text) => {
     const hashes = '#'.repeat(parseInt(level, 10));
     const cleanText = text.replace(/<[^>]+>/g, '').trim();
-    return `\n\n${hashes} ${cleanText}\n\n`;
+    return cleanText ? `\n\n${hashes} ${cleanText}\n\n` : '';
   });
 
-  // 6. Horizontal rules
+  // 8. Horizontal rules
   md = md.replace(/<hr\s*\/?>/gi, '\n\n---\n\n');
 
-  // 7. Blockquotes
+  // 9. Blockquotes
   md = md.replace(/<blockquote[^>]*>([\s\S]*?)<\/blockquote>/gi, (_m, text) => {
     const cleanLines = text.replace(/<[^>]+>/g, '').trim().split('\n');
     return '\n\n' + cleanLines.map((l: string) => `> ${l.trim()}`).join('\n') + '\n\n';
   });
 
-  // 8. Bullet list items: <li>
-  md = md.replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, (_m, text) => {
-    const cleanText = text.replace(/<[^>]+>/g, '').trim();
-    return `\n- ${cleanText}\n`;
-  });
-
-  // 9. Paragraphs and divs: <p>, <div>
+  // 10. Paragraphs and divs (only wrap non-empty content in \n\n!)
   md = md.replace(/<(?:p|div)[^>]*>([\s\S]*?)<\/(?:p|div)>/gi, (_m, text) => {
-    return `\n\n${text.trim()}\n\n`;
+    const clean = text.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').trim();
+    return clean ? `\n\n${clean}\n\n` : '\n';
   });
 
-  // 10. Line breaks: <br>
+  // 11. Line breaks: <br>
   md = md.replace(/<br\s*\/?>/gi, '\n');
 
-  // 11. Images: <img ...>
+  // 12. Images: <img ...>
   md = md.replace(/<img\b([^>]*)>/gi, (_m, attrs) => {
     const srcMatch = attrs.match(/\bsrc=["']([^"']+)["']/i);
     if (!srcMatch || !srcMatch[1]) return '';
@@ -1100,7 +1260,7 @@ export function convertHtmlToMarkdown(html: string): string {
     return `\n\n![${alt || 'image'}](${src})\n\n`;
   });
 
-  // 12. Links: <a href="...">text</a>
+  // 13. Links: <a href="...">text</a>
   md = md.replace(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, (_m, href, text) => {
     const cleanText = text.replace(/<[^>]+>/g, '').trim();
     const cleanHref = href.trim();
@@ -1111,7 +1271,7 @@ export function convertHtmlToMarkdown(html: string): string {
     return `[${linkText}](${cleanHref})`;
   });
 
-  // 13. Inline formatting
+  // 14. Inline formatting
   md = md.replace(/<(?:strong|b)[^>]*>([\s\S]*?)<\/(?:strong|b)>/gi, '**$1**');
   md = md.replace(/<(?:em|i)[^>]*>([\s\S]*?)<\/(?:em|i)>/gi, '*$1*');
   md = md.replace(/<u>([\s\S]*?)<\/u>/gi, '_$1_');
@@ -1129,10 +1289,10 @@ export function convertHtmlToMarkdown(html: string): string {
     return `\`${clean.trim()}\``;
   });
 
-  // 14. Strip any leftover HTML tags
+  // 15. Strip any leftover HTML tags
   md = md.replace(/<[^>]+>/g, '');
 
-  // 15. Decode common HTML entities
+  // 16. Decode common HTML entities
   md = md
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
@@ -1141,25 +1301,13 @@ export function convertHtmlToMarkdown(html: string): string {
     .replace(/&#39;/g, "'")
     .replace(/&nbsp;/g, ' ');
 
-  // 16. Clean up excess whitespace
-  md = md.replace(/\n{3,}/g, '\n\n').trim();
-
-  // Merge consecutive inline code lines (e.g. when each line of a code block was wrapped in its own `code`)
-  md = md.replace(/(?:^|\n)(`[^`\n]+`(?:\n`[^`\n]+`)+)(?:\n|$)/g, (_match, group) => {
-    const rawLines = group.split('\n');
-    const unwrapped = rawLines.map((l: string) => l.trim().replace(/^`|`$/g, ''));
-    return `\n\n\`\`\`\n${unwrapped.join('\n')}\n\`\`\`\n\n`;
-  });
-
   // 17. Restore protected code blocks
   for (let idx = 0; idx < codeBlocks.length; idx++) {
     md = md.replace(new RegExp(`___KEEP_CODE_BLOCK_${idx}___`, 'g'), () => codeBlocks[idx].trim());
   }
 
-  // Final cleanup of extra whitespace
-  md = md.replace(/\n{3,}/g, '\n\n').trim();
-
-  return md;
+  // Final normalization and tightening of lists, tables, and spacing
+  return cleanMarkdown(md);
 }
 
 /**

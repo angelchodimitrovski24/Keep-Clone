@@ -381,10 +381,29 @@ body {
 .keep-rendered ul:not([data-type="taskList"]) {
   list-style-type: disc;
   padding-left: 1.25rem;
+  margin: 0.35rem 0;
 }
 .keep-rendered ol {
   list-style-type: decimal;
   padding-left: 1.25rem;
+  margin: 0.35rem 0;
+}
+.keep-rendered ul li,
+.keep-rendered ol li {
+  margin-bottom: 0.15rem;
+  line-height: 1.45;
+}
+.keep-rendered ul li > p,
+.keep-rendered ol li > p,
+.ProseMirror ul li > p,
+.ProseMirror ol li > p {
+  margin: 0;
+  display: inline;
+  line-height: inherit;
+}
+.keep-rendered p:empty,
+.ProseMirror p:empty {
+  display: none;
 }
 
 .keep-markdown ul {

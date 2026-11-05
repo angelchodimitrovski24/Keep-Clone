@@ -644,17 +644,43 @@ const NoteCardComponent: React.FC<NoteCardProps> = ({
               onEncrypt={() => setShowEncryptModal(true)}
               onLinkNote={() => setShowLinkModal(true)}
               onSelectCategory={(category) => updateNote(note.id, { category })}
-              onToggleChecklist={() =>
-                updateNote(note.id, {
-                  isList: !note.isList,
-                  todos: note.isList
-                    ? []
-                    : activeNote.content
-                        .split('\n')
-                        .filter((l) => l.trim())
-                        .map((l, i) => ({ id: 'todo-' + i, text: l, completed: false })),
-                })
-              }
+              onToggleChecklist={() => {
+                if (note.isList) {
+                  // Converting from list to markdown content: preserve all todos as clean markdown checklist
+                  const mdChecklist = (activeNote.todos || [])
+                    .map((t) => `- [${t.completed ? 'x' : ' '}] ${t.text}`)
+                    .join('\n');
+                  const nextContent = activeNote.content
+                    ? `${activeNote.content}\n\n${mdChecklist}`
+                    : mdChecklist;
+                  updateNote(note.id, {
+                    isList: false,
+                    content: nextContent,
+                    todos: [],
+                  });
+                } else {
+                  // Converting from markdown content to checklist
+                  const text = activeNote.content.replace(/<[^>]+>/g, '\n');
+                  const lines = text
+                    .split('\n')
+                    .map((l) => l.trim())
+                    .filter(Boolean);
+                  const newTodos = lines.map((l, i) => {
+                    const isChecked = /^\[x\]/i.test(l) || /^-\s*\[x\]/i.test(l);
+                    const cleanText = l
+                      .replace(/^[-*+]\s+\[[ xX]\]\s*/, '')
+                      .replace(/^\[[ xX]\]\s*/, '')
+                      .replace(/^[-*+]\s+/, '')
+                      .replace(/^\d+\.\s+/, '')
+                      .trim();
+                    return { id: 'todo-' + i + '-' + Date.now(), text: cleanText, completed: isChecked };
+                  });
+                  updateNote(note.id, {
+                    isList: true,
+                    todos: newTodos,
+                  });
+                }
+              }}
               onAddReminder={(reminder) => updateNote(note.id, { reminder })}
               onToggleLabel={handleToggleLabel}
               onOpenVersions={() => setVersionHistoryNote(note)}
