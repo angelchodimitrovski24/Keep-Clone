@@ -216,7 +216,7 @@ export const SettingsModal: React.FC = () => {
         {/* Header */}
         <div className="flex items-center justify-between px-5 sm:px-6 py-4 border-b border-stone-200 dark:border-stone-800">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-lg bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 border border-stone-200 dark:border-stone-700 flex items-center justify-center">
               <SettingsIcon className="w-4 h-4" />
             </div>
             <h3 className="font-semibold text-lg text-stone-900 dark:text-stone-100">
@@ -263,7 +263,7 @@ export const SettingsModal: React.FC = () => {
                   onClick={(e) => handleTabClick(tab.id, e)}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-medium whitespace-nowrap transition-all cursor-pointer shrink-0 ${
                     isActive
-                      ? 'bg-amber-500 text-stone-950 font-bold shadow-xs'
+                      ? 'bg-stone-900 text-white dark:bg-stone-700 dark:text-white dark:border dark:border-stone-600 font-semibold shadow-xs'
                       : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-stone-200/60 dark:hover:bg-stone-800/80'
                   }`}
                 >
@@ -321,7 +321,7 @@ export const SettingsModal: React.FC = () => {
                         onClick={() => setFontSize(opt.id)}
                         className={`flex flex-col items-center justify-center p-2.5 rounded-xl border text-center transition-all ${
                           isSelected
-                            ? 'border-amber-500 bg-amber-500/10 text-amber-900 dark:text-amber-200 font-semibold shadow-xs ring-1 ring-amber-500'
+                            ? 'border-stone-900 bg-stone-100 text-stone-900 dark:border-stone-400 dark:bg-stone-800 dark:text-stone-100 font-semibold shadow-xs ring-1 ring-stone-900 dark:ring-stone-400'
                             : 'border-stone-200 dark:border-stone-700 hover:bg-stone-50 dark:hover:bg-stone-800 text-stone-700 dark:text-stone-300'
                         }`}
                       >
@@ -336,7 +336,7 @@ export const SettingsModal: React.FC = () => {
                 <div className="p-3.5 rounded-xl border border-stone-200/90 dark:border-stone-700/80 bg-stone-50/70 dark:bg-stone-900/40 mb-3">
                   <div className="flex items-center justify-between text-xs text-stone-700 dark:text-stone-300 mb-2">
                     <span className="font-semibold">Smooth Font Size Slider (12px – 28px):</span>
-                    <span className="font-mono font-bold text-amber-600 dark:text-amber-400 bg-amber-500/15 px-2.5 py-0.5 rounded-md text-xs border border-amber-500/20">
+                    <span className="font-mono font-bold text-stone-800 dark:text-stone-200 bg-stone-100 dark:bg-stone-800 px-2.5 py-0.5 rounded-md text-xs border border-stone-200 dark:border-stone-700">
                       {getFontSizeInPx(fontSize)}
                     </span>
                   </div>
@@ -347,7 +347,7 @@ export const SettingsModal: React.FC = () => {
                     step="1"
                     value={currentPxNum}
                     onChange={(e) => setFontSize(`${e.target.value}px`)}
-                    className="w-full accent-amber-500 cursor-pointer h-2 bg-stone-200 dark:bg-stone-700 rounded-lg"
+                    className="w-full accent-stone-900 dark:accent-stone-300 cursor-pointer h-2 bg-stone-200 dark:bg-stone-700 rounded-lg"
                   />
                   <div className="flex justify-between text-[11px] text-stone-400 mt-1.5 font-mono">
                     <span>12px</span>
@@ -362,7 +362,7 @@ export const SettingsModal: React.FC = () => {
                 {/* Live Interactive Font Size Preview Box */}
                 <div className="p-3.5 rounded-xl border border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-900/60 transition-all">
                   <div className="flex items-center gap-1.5 text-xs font-medium text-stone-500 mb-2">
-                    <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                    <Sparkles className="w-3.5 h-3.5 text-stone-500 dark:text-stone-400" />
                     Live Preview (scales text, code, checklists &amp; tables):
                   </div>
                   <div className="keep-rendered text-stone-800 dark:text-stone-200 space-y-2">
@@ -400,7 +400,7 @@ export const SettingsModal: React.FC = () => {
                         onClick={() => setThemeMode(opt.id)}
                         className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border transition-all text-sm font-medium ${
                           isSelected
-                            ? 'border-amber-500 bg-amber-500/10 text-amber-900 dark:text-amber-200 font-semibold ring-1 ring-amber-500 shadow-xs'
+                            ? 'border-stone-900 bg-stone-100 text-stone-900 dark:border-stone-400 dark:bg-stone-800 dark:text-stone-100 font-semibold ring-1 ring-stone-900 dark:ring-stone-400 shadow-xs'
                             : 'border-stone-200 dark:border-stone-700 hover:bg-stone-50 dark:hover:bg-stone-800 text-stone-700 dark:text-stone-300'
                         }`}
                       >
@@ -428,7 +428,7 @@ export const SettingsModal: React.FC = () => {
                     onClick={() => setLayoutMode('grid')}
                     className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border text-xs sm:text-sm transition-all ${
                       layoutMode === 'grid'
-                        ? 'border-amber-500 bg-amber-500/10 text-amber-900 dark:text-amber-200 font-semibold ring-1 ring-amber-500'
+                        ? 'border-stone-900 bg-stone-100 text-stone-900 dark:border-stone-400 dark:bg-stone-800 dark:text-stone-100 font-semibold ring-1 ring-stone-900 dark:ring-stone-400'
                         : 'border-stone-200 dark:border-stone-700 text-stone-700 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-800'
                     }`}
                   >
@@ -440,7 +440,7 @@ export const SettingsModal: React.FC = () => {
                     onClick={() => setLayoutMode('list')}
                     className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border text-xs sm:text-sm transition-all ${
                       layoutMode === 'list'
-                        ? 'border-amber-500 bg-amber-500/10 text-amber-900 dark:text-amber-200 font-semibold ring-1 ring-amber-500'
+                        ? 'border-stone-900 bg-stone-100 text-stone-900 dark:border-stone-400 dark:bg-stone-800 dark:text-stone-100 font-semibold ring-1 ring-stone-900 dark:ring-stone-400'
                         : 'border-stone-200 dark:border-stone-700 text-stone-700 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-800'
                     }`}
                   >
@@ -452,7 +452,7 @@ export const SettingsModal: React.FC = () => {
                     onClick={() => setLayoutMode('notion')}
                     className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border text-xs sm:text-sm transition-all ${
                       layoutMode === 'notion'
-                        ? 'border-amber-500 bg-amber-500/10 text-amber-900 dark:text-amber-200 font-semibold ring-1 ring-amber-500'
+                        ? 'border-stone-900 bg-stone-100 text-stone-900 dark:border-stone-400 dark:bg-stone-800 dark:text-stone-100 font-semibold ring-1 ring-stone-900 dark:ring-stone-400'
                         : 'border-stone-200 dark:border-stone-700 text-stone-700 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-800'
                     }`}
                   >
@@ -501,7 +501,7 @@ export const SettingsModal: React.FC = () => {
               {/* Tool 2: Notion Template Hub */}
               <div className="p-4 rounded-xl border border-stone-200 dark:border-stone-700 bg-stone-50/50 dark:bg-stone-900/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="flex items-start gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 mt-0.5">
+                  <div className="w-9 h-9 rounded-xl bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 border border-stone-200 dark:border-stone-700 flex items-center justify-center shrink-0 mt-0.5">
                     <Sparkles className="w-5 h-5" />
                   </div>
                   <div>
@@ -519,7 +519,7 @@ export const SettingsModal: React.FC = () => {
                     setIsSettingsOpen(false);
                     setIsNotionTemplateModalOpen(true);
                   }}
-                  className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-stone-950 font-semibold text-xs shrink-0 transition-colors shadow-2xs"
+                  className="px-3.5 py-2 rounded-xl bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-100 dark:hover:bg-white dark:text-stone-900 font-semibold text-xs shrink-0 transition-colors shadow-2xs"
                 >
                   Create Template Hub
                 </button>
@@ -583,7 +583,7 @@ export const SettingsModal: React.FC = () => {
               {/* Tool 5: Local Paste Folder */}
               <div className="p-4 rounded-xl border border-stone-200 dark:border-stone-700 bg-stone-50/50 dark:bg-stone-900/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="flex items-start gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-amber-400/15 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 mt-0.5">
+                  <div className="w-9 h-9 rounded-xl bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 border border-stone-200 dark:border-stone-700 flex items-center justify-center shrink-0 mt-0.5">
                     <FolderOpen className="w-5 h-5" />
                   </div>
                   <div className="min-w-0">
@@ -610,7 +610,7 @@ export const SettingsModal: React.FC = () => {
               {/* Tool 6: Android & PWA App Installation */}
               <div className="p-4 rounded-xl border border-stone-200 dark:border-stone-700 bg-stone-50/50 dark:bg-stone-900/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="flex items-start gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 mt-0.5">
+                  <div className="w-9 h-9 rounded-xl bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 border border-stone-200 dark:border-stone-700 flex items-center justify-center shrink-0 mt-0.5">
                     <Smartphone className="w-5 h-5" />
                   </div>
                   <div>
@@ -638,7 +638,7 @@ export const SettingsModal: React.FC = () => {
                       setIsInstallModalOpen(true);
                     }
                   }}
-                  className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-stone-950 font-semibold text-xs shrink-0 transition-colors shadow-2xs"
+                  className="px-3.5 py-2 rounded-xl bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-100 dark:hover:bg-white dark:text-stone-900 font-semibold text-xs shrink-0 transition-colors shadow-2xs"
                 >
                   {isPwaInstalled ? 'App Status' : canInstallPwa ? 'Install Now' : 'Install Guide'}
                 </button>
@@ -732,7 +732,7 @@ export const SettingsModal: React.FC = () => {
               {/* Integration 3: Ollama Local AI */}
               <div className="p-4 rounded-xl border border-stone-200 dark:border-stone-700 bg-stone-50/50 dark:bg-stone-900/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="flex items-start gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-amber-500 to-orange-500 text-white flex items-center justify-center shrink-0 mt-0.5 shadow-xs">
+                  <div className="w-9 h-9 rounded-xl bg-stone-900 dark:bg-stone-700 text-white flex items-center justify-center shrink-0 mt-0.5 shadow-xs">
                     <Bot className="w-5 h-5" />
                   </div>
                   <div>
@@ -741,7 +741,7 @@ export const SettingsModal: React.FC = () => {
                         Ollama Local AI Assistant &amp; Chat
                       </h4>
                       {getSavedOllamaConfig()?.selectedModel ? (
-                        <span className="text-[10px] font-bold text-amber-700 dark:text-amber-300 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-full">
+                        <span className="text-[10px] font-bold text-stone-800 dark:text-stone-200 bg-stone-100 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 px-2 py-0.5 rounded-full">
                           Model: {getSavedOllamaConfig().selectedModel}
                         </span>
                       ) : (
@@ -761,7 +761,7 @@ export const SettingsModal: React.FC = () => {
                     setIsSettingsOpen(false);
                     openGeneralAiChat();
                   }}
-                  className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-stone-950 font-semibold text-xs shrink-0 transition-colors shadow-2xs"
+                  className="px-3.5 py-2 rounded-xl bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-100 dark:hover:bg-white dark:text-stone-900 font-semibold text-xs shrink-0 transition-colors shadow-2xs"
                 >
                   Open Ollama AI
                 </button>
@@ -809,9 +809,9 @@ export const SettingsModal: React.FC = () => {
                     setIsSettingsOpen(false);
                     setIsWebExportModalOpen(true);
                   }}
-                  className="flex items-center gap-3 p-3.5 rounded-xl border border-amber-500/40 bg-amber-500/5 hover:bg-amber-500/10 text-left transition-colors shadow-2xs"
+                  className="flex items-center gap-3 p-3.5 rounded-xl border border-stone-200 dark:border-stone-700 bg-stone-50/50 dark:bg-stone-900/40 hover:bg-stone-100 dark:hover:bg-stone-800 text-left transition-colors shadow-2xs"
                 >
-                  <div className="w-8 h-8 rounded-lg bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                  <div className="w-8 h-8 rounded-lg bg-stone-200 dark:bg-stone-700 text-stone-700 dark:text-stone-300 flex items-center justify-center shrink-0">
                     <Globe className="w-4 h-4" />
                   </div>
                   <div>
@@ -863,7 +863,7 @@ export const SettingsModal: React.FC = () => {
                   className="flex items-center gap-3 p-3.5 rounded-xl border border-stone-200 dark:border-stone-700 bg-stone-50/50 dark:bg-stone-900/40 hover:bg-stone-100 dark:hover:bg-stone-800 text-left transition-colors shadow-2xs"
                 >
                   <div className="w-8 h-8 rounded-lg bg-stone-200 dark:bg-stone-700 text-stone-700 dark:text-stone-300 flex items-center justify-center shrink-0">
-                    <FolderDown className="w-4 h-4 text-amber-500" />
+                    <FolderDown className="w-4 h-4 text-stone-500 dark:text-stone-400" />
                   </div>
                   <div>
                     <div className="text-xs font-bold text-stone-900 dark:text-stone-100">Export Backup (ZIP)</div>
@@ -927,7 +927,7 @@ export const SettingsModal: React.FC = () => {
               <div className="flex items-center justify-between mb-1">
                 <div>
                   <h4 className="text-sm font-semibold text-stone-900 dark:text-stone-100 flex items-center gap-2">
-                    <span className="w-5 h-5 rounded-md bg-amber-500 text-stone-950 flex items-center justify-center font-bold text-xs shadow-xs">
+                    <span className="w-5 h-5 rounded-md bg-stone-900 dark:bg-stone-700 text-white flex items-center justify-center font-bold text-xs shadow-xs">
                       ⚡
                     </span>
                     <span>1-Million Notes Scalability Engine</span>
@@ -936,8 +936,8 @@ export const SettingsModal: React.FC = () => {
                     Cursor-based IndexedDB streaming and token indexes handle <strong>up to 1,000,000 notes</strong> with &lt; 50MB RAM footprint.
                   </p>
                 </div>
-                <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-0.5 rounded-full flex items-center gap-1 shrink-0">
-                  <Gauge className="w-3 h-3" />
+                <span className="text-[11px] font-semibold text-stone-700 dark:text-stone-300 bg-stone-100 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 px-2.5 py-0.5 rounded-full flex items-center gap-1 shrink-0">
+                  <Gauge className="w-3 h-3 text-stone-500 dark:text-stone-400" />
                   Sub-50ms IndexedDB
                 </span>
               </div>
@@ -952,19 +952,19 @@ export const SettingsModal: React.FC = () => {
                 </div>
                 <div className="p-2.5 rounded-xl bg-stone-100 dark:bg-stone-800/60 border border-stone-200/80 dark:border-stone-700/60">
                   <div className="text-[11px] text-stone-500 dark:text-stone-400">Active Notes</div>
-                  <div className="text-base font-bold text-emerald-600 dark:text-emerald-400">
+                  <div className="text-base font-bold text-stone-900 dark:text-stone-100">
                     {(databaseStats?.activeNotes ?? totalActiveNotesCount).toLocaleString()}
                   </div>
                 </div>
                 <div className="p-2.5 rounded-xl bg-stone-100 dark:bg-stone-800/60 border border-stone-200/80 dark:border-stone-700/60">
                   <div className="text-[11px] text-stone-500 dark:text-stone-400">Benchmark Notes</div>
-                  <div className="text-base font-bold text-amber-600 dark:text-amber-400">
+                  <div className="text-base font-bold text-stone-900 dark:text-stone-100">
                     {(databaseStats?.benchmarkNotes ?? 0).toLocaleString()}
                   </div>
                 </div>
                 <div className="p-2.5 rounded-xl bg-stone-100 dark:bg-stone-800/60 border border-stone-200/80 dark:border-stone-700/60">
                   <div className="text-[11px] text-stone-500 dark:text-stone-400">Query Speed</div>
-                  <div className="text-base font-bold text-blue-600 dark:text-blue-400">
+                  <div className="text-base font-bold text-stone-900 dark:text-stone-100">
                     &lt; 5 ms
                   </div>
                 </div>
@@ -972,17 +972,17 @@ export const SettingsModal: React.FC = () => {
 
               {/* Benchmark Progress Bar */}
               {benchmarkProgress?.running && (
-                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs">
-                  <div className="flex items-center justify-between mb-1 text-amber-800 dark:text-amber-200 font-medium">
+                <div className="p-3 rounded-xl bg-stone-100 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 text-xs">
+                  <div className="flex items-center justify-between mb-1 text-stone-800 dark:text-stone-200 font-medium">
                     <span>{benchmarkProgress.action}</span>
                     <span>
                       {benchmarkProgress.inserted.toLocaleString()} / {benchmarkProgress.total.toLocaleString()} (
                       {Math.round((benchmarkProgress.inserted / Math.max(1, benchmarkProgress.total)) * 100)}%)
                     </span>
                   </div>
-                  <div className="w-full h-2 rounded-full bg-amber-200/50 dark:bg-amber-900/40 overflow-hidden">
+                  <div className="w-full h-2 rounded-full bg-stone-200 dark:bg-stone-700 overflow-hidden">
                     <div
-                      className="h-full bg-amber-500 transition-all duration-150"
+                      className="h-full bg-stone-800 dark:bg-stone-200 transition-all duration-150"
                       style={{
                         width: `${Math.min(100, (benchmarkProgress.inserted / Math.max(1, benchmarkProgress.total)) * 100)}%`,
                       }}
@@ -1000,7 +1000,7 @@ export const SettingsModal: React.FC = () => {
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-800 text-stone-700 dark:text-stone-200 text-xs font-semibold hover:bg-stone-100 dark:hover:bg-stone-700 disabled:opacity-50 transition-colors shadow-2xs"
                   title="Generate 1,000 test notes with categories and tags instantly"
                 >
-                  <Zap className="w-3.5 h-3.5 text-amber-500" />
+                  <Zap className="w-3.5 h-3.5 text-stone-400" />
                   <span>+1,000 Notes</span>
                 </button>
 
@@ -1011,7 +1011,7 @@ export const SettingsModal: React.FC = () => {
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-800 text-stone-700 dark:text-stone-200 text-xs font-semibold hover:bg-stone-100 dark:hover:bg-stone-700 disabled:opacity-50 transition-colors shadow-2xs"
                   title="Generate 10,000 realistic notes in batched transactions (~1s)"
                 >
-                  <Zap className="w-3.5 h-3.5 text-amber-500" />
+                  <Zap className="w-3.5 h-3.5 text-stone-400" />
                   <span>+10,000 Notes</span>
                 </button>
 
@@ -1022,7 +1022,7 @@ export const SettingsModal: React.FC = () => {
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-800 text-stone-700 dark:text-stone-200 text-xs font-semibold hover:bg-stone-100 dark:hover:bg-stone-700 disabled:opacity-50 transition-colors shadow-2xs"
                   title="Generate 100,000 notes in high-speed transactions (~10s)"
                 >
-                  <Zap className="w-3.5 h-3.5 text-amber-500" />
+                  <Zap className="w-3.5 h-3.5 text-stone-400" />
                   <span>+100,000 Notes</span>
                 </button>
 
@@ -1030,10 +1030,10 @@ export const SettingsModal: React.FC = () => {
                   type="button"
                   disabled={benchmarkProgress?.running}
                   onClick={() => handleRunBenchmark(1000000)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-200 text-xs font-bold hover:bg-amber-500/20 disabled:opacity-50 transition-colors shadow-xs"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-stone-300 dark:border-stone-700 bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 text-xs font-bold hover:bg-stone-800 dark:hover:bg-white disabled:opacity-50 transition-colors shadow-xs"
                   title="Generate full 1,000,000 notes benchmark suite"
                 >
-                  <Gauge className="w-3.5 h-3.5 text-amber-500" />
+                  <Gauge className="w-3.5 h-3.5 text-stone-400 dark:text-stone-600" />
                   <span>🚀 +1,000,000 Notes</span>
                 </button>
 

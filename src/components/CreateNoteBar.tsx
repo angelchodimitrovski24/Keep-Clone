@@ -15,9 +15,11 @@ import {
   Sparkles,
   Globe,
   DownloadCloud,
+  Folder,
+  Tag,
 } from 'lucide-react';
 import { useKeep } from '@/context/KeepContext';
-import { NoteActions } from './NoteActions';
+import { NoteActions, NoteActionsHandle } from './NoteActions';
 import { KeepFormattingBar } from './KeepFormattingBar';
 import { KeepWysiwygEditor, KeepWysiwygEditorHandle } from './KeepWysiwygEditor';
 import { NoteColor, NoteBackgroundTheme, TodoItem, NoteDrawing, Note } from '@/types/note';
@@ -95,6 +97,7 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
 
   const containerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<KeepWysiwygEditorHandle>(null);
+  const noteActionsRef = useRef<NoteActionsHandle>(null);
 
   // If CreateNoteBar is collapsed and no modal is open, allow Ctrl+V anywhere on the page to start a note with the pasted image/file
   React.useEffect(() => {
@@ -833,56 +836,80 @@ const handleImportMhtml = async (file: File) => {
             </div>
           )}
 
-          {/* Category, Labels & Reminder chips */}
-          <div className="flex flex-wrap gap-1.5 mt-3">
-            {category && (() => {
-              const catObj = categories.find((c) => c.name === category);
-              return (
-                <span
-                  className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold shadow-2xs"
-                  style={{
-                    backgroundColor: catObj?.color ? `${catObj.color}20` : 'rgba(59, 130, 246, 0.15)',
-                    color: catObj?.color || '#3b82f6',
-                    border: `1px solid ${catObj?.color ? `${catObj.color}40` : 'rgba(59, 130, 246, 0.3)'}`,
-                  }}
+          {/* Quick Category, Labels & Reminder chips (Optimized for Mobile & Desktop) */}
+          <div className="flex flex-wrap items-center gap-1.5 mt-3 pt-1 border-t border-black/5 dark:border-white/5">
+            {/* Category Chip or "+ Category" button */}
+            {category ? (
+              <span
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-stone-100 dark:bg-stone-800 text-stone-800 dark:text-stone-200 border border-stone-200 dark:border-stone-700 shadow-2xs group transition-all"
+              >
+                <button
+                  type="button"
+                  onClick={() => noteActionsRef.current?.openCategoryPicker()}
+                  className="flex items-center gap-1 hover:opacity-80 cursor-pointer"
+                  title="Change category"
                 >
-                  <span>{catObj?.icon || '📁'}</span>
+                  <span>{categories.find((c) => c.name === category)?.icon || '📁'}</span>
                   <span>{category}</span>
-                  <button
-                    type="button"
-                    onClick={() => setCategory(null)}
-                    className="hover:opacity-75"
-                    title="Remove category"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </span>
-              );
-            })()}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCategory(null)}
+                  className="hover:opacity-75 ml-0.5 rounded-full p-0.5 hover:bg-black/10 dark:hover:bg-white/10 transition-colors cursor-pointer"
+                  title="Remove category"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => noteActionsRef.current?.openCategoryPicker()}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 border border-stone-200 dark:border-stone-700 transition-colors cursor-pointer"
+                title="Add category"
+              >
+                <Folder className="w-3.5 h-3.5 text-stone-500 dark:text-stone-400" />
+                <span>+ Category</span>
+              </button>
+            )}
 
+            {/* Labels Chips */}
             {labels.map((lbl) => (
               <span
                 key={lbl}
-                className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-black/10 dark:bg-white/10"
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-stone-100 dark:bg-stone-800 text-stone-800 dark:text-stone-200 border border-stone-200 dark:border-stone-700 shadow-2xs"
               >
-                {lbl}
+                <span className="text-stone-400 dark:text-stone-500 font-semibold">#</span>
+                <span>{lbl}</span>
                 <button
                   type="button"
                   onClick={() => handleToggleLabel(lbl)}
-                  className="hover:text-red-500"
+                  className="hover:text-red-500 ml-0.5 rounded-full p-0.5 hover:bg-black/10 dark:hover:bg-white/10 transition-colors cursor-pointer"
+                  title="Remove label"
                 >
                   <X className="w-3 h-3" />
                 </button>
               </span>
             ))}
 
+            {/* "+ Label" button - always accessible with 1 tap */}
+            <button
+              type="button"
+              onClick={() => noteActionsRef.current?.openLabelPicker()}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 border border-stone-200 dark:border-stone-700 transition-colors cursor-pointer"
+              title="Add label"
+            >
+              <Tag className="w-3.5 h-3.5 text-stone-500 dark:text-stone-400" />
+              <span>+ Label</span>
+            </button>
+
             {reminder && (
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-300">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-stone-100 text-stone-800 dark:bg-stone-800 dark:text-stone-200 border border-stone-200 dark:border-stone-700 shadow-2xs">
                 <span>⏰ {new Date(reminder).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
                 <button
                   type="button"
                   onClick={() => setReminder(null)}
-                  className="hover:text-red-500"
+                  className="hover:text-red-500 ml-0.5 rounded-full p-0.5 hover:bg-black/10 dark:hover:bg-white/10 transition-colors cursor-pointer"
                 >
                   <X className="w-3 h-3" />
                 </button>
@@ -890,8 +917,8 @@ const handleImportMhtml = async (file: File) => {
             )}
 
             {isEncrypted && (
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/30 shadow-xs">
-                <Lock className="w-3 h-3 text-amber-600 dark:text-amber-400" />
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-stone-100 text-stone-800 dark:bg-stone-800 dark:text-stone-200 border border-stone-200 dark:border-stone-700 shadow-2xs">
+                <Lock className="w-3 h-3 text-stone-500 dark:text-stone-400" />
                 <span>AES-256 Protected</span>
                 <button
                   type="button"
@@ -900,7 +927,7 @@ const handleImportMhtml = async (file: File) => {
                     setEncryptionPassword('');
                     setEncryptionHint('');
                   }}
-                  className="hover:text-red-500"
+                  className="hover:text-red-500 ml-0.5 rounded-full p-0.5 hover:bg-black/10 dark:hover:bg-white/10 transition-colors cursor-pointer"
                   title="Remove encryption"
                 >
                   <X className="w-3 h-3" />
@@ -920,6 +947,7 @@ const handleImportMhtml = async (file: File) => {
         {/* Footer toolbar */}
         <div className="flex items-center justify-between px-2 sm:px-3 py-2 border-t border-black/5 dark:border-white/5 gap-1 relative z-20">
           <NoteActions
+            ref={noteActionsRef}
             note={{ title, content, todos, color, theme, isList, labels, reminder, category, isEncrypted }}
             onColorChange={setColor}
             onThemeChange={setTheme}

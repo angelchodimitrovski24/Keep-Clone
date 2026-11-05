@@ -100,7 +100,7 @@ export const UnlockCategoryModal: React.FC = () => {
         {/* Password Hint */}
         {category.lockHint && (
           <div className="p-2.5 rounded-xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 text-xs text-amber-800 dark:text-amber-300 flex items-center gap-2">
-            <KeyRound className="w-4 h-4 shrink-0 text-amber-500" />
+            <KeyRound className="w-4 h-4 shrink-0 text-stone-500 dark:text-stone-400" />
             <span>
               <strong>Password Hint:</strong> {category.lockHint}
             </span>
@@ -119,7 +119,7 @@ export const UnlockCategoryModal: React.FC = () => {
                 if (error) setError(null);
               }}
               autoFocus
-              className="w-full pl-3.5 pr-10 py-2.5 text-sm bg-stone-50 dark:bg-stone-800/80 border border-stone-300 dark:border-stone-700 rounded-xl outline-none focus:border-amber-500 dark:focus:border-amber-500 transition-colors"
+              className="w-full pl-3.5 pr-10 py-2.5 text-sm bg-stone-50 dark:bg-stone-800/80 border border-stone-300 dark:border-stone-700 rounded-xl outline-none focus:border-stone-500 dark:focus:border-stone-400 transition-colors"
             />
             <button
               type="button"
@@ -141,7 +141,7 @@ export const UnlockCategoryModal: React.FC = () => {
             <button
               type="submit"
               disabled={isSubmitting || !password}
-              className="px-5 py-2 text-xs font-semibold rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white transition-colors flex items-center gap-1.5 shadow-sm"
+              className="px-5 py-2 text-xs font-semibold rounded-xl bg-stone-900 hover:bg-stone-800 dark:bg-stone-100 dark:hover:bg-white text-white dark:text-stone-900 disabled:opacity-50 transition-colors flex items-center gap-1.5 shadow-sm"
             >
               <Shield className="w-3.5 h-3.5" />
               <span>{isSubmitting ? 'Verifying…' : 'Unlock Category'}</span>

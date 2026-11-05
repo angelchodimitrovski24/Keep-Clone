@@ -110,12 +110,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 onClick={() => handleSelectNav(item.id)}
                 className={`flex items-center gap-5 px-4 py-3 rounded-r-full text-sm font-medium transition-colors ${
                   isActive
-                    ? 'bg-amber-100 text-stone-900 dark:bg-amber-950/60 dark:text-amber-200'
+                    ? 'bg-stone-200/80 text-stone-950 font-semibold dark:bg-stone-800 dark:text-stone-100'
                     : 'text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800'
                 }`}
                 title={item.label}
               >
-                <span className={`shrink-0 ${isActive ? 'text-amber-600 dark:text-amber-400' : ''}`}>
+                <span className={`shrink-0 ${isActive ? 'text-stone-900 dark:text-stone-100' : ''}`}>
                   {item.icon}
                 </span>
                 <span className={`truncate ${isOpen ? 'inline' : 'hidden lg:hidden'}`}>
@@ -137,7 +137,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             className="flex items-center gap-5 px-4 py-3 rounded-r-full text-sm font-medium text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
             title="Create note from date range (today, 7d, 14d, 30d...)"
           >
-            <CalendarRange className="w-5 h-5 shrink-0 text-blue-500" />
+            <CalendarRange className="w-5 h-5 shrink-0 text-stone-500 dark:text-stone-400" />
             <span className={`truncate ${isOpen ? 'inline' : 'hidden lg:hidden'}`}>
               Notes by Date Range
             </span>
@@ -164,7 +164,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 onClick={() => handleSelectNav('category', cat.name)}
                 className={`flex items-center gap-5 px-4 py-2.5 rounded-r-full text-sm font-medium transition-colors ${
                   isActive
-                    ? 'bg-amber-100 text-stone-900 dark:bg-amber-950/60 dark:text-amber-200'
+                    ? 'bg-stone-200/80 text-stone-950 font-semibold dark:bg-stone-800 dark:text-stone-100'
                     : 'text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800'
                 }`}
                 title={cat.name}
@@ -177,7 +177,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   {isLocked && (
                     <span className="shrink-0 ml-1.5" title={isUnlocked ? 'Unlocked in session' : 'Password protected'}>
                       {isUnlocked ? (
-                        <Unlock className="w-3.5 h-3.5 text-amber-500" />
+                        <Unlock className="w-3.5 h-3.5 text-stone-500 dark:text-stone-400" />
                       ) : (
                         <Lock className="w-3.5 h-3.5 text-stone-400" />
                       )}
@@ -224,12 +224,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 onClick={() => handleSelectNav('label', lbl.name)}
                 className={`flex items-center gap-5 px-4 py-2.5 rounded-r-full text-sm font-medium transition-colors ${
                   isActive
-                    ? 'bg-amber-100 text-stone-900 dark:bg-amber-950/60 dark:text-amber-200'
+                    ? 'bg-stone-200/80 text-stone-950 font-semibold dark:bg-stone-800 dark:text-stone-100'
                     : 'text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800'
                 }`}
                 title={lbl.name}
               >
-                <Tag className={`w-5 h-5 shrink-0 ${isActive ? 'text-amber-600' : 'text-stone-400'}`} />
+                <Tag className={`w-5 h-5 shrink-0 ${isActive ? 'text-stone-900 dark:text-stone-100' : 'text-stone-400'}`} />
                 <span className={`truncate ${isOpen ? 'inline' : 'hidden lg:hidden'}`}>
                   {lbl.name}
                 </span>

@@ -146,6 +146,6 @@ export function formatWikiLinksInHtml(html: string): string {
   if (!html || !html.includes('[[')) return html || '';
   return html.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_match, raw1, raw2) => {
     const title = (raw2 || raw1).trim();
-    return `<span class="inline-flex items-center gap-1 px-1.5 py-0.5 my-0.5 rounded-md bg-amber-500/15 text-amber-800 dark:text-amber-200 font-medium text-xs border border-amber-500/20 cursor-pointer hover:bg-amber-500/25 transition-colors select-none keep-note-link" data-note-link-title="${title}" title="Open linked note: ${title}">🔗 ${title}</span>`;
+    return `<span class="inline-flex items-center gap-1 px-1.5 py-0.5 my-0.5 rounded-md bg-stone-100 text-stone-800 dark:bg-stone-800 dark:text-stone-200 font-medium text-xs border border-stone-300 dark:border-stone-700 cursor-pointer hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors select-none keep-note-link" data-note-link-title="${title}" title="Open linked note: ${title}">🔗 ${title}</span>`;
   });
 }

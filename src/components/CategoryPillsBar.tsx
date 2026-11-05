@@ -76,26 +76,24 @@ export const CategoryPillsBar: React.FC = () => {
               }}
               className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all shadow-2xs ${
                 isActive
-                  ? 'shadow-xs'
+                  ? 'bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 shadow-xs'
                   : 'bg-white dark:bg-stone-800/80 text-stone-700 dark:text-stone-300 border border-stone-200 dark:border-stone-700 hover:bg-stone-100 dark:hover:bg-stone-700/60'
               }`}
-              style={
-                isActive
-                  ? {
-                      backgroundColor: cat.color ? `${cat.color}25` : '#3b82f625',
-                      color: cat.color || '#3b82f6',
-                      borderColor: cat.color || '#3b82f6',
-                      borderWidth: '1.5px',
-                    }
-                  : undefined
-              }
             >
-              <span>{cat.icon || '📁'}</span>
+              <div className="flex items-center gap-1.5">
+                {cat.color && (
+                  <span
+                    className="w-2 h-2 rounded-full shrink-0"
+                    style={{ backgroundColor: cat.color }}
+                  />
+                )}
+                <span>{cat.icon || '📁'}</span>
+              </div>
               <span>{cat.name}</span>
               {isLocked && (
                 <span title={isUnlocked ? 'Unlocked in current session' : 'Password protected'}>
                   {isUnlocked ? (
-                    <Unlock className="w-3 h-3 text-amber-500" />
+                    <Unlock className="w-3 h-3 text-stone-400" />
                   ) : (
                     <Lock className="w-3 h-3 text-red-500" />
                   )}
@@ -104,7 +102,7 @@ export const CategoryPillsBar: React.FC = () => {
               <span
                 className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
                   isActive
-                    ? 'bg-black/10 dark:bg-white/10'
+                    ? 'bg-white/20 text-white dark:bg-stone-900/20 dark:text-stone-900'
                     : 'bg-black/5 dark:bg-white/10 text-stone-500'
                 }`}
               >

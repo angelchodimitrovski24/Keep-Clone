@@ -56,7 +56,7 @@ export default function SharedNotePage({ params }: PageProps) {
       fallback={
         <div className="min-h-screen bg-stone-100 dark:bg-[#18191a] flex items-center justify-center p-4">
           <div className="flex flex-col items-center gap-3">
-            <div className="w-10 h-10 border-3 border-amber-500 border-t-transparent rounded-full animate-spin" />
+            <div className="w-10 h-10 border-3 border-stone-800 dark:border-stone-200 border-t-transparent rounded-full animate-spin" />
             <span className="text-xs font-semibold text-stone-500 dark:text-stone-400">
               Loading shared note...
             </span>

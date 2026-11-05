@@ -29,10 +29,12 @@ import {
   Printer,
   FileText,
   ClipboardCopy,
+  Tag,
+  Folder,
 } from 'lucide-react';
 import { Note, NoteColor, NoteBackgroundTheme, TodoItem, NoteDrawing, NoteVersion } from '@/types/note';
 import { getNoteColorClasses } from '@/lib/constants';
-import { NoteActions } from './NoteActions';
+import { NoteActions, NoteActionsHandle } from './NoteActions';
 import { KeepFormattingBar } from './KeepFormattingBar';
 import { KeepWysiwygEditor, KeepWysiwygEditorHandle } from './KeepWysiwygEditor';
 import { MarkdownRenderer } from './MarkdownRenderer';
@@ -148,6 +150,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
 
   // Text selection and extract into new note
   const modalContentRef = useRef<HTMLDivElement | null>(null);
+  const noteActionsRef = useRef<NoteActionsHandle>(null);
   const [selectedText, setSelectedText] = useState('');
   const [floatingBubblePos, setFloatingBubblePos] = useState<{ x: number; y: number } | null>(null);
   const [extractToast, setExtractToast] = useState<{ noteId: string; title: string } | null>(null);
@@ -1272,53 +1275,73 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
             </button>
           </div>
 
-          {/* Beautiful Category & Labels directly under the Title */}
-          {((category) || (labels && labels.length > 0)) && (
-            <div className="flex flex-wrap items-center gap-1.5 mt-2 mb-1">
-              {category && (() => {
-                const catObj = categories.find((c) => c.name === category);
-                return (
-                  <span
-                    className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-full text-xs font-semibold shadow-2xs group transition-all"
-                    style={{
-                      backgroundColor: catObj?.color ? `${catObj.color}20` : 'rgba(59, 130, 246, 0.15)',
-                      color: catObj?.color || '#3b82f6',
-                      border: `1px solid ${catObj?.color ? `${catObj.color}40` : 'rgba(59, 130, 246, 0.3)'}`,
-                    }}
-                  >
-                    <span>{catObj?.icon || '📁'}</span>
-                    <span>{category}</span>
-                    <button
-                      type="button"
-                      onClick={() => handleCategoryChange(null)}
-                      className="hover:opacity-75 ml-0.5 rounded-full p-0.5 hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
-                      title="Remove category"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </span>
-                );
-              })()}
-
-              {labels.map((lbl) => (
-                <span
-                  key={lbl}
-                  className="inline-flex items-center gap-1 px-2.5 sm:px-3 py-1 rounded-full text-xs font-medium bg-black/5 dark:bg-white/10 text-stone-800 dark:text-stone-200 border border-black/5 dark:border-white/5 hover:border-black/15 dark:hover:border-white/15 transition-colors"
+          {/* Quick-Access Category & Labels Bar (Optimized for Mobile & Desktop) */}
+          <div className="flex flex-wrap items-center gap-1.5 mt-2 mb-1">
+            {/* Category Chip or "+ Category" button */}
+            {category ? (
+              <span
+                className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-full text-xs font-semibold bg-stone-100 dark:bg-stone-800 text-stone-800 dark:text-stone-200 border border-stone-200 dark:border-stone-700 shadow-2xs group transition-all"
+              >
+                <button
+                  type="button"
+                  onClick={() => noteActionsRef.current?.openCategoryPicker()}
+                  className="flex items-center gap-1.5 hover:opacity-80 cursor-pointer"
+                  title="Change category"
                 >
-                  <span className="text-stone-400 dark:text-stone-500 font-semibold">#</span>
-                  <span>{lbl}</span>
-                  <button
-                    type="button"
-                    onClick={() => handleToggleLabel(lbl)}
-                    className="hover:text-red-500 ml-0.5 rounded-full p-0.5 hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
-                    title="Remove label"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </span>
-              ))}
-            </div>
-          )}
+                  <span>{categoryObj?.icon || '📁'}</span>
+                  <span>{category}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleCategoryChange(null)}
+                  className="hover:opacity-75 ml-0.5 rounded-full p-0.5 hover:bg-black/10 dark:hover:bg-white/10 transition-colors cursor-pointer"
+                  title="Remove category"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => noteActionsRef.current?.openCategoryPicker()}
+                className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-full text-xs font-medium bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 border border-stone-200 dark:border-stone-700 transition-colors cursor-pointer"
+                title="Add category"
+              >
+                <Folder className="w-3.5 h-3.5 text-stone-500 dark:text-stone-400" />
+                <span>+ Category</span>
+              </button>
+            )}
+
+            {/* Labels Chips */}
+            {labels.map((lbl) => (
+              <span
+                key={lbl}
+                className="inline-flex items-center gap-1 px-2.5 sm:px-3 py-1 rounded-full text-xs font-medium bg-stone-100 dark:bg-stone-800 text-stone-800 dark:text-stone-200 border border-stone-200 dark:border-stone-700 shadow-2xs"
+              >
+                <span className="text-stone-400 dark:text-stone-500 font-semibold">#</span>
+                <span>{lbl}</span>
+                <button
+                  type="button"
+                  onClick={() => handleToggleLabel(lbl)}
+                  className="hover:text-red-500 ml-0.5 rounded-full p-0.5 hover:bg-black/10 dark:hover:bg-white/10 transition-colors cursor-pointer"
+                  title="Remove label"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            ))}
+
+            {/* "+ Label" button - always accessible with 1 tap */}
+            <button
+              type="button"
+              onClick={() => noteActionsRef.current?.openLabelPicker()}
+              className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-full text-xs font-medium bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 border border-stone-200 dark:border-stone-700 transition-colors cursor-pointer"
+              title="Add label"
+            >
+              <Tag className="w-3.5 h-3.5 text-stone-500 dark:text-stone-400" />
+              <span>+ Label</span>
+            </button>
+          </div>
         </div>
 
         {/* Action Menus Toolbar (Positioned neatly BELOW the title, horizontally scrollable on mobile) */}
@@ -1911,7 +1934,7 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
                 <button
                   type="button"
                   onClick={handleCopyNoteUrl}
-                  className="hover:text-stone-700 dark:hover:text-stone-200 ml-1 font-sans text-[10px] font-semibold text-amber-600 dark:text-amber-400 hover:underline shrink-0"
+                  className="hover:text-stone-900 dark:hover:text-stone-100 ml-1 font-sans text-[10px] font-semibold text-stone-600 dark:text-stone-300 hover:underline shrink-0"
                 >
                   {copiedUrlToast ? 'Copied!' : 'Copy'}
                 </button>
@@ -1950,6 +1973,7 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
         <div className="flex items-center justify-between px-2.5 sm:px-5 py-2 sm:py-3.5 pb-[max(0.6rem,env(safe-area-inset-bottom))] border-t border-black/5 dark:border-white/5 bg-black/2 dark:bg-white/2 shrink-0 gap-2 relative">
           <div className="flex-1 min-w-0">
             <NoteActions
+              ref={noteActionsRef}
               note={{
                 ...note,
                 title,

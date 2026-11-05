@@ -77,7 +77,7 @@ export const UnlockNoteModal: React.FC<UnlockNoteModalProps> = ({
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-10 h-10 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+            <div className="w-10 h-10 rounded-xl bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 border border-stone-200 dark:border-stone-700 flex items-center justify-center shrink-0">
               <Lock className="w-5 h-5" />
             </div>
             <div>
@@ -106,8 +106,8 @@ export const UnlockNoteModal: React.FC<UnlockNoteModalProps> = ({
         )}
 
         {note.encryptedData?.hint && (
-          <div className="flex items-start gap-2 p-3 text-xs rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800/40">
-            <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
+          <div className="flex items-start gap-2 p-3 text-xs rounded-xl bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 border border-stone-200 dark:border-stone-700">
+            <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5 text-stone-500 dark:text-stone-400" />
             <div>
               <span className="font-semibold">Hint: </span>
               <span>{note.encryptedData.hint}</span>
@@ -127,7 +127,7 @@ export const UnlockNoteModal: React.FC<UnlockNoteModalProps> = ({
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 autoFocus
-                className="w-full pl-9 pr-3 py-2 text-sm rounded-xl bg-stone-50 dark:bg-stone-800/80 border border-stone-200 dark:border-stone-700 outline-none focus:ring-2 focus:ring-amber-500"
+                className="w-full pl-9 pr-3 py-2 text-sm rounded-xl bg-stone-50 dark:bg-stone-800/80 border border-stone-200 dark:border-stone-700 outline-none focus:ring-2 focus:ring-stone-400 dark:focus:ring-stone-600"
               />
               <KeyRound className="w-4 h-4 absolute left-3 top-2.5 text-stone-400" />
             </div>
@@ -144,7 +144,7 @@ export const UnlockNoteModal: React.FC<UnlockNoteModalProps> = ({
             <button
               type="submit"
               disabled={isProcessing}
-              className="px-5 py-2 text-sm font-semibold rounded-xl bg-amber-500 hover:bg-amber-600 text-white transition-colors shadow-sm disabled:opacity-50 flex items-center gap-1.5"
+              className="px-5 py-2 text-sm font-semibold rounded-xl bg-stone-900 hover:bg-stone-800 dark:bg-stone-100 dark:hover:bg-white text-white dark:text-stone-900 transition-colors shadow-sm disabled:opacity-50 flex items-center gap-1.5"
             >
               <Lock className="w-4 h-4" />
               {isProcessing ? 'Unlocking…' : 'Unlock Note'}

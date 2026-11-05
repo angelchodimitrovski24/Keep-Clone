@@ -261,7 +261,7 @@ const NoteCardComponent: React.FC<NoteCardProps> = ({
               }}
               className={`p-1.5 rounded-full bg-white/60 dark:bg-black/60 hover:bg-white dark:hover:bg-black transition-colors ${
                 note.isPinned
-                  ? 'text-amber-500 opacity-100'
+                  ? 'text-stone-900 dark:text-stone-100 opacity-100'
                   : 'text-stone-500 hover:text-stone-800 dark:hover:text-stone-200'
               }`}
               title={note.isPinned ? 'Unpin note' : 'Pin note'}
@@ -277,8 +277,8 @@ const NoteCardComponent: React.FC<NoteCardProps> = ({
             <div
               className="w-12 h-12 rounded-2xl flex items-center justify-center mb-1 text-2xl shadow-2xs"
               style={{
-                backgroundColor: categoryObj?.color ? `${categoryObj.color}25` : 'rgba(245, 158, 11, 0.15)',
-                color: categoryObj?.color || '#f59e0b',
+                backgroundColor: categoryObj?.color ? `${categoryObj.color}25` : 'rgba(120, 113, 108, 0.2)',
+                color: categoryObj?.color || '#a8a29e',
               }}
             >
               <Lock className="w-6 h-6" />
@@ -291,7 +291,7 @@ const NoteCardComponent: React.FC<NoteCardProps> = ({
               Category is password protected. Click to unlock.
             </p>
             {categoryObj?.lockHint && (
-              <span className="mt-1 text-[11px] text-amber-800 dark:text-amber-200 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/20">
+              <span className="mt-1 text-[11px] text-stone-700 dark:text-stone-300 bg-stone-100 dark:bg-stone-800 px-2.5 py-0.5 rounded-full border border-stone-200 dark:border-stone-700">
                 Hint: {categoryObj.lockHint}
               </span>
             )}
@@ -304,7 +304,7 @@ const NoteCardComponent: React.FC<NoteCardProps> = ({
             }}
             className="p-5 py-7 flex flex-col items-center justify-center text-center gap-2 cursor-pointer"
           >
-            <div className="w-12 h-12 rounded-2xl bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center mb-1 shadow-xs ring-1 ring-amber-500/30">
+            <div className="w-12 h-12 rounded-2xl bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 flex items-center justify-center mb-1 shadow-xs ring-1 ring-stone-200 dark:ring-stone-700">
               <Lock className="w-6 h-6" />
             </div>
             <h4 className="font-semibold text-stone-900 dark:text-stone-100 text-sm">
@@ -314,7 +314,7 @@ const NoteCardComponent: React.FC<NoteCardProps> = ({
               Encrypted with AES-256-GCM. Click to unlock.
             </p>
             {note.encryptedData?.hint && (
-              <span className="mt-1 text-[11px] text-amber-800 dark:text-amber-200 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/20">
+              <span className="mt-1 text-[11px] text-stone-700 dark:text-stone-300 bg-stone-100 dark:bg-stone-800 px-2.5 py-0.5 rounded-full border border-stone-200 dark:border-stone-700">
                 Hint: {note.encryptedData.hint}
               </span>
             )}
@@ -324,7 +324,7 @@ const NoteCardComponent: React.FC<NoteCardProps> = ({
                 e.stopPropagation();
                 setShowUnlockModal(true);
               }}
-              className="mt-2 px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-stone-950 font-semibold text-xs shadow-xs transition-colors"
+              className="mt-2 px-3.5 py-1.5 rounded-xl bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-100 dark:hover:bg-white dark:text-stone-900 font-semibold text-xs shadow-xs transition-colors"
             >
               Unlock Note
             </button>
@@ -368,7 +368,7 @@ const NoteCardComponent: React.FC<NoteCardProps> = ({
               {/* AES Unlocked Badge */}
               {note.isEncrypted && (
                 <div className="flex items-center justify-between mb-2 pb-1.5 border-b border-black/5 dark:border-white/5">
-                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 dark:text-amber-400">
+                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-stone-700 dark:text-stone-300">
                     <Lock className="w-3 h-3" /> Unlocked (AES-256)
                   </span>
                   <button
@@ -377,7 +377,7 @@ const NoteCardComponent: React.FC<NoteCardProps> = ({
                       e.stopPropagation();
                       lockNoteInSession(note.id);
                     }}
-                    className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-500/15 text-amber-800 dark:text-amber-200 hover:bg-amber-500/25 transition-colors"
+                    className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-stone-100 dark:bg-stone-800 text-stone-800 dark:text-stone-200 hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors cursor-pointer"
                     title="Lock note now (protect sensitive data)"
                   >
                     Lock Now
@@ -399,12 +399,7 @@ const NoteCardComponent: React.FC<NoteCardProps> = ({
                 <div className="flex flex-wrap items-center gap-1.5 mb-2.5 mt-0.5">
                   {note.category && (
                     <span
-                      className="group/cat inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold shadow-2xs transition-all hover:opacity-90"
-                      style={{
-                        backgroundColor: categoryObj?.color ? `${categoryObj.color}20` : 'rgba(59, 130, 246, 0.15)',
-                        color: categoryObj?.color || '#3b82f6',
-                        border: `1px solid ${categoryObj?.color ? `${categoryObj.color}40` : 'rgba(59, 130, 246, 0.3)'}`,
-                      }}
+                      className="group/cat inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-stone-100 dark:bg-stone-800 text-stone-800 dark:text-stone-200 border border-stone-200 dark:border-stone-700 shadow-2xs transition-all hover:opacity-90"
                     >
                       <span className="text-[12px]">{categoryObj?.icon || '📁'}</span>
                       <span>{note.category}</span>
@@ -414,7 +409,7 @@ const NoteCardComponent: React.FC<NoteCardProps> = ({
                           e.stopPropagation();
                           updateNote(note.id, { category: null });
                         }}
-                        className="hover:opacity-75 ml-0.5 rounded-full p-0.5 hover:bg-black/10 dark:hover:bg-white/10 transition-colors opacity-70 sm:opacity-0 sm:group-hover/cat:opacity-100"
+                        className="hover:opacity-75 ml-0.5 rounded-full p-0.5 hover:bg-black/10 dark:hover:bg-white/10 transition-colors opacity-70 sm:opacity-0 sm:group-hover/cat:opacity-100 cursor-pointer"
                         title="Remove category"
                       >
                         <X className="w-2.5 h-2.5" />
@@ -425,7 +420,7 @@ const NoteCardComponent: React.FC<NoteCardProps> = ({
                   {note.labels?.map((label) => (
                     <span
                       key={label}
-                      className="inline-flex items-center gap-0.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-black/5 dark:bg-white/10 text-stone-700 dark:text-stone-300 border border-black/5 dark:border-white/5 hover:border-black/10 dark:hover:border-white/15 transition-colors"
+                      className="inline-flex items-center gap-0.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 border border-stone-200 dark:border-stone-700 shadow-2xs transition-colors"
                     >
                       <span className="text-stone-400 dark:text-stone-500 font-semibold">#</span>
                       <span>{label}</span>
@@ -483,7 +478,7 @@ const NoteCardComponent: React.FC<NoteCardProps> = ({
                 >
                   <div className="flex items-center justify-between text-[11px] font-semibold text-stone-500 dark:text-stone-400 mb-1 px-0.5">
                     <span className="flex items-center gap-1.5">
-                      <FileText className="w-3.5 h-3.5 text-amber-500" />
+                      <FileText className="w-3.5 h-3.5 text-stone-500 dark:text-stone-400" />
                       <span>Sub-pages ({childNotes.length})</span>
                     </span>
                   </div>
@@ -499,7 +494,7 @@ const NoteCardComponent: React.FC<NoteCardProps> = ({
                         className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-black/[0.03] dark:bg-white/[0.04] hover:bg-black/[0.07] dark:hover:bg-white/[0.08] border border-black/[0.05] dark:border-white/[0.05] transition-colors cursor-pointer group/child"
                         title={`Open sub-page: ${child.title || 'Untitled'}`}
                       >
-                        <FileText className="w-3.5 h-3.5 text-amber-600/70 dark:text-amber-400/70 group-hover/child:text-amber-600 dark:group-hover/child:text-amber-400 transition-colors shrink-0" />
+                        <FileText className="w-3.5 h-3.5 text-stone-500 dark:text-stone-400 group-hover/child:text-stone-800 dark:group-hover/child:text-stone-200 transition-colors shrink-0" />
                         <span className="text-xs font-medium text-stone-800 dark:text-stone-200 truncate flex-1">
                           {child.title || 'Untitled sub-page'}
                         </span>
@@ -520,7 +515,7 @@ const NoteCardComponent: React.FC<NoteCardProps> = ({
                           e.stopPropagation();
                           onClick?.();
                         }}
-                        className="text-[11px] text-amber-600 dark:text-amber-400 font-medium px-2 py-0.5 hover:underline cursor-pointer"
+                        className="text-[11px] text-stone-600 dark:text-stone-400 font-medium px-2 py-0.5 hover:underline cursor-pointer"
                       >
                         +{childNotes.length - 6} more sub-pages...
                       </div>
@@ -534,7 +529,7 @@ const NoteCardComponent: React.FC<NoteCardProps> = ({
                 <div className="flex flex-wrap items-center gap-1.5 mt-2.5 pt-2 border-t border-black/5 dark:border-white/5">
                   {outgoing.length > 0 && (
                     <span
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-amber-500/10 text-amber-800 dark:text-amber-300 border border-amber-500/20"
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 border border-stone-200 dark:border-stone-700 shadow-2xs"
                       title={`Links to: ${outgoing.map((o) => o.title).join(', ')}`}
                     >
                       <span>↗</span> {outgoing.length} linked
@@ -542,7 +537,7 @@ const NoteCardComponent: React.FC<NoteCardProps> = ({
                   )}
                   {backlinks.length > 0 && (
                     <span
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-blue-500/10 text-blue-800 dark:text-blue-300 border border-blue-500/20"
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 border border-stone-200 dark:border-stone-700 shadow-2xs"
                       title={`Referenced in: ${backlinks.map((b) => b.title).join(', ')}`}
                     >
                       <span>↩</span> {backlinks.length} backlinks
@@ -555,8 +550,8 @@ const NoteCardComponent: React.FC<NoteCardProps> = ({
               {(note.reminder || attachedFileCount > 0 || (note.totalReadingTime && note.totalReadingTime > 0) || activeStopwatch?.noteId === note.id) && (
                 <div className="flex flex-wrap items-center gap-1.5 mt-3 pt-1">
                   {note.reminder && (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-black/5 dark:bg-white/10 text-stone-700 dark:text-stone-300">
-                      <Bell className="w-3 h-3 text-amber-500" />
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 border border-stone-200 dark:border-stone-700">
+                      <Bell className="w-3 h-3 text-stone-500 dark:text-stone-400" />
                       {new Date(note.reminder).toLocaleDateString([], {
                         month: 'short',
                         day: 'numeric',
@@ -568,10 +563,10 @@ const NoteCardComponent: React.FC<NoteCardProps> = ({
 
                 {attachedFileCount > 0 && (
                   <span
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-500/10 text-amber-800 dark:text-amber-300 border border-amber-500/20"
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 border border-stone-200 dark:border-stone-700 shadow-2xs"
                     title={`${attachedFileCount} attached file${attachedFileCount === 1 ? '' : 's'}`}
                   >
-                    <Paperclip className="w-3 h-3 text-amber-600 dark:text-amber-400" />
+                    <Paperclip className="w-3 h-3 text-stone-500 dark:text-stone-400" />
                     <span>{attachedFileCount} {attachedFileCount === 1 ? 'file' : 'files'}</span>
                   </span>
                 )}
@@ -615,12 +610,12 @@ const NoteCardComponent: React.FC<NoteCardProps> = ({
 
         {/* Note Action Toolbar or Locked Category Notice */}
         {isCategoryLocked ? (
-          <div className="px-3 py-2 flex items-center justify-between border-t border-black/5 dark:border-white/5 text-[11px] text-amber-700 dark:text-amber-400 font-medium">
+          <div className="px-3 py-2 flex items-center justify-between border-t border-black/5 dark:border-white/5 text-[11px] text-stone-700 dark:text-stone-300 font-medium">
             <span className="flex items-center gap-1.5">
-              <Lock className="w-3 h-3 text-amber-500" />
+              <Lock className="w-3 h-3 text-stone-500 dark:text-stone-400" />
               <span>Category Locked</span>
             </span>
-            <span className="text-stone-400 hover:text-amber-600 transition-colors">Click to unlock</span>
+            <span className="text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 transition-colors">Click to unlock</span>
           </div>
         ) : (
           <div className={`px-2 py-1.5 ${

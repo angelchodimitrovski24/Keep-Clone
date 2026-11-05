@@ -77,7 +77,15 @@ interface NoteActionsProps {
   onSummarizeWithAi?: () => void;
 }
 
-export const NoteActions: React.FC<NoteActionsProps> = ({
+export interface NoteActionsHandle {
+  openCategoryPicker: () => void;
+  openLabelPicker: () => void;
+  openColorPicker: () => void;
+  openReminderPicker: () => void;
+  openMoreMenu: () => void;
+}
+
+export const NoteActions = React.forwardRef<NoteActionsHandle, NoteActionsProps>(({
   note,
   onColorChange,
   onThemeChange,
@@ -113,17 +121,70 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
   menuPlacement = 'auto',
   menuAlign = 'right',
   onMenuOpenChange,
-}) => {
-  const { labels, categories, createLabel, setIsCategoryModalOpen } = useKeep();
+}, ref) => {
+  const { labels, categories, createLabel, createCategory, setIsCategoryModalOpen } = useKeep();
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [showReminderPicker, setShowReminderPicker] = useState(false);
   const [showLabelPicker, setShowLabelPicker] = useState(false);
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
   const [newLabelText, setNewLabelText] = useState('');
+  const [newCategoryName, setNewCategoryName] = useState('');
   const [mounted, setMounted] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [copiedToast, setCopiedToast] = useState(false);
+
+  React.useImperativeHandle(ref, () => ({
+    openCategoryPicker: () => {
+      setShowMenu(false);
+      setShowColorPicker(false);
+      setShowReminderPicker(false);
+      setShowLabelPicker(false);
+      setShowCategoryPicker(true);
+    },
+    openLabelPicker: () => {
+      setShowMenu(false);
+      setShowColorPicker(false);
+      setShowReminderPicker(false);
+      setShowCategoryPicker(false);
+      setShowLabelPicker(true);
+    },
+    openColorPicker: () => {
+      setShowMenu(false);
+      setShowReminderPicker(false);
+      setShowCategoryPicker(false);
+      setShowLabelPicker(false);
+      setShowColorPicker(true);
+    },
+    openReminderPicker: () => {
+      setShowMenu(false);
+      setShowColorPicker(false);
+      setShowCategoryPicker(false);
+      setShowLabelPicker(false);
+      setShowReminderPicker(true);
+    },
+    openMoreMenu: () => {
+      setShowColorPicker(false);
+      setShowReminderPicker(false);
+      setShowCategoryPicker(false);
+      setShowLabelPicker(false);
+      setShowMenu(true);
+    },
+  }));
+
+  const handleCreateAndSelectCategory = async (name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const existing = categories.find((c) => c.name.toLowerCase() === trimmed.toLowerCase());
+    if (existing) {
+      onSelectCategory?.(existing.name);
+    } else {
+      await createCategory(trimmed);
+      onSelectCategory?.(trimmed);
+    }
+    setNewCategoryName('');
+    setShowCategoryPicker(false);
+  };
 
   const handleCopyTitleAndContent = async () => {
     if (onCopyContent) {
@@ -498,7 +559,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
             e.stopPropagation();
             onSummarizeWithAi();
           }}
-          className={`${iconBtnClass} text-amber-600 dark:text-amber-400 hover:text-amber-700`}
+          className={`${iconBtnClass} text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100`}
           title="Summarize & Chat with Local AI (Ollama)"
         >
           <Sparkles className="w-4 h-4" />
@@ -519,7 +580,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
           }}
           className={`w-8 h-8 flex items-center justify-center rounded-full transition-all duration-150 font-bold text-sm leading-none shrink-0 ${
             isFormattingOpen
-              ? 'bg-amber-100 text-stone-900 dark:bg-amber-900/60 dark:text-amber-200'
+              ? 'bg-stone-200 text-stone-900 dark:bg-stone-700 dark:text-white'
               : 'hover:bg-black/[0.06] dark:hover:bg-white/[0.08] active:bg-black/[0.12] dark:active:bg-white/[0.15] text-stone-700 dark:text-stone-200'
           }`}
           title="Toggle text formatting toolbar"
@@ -572,7 +633,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
           }}
           className={`hidden sm:inline-flex ${
             note.isEncrypted
-              ? 'w-8 h-8 flex items-center justify-center rounded-full text-amber-600 dark:text-amber-400 bg-amber-500/15 shrink-0'
+              ? 'w-8 h-8 flex items-center justify-center rounded-full text-stone-900 dark:text-stone-100 bg-stone-200/80 dark:bg-stone-700 shrink-0'
               : iconBtnClass
           }`}
           title={note.isEncrypted ? 'Note is encrypted with AES-256 (Settings)' : 'Encrypt note with AES-256 (Password protect)'}
@@ -1008,7 +1069,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
               <button
                 type="button"
                 onClick={() => setShowCategoryPicker(false)}
-                className="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline"
+                className="text-xs font-semibold text-stone-900 dark:text-stone-100 hover:underline"
               >
                 Done
               </button>
@@ -1024,7 +1085,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                 }}
                 className={`w-full text-left flex items-center justify-between px-2.5 py-2 rounded-lg text-xs transition-colors ${
                   !note.category
-                    ? 'bg-amber-100/70 text-stone-900 dark:bg-amber-950/70 dark:text-amber-200 font-semibold'
+                    ? 'bg-stone-100 text-stone-900 dark:bg-stone-800 dark:text-stone-100 font-semibold'
                     : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-600 dark:text-stone-400'
                 }`}
               >
@@ -1044,7 +1105,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                     }}
                     className={`w-full text-left flex items-center justify-between px-2.5 py-2 rounded-lg text-xs transition-colors ${
                       isSelected
-                        ? 'bg-amber-100/70 text-stone-900 dark:bg-amber-950/70 dark:text-amber-200 font-semibold'
+                        ? 'bg-stone-100 text-stone-900 dark:bg-stone-800 dark:text-stone-100 font-semibold'
                         : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200'
                     }`}
                   >
@@ -1069,7 +1130,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                   setShowCategoryPicker(false);
                   setIsCategoryModalOpen(true);
                 }}
-                className="w-full text-center text-xs font-semibold py-1.5 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/50 rounded-lg transition-colors"
+                className="w-full text-center text-xs font-semibold py-1.5 text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 rounded-lg transition-colors"
               >
                 + Manage Categories
               </button>
@@ -1104,7 +1165,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
               <button
                 type="button"
                 onClick={() => setShowLabelPicker(false)}
-                className="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline"
+                className="text-xs font-semibold text-stone-900 dark:text-stone-100 hover:underline"
               >
                 Done
               </button>
@@ -1128,7 +1189,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                       type="checkbox"
                       checked={isSelected}
                       onChange={() => onToggleLabel?.(lbl.name)}
-                      className="w-4 h-4 rounded text-blue-600 focus:ring-0 accent-blue-600"
+                      className="w-4 h-4 rounded accent-stone-900 dark:accent-stone-300"
                     />
                     <span className="truncate">{lbl.name}</span>
                   </label>
@@ -1145,7 +1206,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                     onToggleLabel?.(trimmed);
                     setNewLabelText('');
                   }}
-                  className="w-full text-left px-2.5 py-1.5 flex items-center gap-2 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-blue-600 dark:text-blue-400 font-medium text-xs rounded-lg transition-colors mt-1"
+                  className="w-full text-left px-2.5 py-1.5 flex items-center gap-2 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-900 dark:text-stone-100 font-semibold text-xs rounded-lg transition-colors mt-1"
                 >
                   <Plus className="w-3.5 h-3.5 shrink-0" />
                   <span className="truncate">Create &quot;{newLabelText.trim()}&quot;</span>
@@ -1174,7 +1235,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                     setNewLabelText('');
                   }
                 }}
-                className="w-full text-xs pl-7 pr-7 py-1.5 rounded-lg bg-stone-100 dark:bg-stone-800 text-stone-800 dark:text-stone-200 border-none outline-none focus:ring-1 focus:ring-blue-500/50"
+                className="w-full text-xs pl-7 pr-7 py-1.5 rounded-lg bg-stone-100 dark:bg-stone-800 text-stone-800 dark:text-stone-200 border-none outline-none focus:ring-1 focus:ring-stone-400 dark:focus:ring-stone-600"
               />
               {newLabelText && (
                 <button
@@ -1240,6 +1301,53 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                   </div>
 
                   <div className="overflow-y-auto py-1.5">
+                    {/* Primary Note Categorization Options First */}
+                    <div className="pb-1">
+                      {onSelectCategory && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShowMenu(false);
+                            setShowCategoryPicker(true);
+                          }}
+                          className="w-full text-left px-6 py-3.5 flex items-center justify-between hover:bg-black/[0.04] dark:hover:bg-white/[0.06] active:bg-black/[0.08] dark:active:bg-white/[0.1] text-stone-800 dark:text-stone-200 text-[14.5px] font-medium tracking-[0.15px] transition-colors"
+                        >
+                          <div className="flex items-center gap-4 min-w-0">
+                            <Folder className="w-5 h-5 text-stone-500 dark:text-stone-400 shrink-0" />
+                            <span className="truncate">
+                              {note.category ? `Category: ${note.category}` : '+ Add Category'}
+                            </span>
+                          </div>
+                          <ChevronRight className="w-4 h-4 text-stone-400 shrink-0" />
+                        </button>
+                      )}
+
+                      {onToggleLabel && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShowMenu(false);
+                            setShowLabelPicker(true);
+                          }}
+                          className="w-full text-left px-6 py-3.5 flex items-center justify-between hover:bg-black/[0.04] dark:hover:bg-white/[0.06] active:bg-black/[0.08] dark:active:bg-white/[0.1] text-stone-800 dark:text-stone-200 text-[14.5px] font-medium tracking-[0.15px] transition-colors"
+                        >
+                          <div className="flex items-center gap-4 min-w-0">
+                            <Tag className="w-5 h-5 text-stone-500 dark:text-stone-400 shrink-0" />
+                            <span className="truncate">
+                              {note.labels && note.labels.length > 0
+                                ? `Labels (${note.labels.length})`
+                                : '+ Add Labels'}
+                            </span>
+                          </div>
+                          <ChevronRight className="w-4 h-4 text-stone-400 shrink-0" />
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="my-1 border-t border-black/[0.06] dark:border-white/[0.08]" />
+
                     <div>
                       {onArchiveToggle && (
                         <button
@@ -1252,7 +1360,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                         >
                           {note.isArchived ? (
                             <>
-                              <ArchiveRestore className="w-5 h-5 text-amber-500 shrink-0" />
+                              <ArchiveRestore className="w-5 h-5 text-stone-500 dark:text-stone-400 shrink-0" />
                               <span>Unarchive note</span>
                             </>
                           ) : (
@@ -1273,7 +1381,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                           }}
                           className="w-full text-left px-6 py-3.5 flex items-center gap-4 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] active:bg-black/[0.08] dark:active:bg-white/[0.1] text-stone-800 dark:text-stone-200 text-[14.5px] font-normal tracking-[0.15px] transition-colors"
                         >
-                          <Share2 className="w-5 h-5 text-amber-500 shrink-0" />
+                          <Share2 className="w-5 h-5 text-stone-500 dark:text-stone-400 shrink-0" />
                           <span>Share note (Short link & images)</span>
                         </button>
                       )}
@@ -1331,48 +1439,6 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                     <div className="my-1 border-t border-black/[0.06] dark:border-white/[0.08]" />
 
                     <div>
-                      {onSelectCategory && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setShowMenu(false);
-                            setShowCategoryPicker(true);
-                          }}
-                          className="w-full text-left px-6 py-3.5 flex items-center justify-between hover:bg-black/[0.04] dark:hover:bg-white/[0.06] active:bg-black/[0.08] dark:active:bg-white/[0.1] text-stone-800 dark:text-stone-200 text-[14.5px] font-normal tracking-[0.15px] transition-colors"
-                        >
-                          <div className="flex items-center gap-4 min-w-0">
-                            <Folder className="w-5 h-5 text-blue-500 shrink-0" />
-                            <span className="truncate">
-                              {note.category ? `Category: ${note.category}` : 'Change category'}
-                            </span>
-                          </div>
-                          <ChevronRight className="w-4 h-4 text-stone-400 shrink-0" />
-                        </button>
-                      )}
-
-                      {onToggleLabel && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setShowMenu(false);
-                            setShowLabelPicker(true);
-                          }}
-                          className="w-full text-left px-6 py-3.5 flex items-center justify-between hover:bg-black/[0.04] dark:hover:bg-white/[0.06] active:bg-black/[0.08] dark:active:bg-white/[0.1] text-stone-800 dark:text-stone-200 text-[14.5px] font-normal tracking-[0.15px] transition-colors"
-                        >
-                          <div className="flex items-center gap-4 min-w-0">
-                            <Tag className="w-5 h-5 text-emerald-500 shrink-0" />
-                            <span className="truncate">
-                              {note.labels && note.labels.length > 0
-                                ? `Labels (${note.labels.length})`
-                                : 'Change labels'}
-                            </span>
-                          </div>
-                          <ChevronRight className="w-4 h-4 text-stone-400 shrink-0" />
-                        </button>
-                      )}
-
                       {onToggleChecklist && (
                         <button
                           type="button"
@@ -1396,7 +1462,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                           }}
                           className="w-full text-left px-6 py-3.5 flex items-center gap-4 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] active:bg-black/[0.08] dark:active:bg-white/[0.1] text-stone-800 dark:text-stone-200 text-[14.5px] font-normal tracking-[0.15px] transition-colors"
                         >
-                          <FileText className="w-5 h-5 text-amber-500 shrink-0" />
+                          <FileText className="w-5 h-5 text-stone-500 dark:text-stone-400 shrink-0" />
                           <span>{hasSubpages ? 'Sub-pages (Notion)' : 'Add Notion sub-pages'}</span>
                         </button>
                       )}
@@ -1509,7 +1575,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                       <ChevronLeft className="w-4 h-4" />
                       <span>Back</span>
                     </button>
-                    <span className="text-[15px] font-medium text-stone-900 dark:text-stone-100 tracking-[0.1px]">
+                    <span className="text-[15px] font-semibold text-stone-900 dark:text-stone-100 tracking-[0.1px]">
                       Select Category
                     </span>
                     <button
@@ -1518,10 +1584,37 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                         e.stopPropagation();
                         setShowCategoryPicker(false);
                       }}
-                      className="text-xs font-medium text-blue-600 dark:text-blue-400 px-3 py-1.5 rounded-full hover:bg-blue-50 dark:hover:bg-blue-950/40 transition-colors"
+                      className="text-xs font-semibold text-stone-900 dark:text-stone-100 px-3 py-1.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
                     >
                       Done
                     </button>
+                  </div>
+
+                  {/* Inline Quick Add Category for Mobile */}
+                  <div className="p-3 border-b border-black/[0.06] dark:border-white/[0.08] shrink-0">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        placeholder="Create new category..."
+                        value={newCategoryName}
+                        onChange={(e) => setNewCategoryName(e.target.value)}
+                        onKeyDown={async (e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            await handleCreateAndSelectCategory(newCategoryName);
+                          }
+                        }}
+                        className="flex-1 text-xs px-3.5 py-2.5 rounded-full bg-stone-100 dark:bg-stone-800 border-none outline-none text-stone-800 dark:text-stone-200 placeholder:text-stone-400"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleCreateAndSelectCategory(newCategoryName)}
+                        disabled={!newCategoryName.trim()}
+                        className="px-4 py-2.5 bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 text-xs font-semibold rounded-full disabled:opacity-40 transition-colors shrink-0 cursor-pointer"
+                      >
+                        + Add
+                      </button>
+                    </div>
                   </div>
 
                   <div className="overflow-y-auto py-1">
@@ -1532,14 +1625,14 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                         onSelectCategory?.(null);
                         setShowCategoryPicker(false);
                       }}
-                      className={`w-full text-left flex items-center justify-between px-6 py-3.5 text-[14.5px] font-normal tracking-[0.15px] transition-colors ${
+                      className={`w-full text-left flex items-center justify-between px-6 py-3.5 text-[14.5px] tracking-[0.15px] transition-colors ${
                         !note.category
-                          ? 'bg-amber-100/70 text-stone-900 dark:bg-amber-950/70 dark:text-amber-200 font-medium'
+                          ? 'bg-stone-100 text-stone-900 dark:bg-stone-800 dark:text-stone-100 font-semibold'
                           : 'hover:bg-black/[0.04] dark:hover:bg-white/[0.06] text-stone-800 dark:text-stone-200'
                       }`}
                     >
                       <span>None (No category)</span>
-                      {!note.category && <Check className="w-4 h-4 text-amber-600" />}
+                      {!note.category && <Check className="w-4 h-4 text-stone-900 dark:text-stone-100" />}
                     </button>
 
                     {categories.map((cat) => {
@@ -1553,9 +1646,9 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                             onSelectCategory?.(cat.name);
                             setShowCategoryPicker(false);
                           }}
-                          className={`w-full text-left flex items-center justify-between px-6 py-3.5 text-[14.5px] font-normal tracking-[0.15px] transition-colors ${
+                          className={`w-full text-left flex items-center justify-between px-6 py-3.5 text-[14.5px] tracking-[0.15px] transition-colors ${
                             isSelected
-                              ? 'bg-amber-100/70 text-stone-900 dark:bg-amber-950/70 dark:text-amber-200 font-medium'
+                              ? 'bg-stone-100 text-stone-900 dark:bg-stone-800 dark:text-stone-100 font-semibold'
                               : 'hover:bg-black/[0.04] dark:hover:bg-white/[0.06] text-stone-800 dark:text-stone-200'
                           }`}
                         >
@@ -1563,11 +1656,11 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                             <span className="text-base">{cat.icon || '📁'}</span>
                             <div
                               className="w-2.5 h-2.5 rounded-full"
-                              style={{ backgroundColor: cat.color || '#3b82f6' }}
+                              style={{ backgroundColor: cat.color || '#888888' }}
                             />
                             <span>{cat.name}</span>
                           </div>
-                          {isSelected && <Check className="w-4 h-4 text-amber-600" />}
+                          {isSelected && <Check className="w-4 h-4 text-stone-900 dark:text-stone-100" />}
                         </button>
                       );
                     })}
@@ -1581,7 +1674,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                         setShowCategoryPicker(false);
                         setIsCategoryModalOpen(true);
                       }}
-                      className="w-full py-2.5 text-center text-xs font-medium text-amber-700 dark:text-amber-400 bg-amber-500/10 hover:bg-amber-500/20 rounded-full transition-colors"
+                      className="w-full py-2.5 text-center text-xs font-semibold text-stone-700 dark:text-stone-300 bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 rounded-full transition-colors"
                     >
                       + Manage Categories
                     </button>
@@ -1614,7 +1707,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                         e.stopPropagation();
                         setShowLabelPicker(false);
                       }}
-                      className="text-xs font-medium text-blue-600 dark:text-blue-400 px-3 py-1.5 rounded-full hover:bg-blue-50 dark:hover:bg-blue-950/40 transition-colors"
+                      className="text-xs font-semibold text-stone-900 dark:text-stone-100 px-3 py-1.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
                     >
                       Done
                     </button>
@@ -1709,7 +1802,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                             type="checkbox"
                             checked={isSelected}
                             readOnly
-                            className="w-4 h-4 rounded text-blue-600 focus:ring-0 pointer-events-none accent-blue-600"
+                            className="w-4 h-4 rounded accent-stone-900 dark:accent-stone-300 pointer-events-none"
                           />
                         </div>
                       );
@@ -1724,7 +1817,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                           onToggleLabel?.(trimmed);
                           setNewLabelText('');
                         }}
-                        className="flex items-center gap-3 px-6 py-3.5 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] active:bg-black/[0.08] dark:active:bg-white/[0.1] cursor-pointer text-blue-600 dark:text-blue-400 font-medium text-[14px] transition-colors"
+                        className="flex items-center gap-3 px-6 py-3.5 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] active:bg-black/[0.08] dark:active:bg-white/[0.1] cursor-pointer text-stone-900 dark:text-stone-100 font-semibold text-[14px] transition-colors"
                       >
                         <Plus className="w-4 h-4 shrink-0" />
                         <span>Create &quot;{newLabelText.trim()}&quot;</span>
@@ -1744,7 +1837,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                     <button
                       type="button"
                       onClick={() => setShowColorPicker(false)}
-                      className="text-xs font-medium text-blue-600 dark:text-blue-400 px-3 py-1.5 rounded-full hover:bg-blue-50 dark:hover:bg-blue-950/40 transition-colors"
+                      className="text-xs font-semibold text-stone-900 dark:text-stone-100 px-3 py-1.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
                     >
                       Done
                     </button>
@@ -1813,7 +1906,7 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
                     <button
                       type="button"
                       onClick={() => setShowReminderPicker(false)}
-                      className="text-xs font-medium text-blue-600 dark:text-blue-400 px-3 py-1.5 rounded-full hover:bg-blue-50 dark:hover:bg-blue-950/40 transition-colors"
+                      className="text-xs font-semibold text-stone-900 dark:text-stone-100 px-3 py-1.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
                     >
                       Done
                     </button>
@@ -1897,4 +1990,6 @@ export const NoteActions: React.FC<NoteActionsProps> = ({
       )}
     </div>
   );
-};
+});
+
+NoteActions.displayName = 'NoteActions';

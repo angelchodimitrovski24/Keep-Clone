@@ -158,11 +158,11 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
               <button
                 type="button"
                 onClick={() => openBulkSummarize(selectedNoteIds)}
-                className="p-2 rounded-full flex items-center gap-1.5 transition-colors hover:bg-amber-100 dark:hover:bg-amber-900/40 text-amber-700 dark:text-amber-400 cursor-pointer"
+                className="p-2 rounded-full flex items-center gap-1.5 transition-colors hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 cursor-pointer"
                 title={`Summarize ${selectedNoteIds.length} selected notes in bulk (AI Agent)`}
               >
-                <Sparkles className="w-5 h-5 text-amber-500" />
-                <span className="text-xs font-bold hidden md:inline">Bulk Summarize</span>
+                <Sparkles className="w-5 h-5 text-stone-600 dark:text-stone-300" />
+                <span className="text-xs font-semibold hidden md:inline">Bulk Summarize</span>
               </button>
 
               {/* Merge Notes into a new one */}
@@ -172,7 +172,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
                 disabled={selectedNoteIds.length < 2}
                 className={`p-2 rounded-full flex items-center gap-1.5 transition-colors ${
                   selectedNoteIds.length >= 2
-                    ? 'hover:bg-blue-100 dark:hover:bg-blue-900/40 text-blue-600 dark:text-blue-400 cursor-pointer'
+                    ? 'hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 cursor-pointer'
                     : 'opacity-40 cursor-not-allowed text-stone-400'
                 }`}
                 title={
@@ -182,25 +182,25 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
                 }
               >
                 <GitMerge className="w-5 h-5" />
-                <span className="text-xs font-bold hidden md:inline">Merge</span>
+                <span className="text-xs font-semibold hidden md:inline">Merge</span>
               </button>
               <button
                 type="button"
                 onClick={() => setIsWebExportModalOpen(true)}
-                className="p-2 rounded-full flex items-center gap-1.5 transition-colors hover:bg-amber-100 dark:hover:bg-amber-900/40 text-amber-700 dark:text-amber-400 cursor-pointer"
+                className="p-2 rounded-full flex items-center gap-1.5 transition-colors hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 cursor-pointer"
                 title={`Export ${selectedNoteIds.length} selected notes as Web Page (Table of Contents + separate note pages)`}
               >
                 <Globe className="w-5 h-5" />
-                <span className="text-xs font-bold hidden md:inline">Export Web Page</span>
+                <span className="text-xs font-semibold hidden md:inline">Export Web Page</span>
               </button>
               <button
                 type="button"
                 onClick={() => setIsExcelExportModalOpen(true)}
-                className="p-2 rounded-full flex items-center gap-1.5 transition-colors hover:bg-emerald-100 dark:hover:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 cursor-pointer"
+                className="p-2 rounded-full flex items-center gap-1.5 transition-colors hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 cursor-pointer"
                 title={`Export ${selectedNoteIds.length} selected notes to Excel (.xlsx / .csv)`}
               >
                 <FileSpreadsheet className="w-5 h-5" />
-                <span className="text-xs font-bold hidden md:inline">Export Excel</span>
+                <span className="text-xs font-semibold hidden md:inline">Export Excel</span>
               </button>
               <button
                 type="button"
@@ -318,11 +318,11 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
           }}
           className="flex items-center gap-1.5 sm:gap-2 cursor-pointer select-none"
         >
-          <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-amber-400 flex items-center justify-center text-white shadow-md shadow-amber-400/20">
+          <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-stone-900 text-white dark:bg-stone-800 dark:border dark:border-stone-700/80 flex items-center justify-center shadow-xs">
             <span className="font-black text-lg sm:text-xl leading-none">💡</span>
           </div>
           <span className="font-semibold text-base sm:text-lg text-stone-800 dark:text-stone-100 hidden sm:inline tracking-tight">
-            Keep <span className="text-xs font-normal px-2 py-0.5 ml-1 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">Local DB</span>
+            Keep <span className="text-xs font-normal px-2 py-0.5 ml-1 rounded-full bg-stone-100 text-stone-700 dark:bg-stone-800 dark:text-stone-300 dark:border dark:border-stone-700">Local DB</span>
           </span>
         </div>
       </div>
@@ -388,7 +388,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
             setLayoutMode(nextMode);
           }}
           className={`hidden sm:flex p-1.5 sm:p-2.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors shrink-0 cursor-pointer ${
-            layoutMode === 'notion' ? 'text-amber-600 dark:text-amber-400 font-semibold' : ''
+            layoutMode === 'notion' ? 'text-stone-900 dark:text-stone-100 font-semibold' : ''
           }`}
           title={
             layoutMode === 'grid'
@@ -414,7 +414,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
           className="p-1.5 sm:p-2.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors shrink-0 cursor-pointer"
           title={darkMode ? 'Light mode' : 'Dark mode'}
         >
-          {darkMode ? <Sun className="w-5 h-5 text-amber-400" /> : <Moon className="w-5 h-5" />}
+          {darkMode ? <Sun className="w-5 h-5 text-stone-200" /> : <Moon className="w-5 h-5" />}
         </button>
 
         {/* Ollama Local AI Assistant & Chat */}
@@ -424,7 +424,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
           className="p-1.5 sm:p-2 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors shrink-0 flex items-center justify-center font-bold text-xs cursor-pointer"
           title="Ollama Local AI (Chat, Summarize, Attach Files & Ask Questions)"
         >
-          <span className="w-5 h-5 rounded-md bg-gradient-to-tr from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white flex items-center justify-center shadow-xs">
+          <span className="w-5 h-5 rounded-md bg-stone-900 hover:bg-stone-800 dark:bg-stone-700 dark:hover:bg-stone-600 text-white flex items-center justify-center shadow-xs">
             <Bot className="w-3.5 h-3.5" />
           </span>
         </button>

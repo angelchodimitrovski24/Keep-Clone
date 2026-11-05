@@ -276,13 +276,13 @@ export const WebExportModal: React.FC = () => {
         {/* Header */}
         <div className="px-6 py-5 border-b border-stone-200 dark:border-stone-800 flex items-center justify-between bg-stone-50/60 dark:bg-[#1a1b1e]">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 text-white flex items-center justify-center shadow-md shadow-amber-500/20">
+            <div className="w-10 h-10 rounded-2xl bg-stone-900 dark:bg-stone-800 text-white flex items-center justify-center shadow-xs">
               <Globe className="w-5 h-5" />
             </div>
             <div>
               <h2 className="text-lg font-bold text-stone-900 dark:text-stone-100 flex items-center gap-2">
                 Export Notes as Web Page
-                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/30">
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-stone-100 text-stone-700 dark:bg-stone-800 dark:text-stone-300 border border-stone-200 dark:border-stone-700">
                   TOC + Individual Note Pages
                 </span>
               </h2>
@@ -329,16 +329,16 @@ export const WebExportModal: React.FC = () => {
                   onClick={() => setExportFormat('single-html')}
                   className={`p-3.5 rounded-2xl border-2 cursor-pointer transition-all ${
                     exportFormat === 'single-html'
-                      ? 'border-amber-500 bg-amber-50/50 dark:bg-amber-950/20'
+                      ? 'border-stone-900 bg-stone-100/70 dark:border-stone-400 dark:bg-stone-800'
                       : 'border-stone-200 dark:border-stone-800 hover:border-stone-300'
                   }`}
                 >
                   <div className="flex items-start gap-3">
-                    <Globe className="w-5 h-5 text-amber-500 mt-0.5 shrink-0" />
+                    <Globe className="w-5 h-5 text-stone-700 dark:text-stone-300 mt-0.5 shrink-0" />
                     <div>
                       <div className="font-bold text-sm text-stone-900 dark:text-stone-100 flex items-center gap-1.5">
                         Single Interactive Web Page (.html)
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-amber-500 text-white">Recommended</span>
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900">Recommended</span>
                       </div>
                       <p className="text-xs text-stone-500 dark:text-stone-400 mt-0.5 leading-relaxed">
                         Single self-contained file with Table of Contents sidebar, real-time search, theme toggle, and hash navigation to each note page. Works 100% offline.
@@ -351,12 +351,12 @@ export const WebExportModal: React.FC = () => {
                   onClick={() => setExportFormat('multi-page-zip')}
                   className={`p-3.5 rounded-2xl border-2 cursor-pointer transition-all ${
                     exportFormat === 'multi-page-zip'
-                      ? 'border-amber-500 bg-amber-50/50 dark:bg-amber-950/20'
+                      ? 'border-stone-900 bg-stone-100/70 dark:border-stone-400 dark:bg-stone-800'
                       : 'border-stone-200 dark:border-stone-800 hover:border-stone-300'
                   }`}
                 >
                   <div className="flex items-start gap-3">
-                    <FolderArchive className="w-5 h-5 text-amber-500 mt-0.5 shrink-0" />
+                    <FolderArchive className="w-5 h-5 text-stone-700 dark:text-stone-300 mt-0.5 shrink-0" />
                     <div>
                       <div className="font-bold text-sm text-stone-900 dark:text-stone-100">
                         Multi-Page Web Site (.zip)
@@ -581,8 +581,8 @@ export const WebExportModal: React.FC = () => {
 
         {/* Progress Display */}
         {progress && (
-          <div className="mx-6 p-3 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 text-xs text-amber-800 dark:text-amber-300 flex items-center gap-2">
-            <Loader2 className="w-4 h-4 shrink-0 animate-spin text-amber-600" />
+          <div className="mx-6 p-3 rounded-xl bg-stone-100 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 text-xs text-stone-800 dark:text-stone-200 flex items-center gap-2">
+            <Loader2 className="w-4 h-4 shrink-0 animate-spin text-stone-600 dark:text-stone-300" />
             <span>{progress.stage} ({progress.current}/{progress.total})</span>
           </div>
         )}
@@ -620,7 +620,7 @@ export const WebExportModal: React.FC = () => {
               type="button"
               onClick={handleExport}
               disabled={isExporting || isPreviewing || selectedNotesToExport.length === 0}
-              className="flex-1 sm:flex-initial px-5 py-2.5 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-600 text-stone-950 flex items-center justify-center gap-1.5 shadow-sm transition-all hover:shadow cursor-pointer disabled:opacity-50"
+              className="flex-1 sm:flex-initial px-5 py-2.5 rounded-xl text-xs font-bold bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-100 dark:hover:bg-white dark:text-stone-900 flex items-center justify-center gap-1.5 shadow-sm transition-all hover:shadow cursor-pointer disabled:opacity-50"
             >
               {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
               <span>

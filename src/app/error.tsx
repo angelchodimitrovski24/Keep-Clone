@@ -30,7 +30,7 @@ export default function ErrorBoundary({
           <button
             type="button"
             onClick={() => reset()}
-            className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-stone-950 font-medium rounded-xl flex items-center gap-2 transition-colors text-sm cursor-pointer"
+            className="px-4 py-2 bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-100 dark:hover:bg-white dark:text-stone-900 font-medium rounded-xl flex items-center gap-2 transition-colors text-sm cursor-pointer"
           >
             <RefreshCw className="w-4 h-4" />
             <span>Try again</span>

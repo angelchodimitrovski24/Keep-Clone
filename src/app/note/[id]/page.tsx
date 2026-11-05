@@ -23,7 +23,7 @@ export default function NoteRoutePage({ params }: PageProps) {
     <Suspense
       fallback={
         <div className="min-h-screen bg-stone-50 dark:bg-[#18191a] flex items-center justify-center">
-          <div className="w-8 h-8 border-3 border-amber-500 border-t-transparent rounded-full animate-spin" />
+          <div className="w-8 h-8 border-3 border-stone-800 dark:border-stone-200 border-t-transparent rounded-full animate-spin" />
         </div>
       }
     >
