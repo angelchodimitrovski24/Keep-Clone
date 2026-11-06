@@ -401,8 +401,7 @@ body {
   display: inline;
   line-height: inherit;
 }
-.keep-rendered p:empty,
-.ProseMirror p:empty {
+.keep-rendered p:empty:not(:only-child) {
   display: none;
 }
 

@@ -5,6 +5,7 @@ import { Note, NoteVersion, Label, Category, ViewFilter, LayoutViewMode, FontSiz
 import {
   getAllNotesFromDB,
   getNoteByIdFromDB,
+  getChildNotesForParentFromDB,
   getNotesPagedFromDB,
   getNotesCountsSummaryFromDB,
   bulkInsertBenchmarkNotes,
@@ -115,6 +116,7 @@ interface KeepContextType {
   setCurrentPage: (page: number) => void;
   setPageSize: (size: number) => void;
   getNoteById: (id: string) => Promise<Note | undefined>;
+  getChildNotes: (parentId: string, childNoteIds?: string[]) => Promise<Note[]>;
   refreshNotesList: () => Promise<void>;
   databaseStats: {
     totalNotes: number;
@@ -700,6 +702,13 @@ export function KeepProvider({
     [notes, editingNote]
   );
 
+  const getChildNotes = useCallback(
+    async (parentId: string, childNoteIds?: string[]): Promise<Note[]> => {
+      return await getChildNotesForParentFromDB(parentId, childNoteIds);
+    },
+    []
+  );
+
   // Refresh current visible page slice and metadata
   const refreshNotesList = useCallback(async () => {
     try {
@@ -914,7 +923,7 @@ export function KeepProvider({
       };
 
       const newNote: Note = {
-        id: 'note-' + now + '-' + Math.random().toString(36).substring(2, 7),
+        id: noteData.id || ('note-' + now + '-' + Math.random().toString(36).substring(2, 7)),
         title: noteData.title || '',
         content: noteData.content || '',
         isList: noteData.isList || false,
@@ -2066,6 +2075,7 @@ export function KeepProvider({
       setCurrentPage,
       setPageSize,
       getNoteById,
+      getChildNotes,
       refreshNotesList,
       databaseStats,
       refreshDatabaseStats,

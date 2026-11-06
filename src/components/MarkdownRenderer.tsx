@@ -39,7 +39,17 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(
     const segments = useMemo(() => {
       if (!renderedHtml) return null;
       // Fast check: if no dataview indicators exist, avoid running regex
-      if (!renderedHtml.includes('data-dataview-') && !renderedHtml.includes('language-dataview') && !renderedHtml.includes('TABLE') && !renderedHtml.includes('LIST') && !renderedHtml.includes('TASK')) {
+      if (
+        !renderedHtml.includes('data-dataview-') &&
+        !renderedHtml.includes('language-dataview') &&
+        !renderedHtml.includes('TABLE') &&
+        !renderedHtml.includes('LIST') &&
+        !renderedHtml.includes('TASK') &&
+        !renderedHtml.includes('NOTION') &&
+        !renderedHtml.includes('GALLERY') &&
+        !renderedHtml.includes('CARDS') &&
+        !renderedHtml.includes('PAGES')
+      ) {
         return null;
       }
 

@@ -617,6 +617,61 @@ export async function getNoteByIdFromDB(id: string): Promise<Note | undefined> {
   return db.get('notes', id);
 }
 
+/**
+ * Robustly retrieves all child / sub-page notes for a parent note directly from IndexedDB,
+ * ensuring sub-pages are never missing or invisible regardless of pagination or memory state.
+ */
+export async function getChildNotesForParentFromDB(parentId: string, childNoteIds?: string[]): Promise<Note[]> {
+  const db = await getKeepDB();
+  if (!db) return [];
+
+  const foundMap = new Map<string, Note>();
+
+  // 1. Fetch by explicit childNoteIds
+  if (childNoteIds && childNoteIds.length > 0) {
+    for (const id of childNoteIds) {
+      try {
+        const note = await db.get('notes', id);
+        if (note && !note.isTrash) {
+          foundMap.set(note.id, note);
+        }
+      } catch {}
+    }
+  }
+
+  // 2. Scan for any notes having parentNoteId === parentId
+  if (parentId) {
+    try {
+      const tx = db.transaction('notes', 'readonly');
+      let cursor = await tx.store.openCursor();
+      while (cursor) {
+        const note = cursor.value;
+        if (note.parentNoteId === parentId && !note.isTrash && !foundMap.has(note.id)) {
+          foundMap.set(note.id, note);
+        }
+        cursor = await cursor.continue();
+      }
+    } catch {}
+  }
+
+  // Order by childNoteIds first, then any extra found
+  const result: Note[] = [];
+  if (childNoteIds) {
+    for (const id of childNoteIds) {
+      const n = foundMap.get(id);
+      if (n) {
+        result.push(n);
+        foundMap.delete(id);
+      }
+    }
+  }
+  for (const n of foundMap.values()) {
+    result.push(n);
+  }
+
+  return result;
+}
+
 export async function saveNoteToDB(note: Note): Promise<void> {
   const db = await getKeepDB();
   if (!db) return;

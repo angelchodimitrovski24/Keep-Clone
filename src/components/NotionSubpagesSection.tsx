@@ -32,7 +32,7 @@ export const NotionSubpagesSection: React.FC<NotionSubpagesSectionProps> = ({
   onOpenChildNote,
   category,
 }) => {
-  const { notes, addNote, updateNote } = useKeep();
+  const { notes, addNote, updateNote, getChildNotes } = useKeep();
   const [newSubpageTitle, setNewSubpageTitle] = useState('');
   const [insertAfterIndex, setInsertAfterIndex] = useState<number | null>(null);
   const [inlineTitle, setInlineTitle] = useState('');
@@ -46,22 +46,53 @@ export const NotionSubpagesSection: React.FC<NotionSubpagesSectionProps> = ({
   const bottomInputRef = useRef<HTMLInputElement>(null);
   const insertInputRef = useRef<HTMLInputElement>(null);
 
-  // Resolve child notes in the specified order
+  // Directly fetch child notes from IndexedDB to guarantee they are never missing due to pagination
+  const [dbChildNotes, setDbChildNotes] = useState<Note[]>([]);
+
+  React.useEffect(() => {
+    let active = true;
+    if (parentNoteId || (childNoteIds && childNoteIds.length > 0)) {
+      getChildNotes(parentNoteId, childNoteIds)
+        .then((items) => {
+          if (active && items) {
+            setDbChildNotes(items);
+          }
+        })
+        .catch(() => {});
+    } else {
+      setDbChildNotes([]);
+    }
+    return () => {
+      active = false;
+    };
+  }, [parentNoteId, childNoteIds, notes, getChildNotes]);
+
+  // Resolve child notes in the specified order with guaranteed fallback to IndexedDB records
   const childNotes = useMemo(() => {
     const list: Note[] = [];
+    const seen = new Set<string>();
+
     for (const id of childNoteIds) {
-      const found = notes.find((n) => n.id === id && !n.isTrash);
-      if (found) list.push(found);
+      const found =
+        dbChildNotes.find((n) => n.id === id && !n.isTrash) ||
+        notes.find((n) => n.id === id && !n.isTrash);
+      if (found && !seen.has(found.id)) {
+        seen.add(found.id);
+        list.push(found);
+      }
     }
-    // Also include any notes that have parentNoteId === parentNoteId but not yet in childNoteIds
+
     if (parentNoteId) {
-      const extra = notes.filter(
-        (n) => n.parentNoteId === parentNoteId && !n.isTrash && !childNoteIds.includes(n.id)
+      const extras = [...dbChildNotes, ...notes].filter(
+        (n) => n.parentNoteId === parentNoteId && !n.isTrash && !seen.has(n.id)
       );
-      list.push(...extra);
+      for (const ex of extras) {
+        seen.add(ex.id);
+        list.push(ex);
+      }
     }
     return list;
-  }, [childNoteIds, notes, parentNoteId]);
+  }, [childNoteIds, notes, parentNoteId, dbChildNotes]);
 
   // Real-time matching existing notes for bottom input
   const bottomMatches = useMemo(() => {
@@ -270,6 +301,40 @@ export const NotionSubpagesSection: React.FC<NotionSubpagesSectionProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Empty State when no sub-pages exist */}
+      {childNotes.length === 0 && !isAddingActive && insertAfterIndex === null && (
+        <div className="py-5 px-4 my-2 text-center rounded-xl border border-dashed border-stone-300 dark:border-stone-700/80 bg-black/[0.015] dark:bg-white/[0.02]">
+          <FileText className="w-6 h-6 mx-auto mb-1.5 text-stone-400 dark:text-stone-500 opacity-60" />
+          <p className="text-xs font-semibold text-stone-700 dark:text-stone-300">
+            No sub-pages yet
+          </p>
+          <p className="text-[11px] text-stone-400 dark:text-stone-500 mt-0.5 max-w-sm mx-auto">
+            Add a sub-page below or link existing notes to build your Notion hierarchy.
+          </p>
+          <div className="mt-3 flex items-center justify-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setIsAddingActive(true);
+                setTimeout(() => bottomInputRef.current?.focus(), 50);
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-100 dark:hover:bg-white dark:text-stone-900 font-semibold text-xs transition-colors shadow-2xs cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>New sub-page</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsLinkModalOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-stone-200/80 hover:bg-stone-300 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200 font-medium text-xs transition-colors cursor-pointer"
+            >
+              <Link2 className="w-3.5 h-3.5" />
+              <span>Link existing note</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ================= LIST VIEW (Matching the user screenshot) ================= */}
       {viewMode === 'list' ? (

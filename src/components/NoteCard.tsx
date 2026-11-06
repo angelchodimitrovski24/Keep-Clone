@@ -61,6 +61,7 @@ const NoteCardComponent: React.FC<NoteCardProps> = ({
     stopAndSaveReadingStopwatch,
     setSharingNote,
     openAiChatForNote,
+    getChildNotes,
   } = useKeep();
 
   const [showUnlockModal, setShowUnlockModal] = useState(false);
@@ -97,6 +98,26 @@ const NoteCardComponent: React.FC<NoteCardProps> = ({
     [activeNote, notes]
   );
 
+  // Asynchronously query child notes from IndexedDB if not present in memory page
+  const [dbChildNotes, setDbChildNotes] = useState<Note[]>([]);
+
+  React.useEffect(() => {
+    let active = true;
+    const hasChildren = (note.childNoteIds && note.childNoteIds.length > 0) || note.noteType === 'notion';
+    if (hasChildren && getChildNotes) {
+      getChildNotes(note.id, note.childNoteIds)
+        .then((items) => {
+          if (active && items) setDbChildNotes(items);
+        })
+        .catch(() => {});
+    } else {
+      setDbChildNotes([]);
+    }
+    return () => {
+      active = false;
+    };
+  }, [note.id, note.childNoteIds, note.noteType, getChildNotes]);
+
   // Resolve child sub-notes for Notion-style notes
   const childNotes = useMemo(() => {
     const list: Note[] = [];
@@ -104,7 +125,9 @@ const NoteCardComponent: React.FC<NoteCardProps> = ({
 
     if (note.childNoteIds && Array.isArray(note.childNoteIds)) {
       for (const id of note.childNoteIds) {
-        const found = notes.find((n) => n.id === id && !n.isTrash);
+        const found =
+          dbChildNotes.find((n) => n.id === id && !n.isTrash) ||
+          notes.find((n) => n.id === id && !n.isTrash);
         if (found && !seen.has(found.id)) {
           seen.add(found.id);
           list.push(found);
@@ -114,17 +137,17 @@ const NoteCardComponent: React.FC<NoteCardProps> = ({
 
     // Also include any notes that have parentNoteId === note.id
     if (note.id) {
-      const extra = notes.filter(
+      const extras = [...dbChildNotes, ...notes].filter(
         (n) => n.parentNoteId === note.id && !n.isTrash && !seen.has(n.id)
       );
-      for (const extraNote of extra) {
+      for (const extraNote of extras) {
         seen.add(extraNote.id);
         list.push(extraNote);
       }
     }
 
     return list;
-  }, [note.childNoteIds, note.id, notes]);
+  }, [note.childNoteIds, note.id, notes, dbChildNotes]);
 
   const isSelected = selectedNoteIds.includes(note.id);
   const colorClasses = getNoteColorClasses(note.color, note.theme);
@@ -471,7 +494,7 @@ const NoteCardComponent: React.FC<NoteCardProps> = ({
               )}
 
               {/* Notion-style Sub-pages / Listed Notes under the note body */}
-              {childNotes.length > 0 && (
+              {(childNotes.length > 0 || note.noteType === 'notion' || (note.childNoteIds && note.childNoteIds.length > 0)) && (
                 <div
                   className="mt-2.5 pt-2 border-t border-black/[0.06] dark:border-white/[0.08] space-y-1"
                   onClick={(e) => e.stopPropagation()}
@@ -483,6 +506,15 @@ const NoteCardComponent: React.FC<NoteCardProps> = ({
                     </span>
                   </div>
 
+                  {childNotes.length === 0 ? (
+                    <div
+                      onClick={handleCardClick}
+                      className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-black/[0.02] dark:bg-white/[0.02] hover:bg-black/[0.05] dark:hover:bg-white/[0.06] border border-dashed border-stone-300 dark:border-stone-700/80 transition-colors cursor-pointer text-xs text-stone-500 dark:text-stone-400"
+                    >
+                      <span>+ Add sub-pages</span>
+                      <span className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">Open note →</span>
+                    </div>
+                  ) : (
                   <div className="space-y-1">
                     {childNotes.slice(0, 6).map((child) => (
                       <div
@@ -521,6 +553,7 @@ const NoteCardComponent: React.FC<NoteCardProps> = ({
                       </div>
                     )}
                   </div>
+                  )}
                 </div>
               )}
 

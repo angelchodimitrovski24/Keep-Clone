@@ -29,6 +29,7 @@ import {
   DATAVIEW_TEMPLATES,
 } from '@/lib/dataviewEngine';
 import { resolveLocalMediaUrl } from '@/lib/formatUtils';
+import { getAllNotesFromDB } from '@/lib/db';
 
 export interface DataviewViewProps {
   query: string;
@@ -72,6 +73,24 @@ export const DataviewView: React.FC<DataviewViewProps> = ({
   const [manualViewType, setManualViewType] = useState<DataviewViewType | null>(null);
   const [showTemplates, setShowTemplates] = useState(false);
   const [copiedQuery, setCopiedQuery] = useState(false);
+  const [allDbNotes, setAllDbNotes] = useState<Note[] | null>(null);
+
+  // Directly fetch notes from IndexedDB so Dataview queries have access to the complete database
+  React.useEffect(() => {
+    let active = true;
+    getAllNotesFromDB(2000)
+      .then((records) => {
+        if (active && records && records.length > 0) {
+          setAllDbNotes(records);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [notes]);
+
+  const effectiveNotes = allDbNotes && allDbNotes.length >= notes.length ? allDbNotes : notes;
 
   // Parse query
   const parsed = useMemo(() => {
@@ -88,9 +107,9 @@ export const DataviewView: React.FC<DataviewViewProps> = ({
 
   // Execute query against all notes
   const queryResult = useMemo(() => {
-    const res = executeDataviewQuery(parsed, notes, currentNoteId);
+    const res = executeDataviewQuery(parsed, effectiveNotes, currentNoteId);
     return res;
-  }, [parsed, notes, currentNoteId]);
+  }, [parsed, effectiveNotes, currentNoteId]);
 
   // Filter notes by search text inside dataview
   const displayNotes = useMemo(() => {
