@@ -166,8 +166,8 @@ export const SupportbenchModal: React.FC<SupportbenchModalProps> = ({ isOpen, on
       content: htmlContent,
       category: selectedCategory || 'Support',
       labels: payload.labels,
-      // Pass images array so Keep tracks & caches them (NoteCard and NoteModal only show them inline where they belong)
-      images: payload.images || [],
+      // Never display images in the header gallery (images are rendered inline in markdown content)
+      images: [],
     });
   };
 

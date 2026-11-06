@@ -306,6 +306,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
   const headerImages = useMemo(() => {
     if (!images || images.length === 0) return [];
     if (!content) return images;
+    if (content.includes('<img ') || content.includes('data-keep-media') || /!\[[^\]]*\]\([^)]+\)/.test(content)) return [];
     return images.filter((img) => {
       const filename = img.split(/[/\\]/).pop() || img;
       return !content.includes(img) && !content.includes(filename) && !content.includes(encodeURIComponent(filename));

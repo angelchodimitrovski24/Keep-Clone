@@ -227,6 +227,7 @@ const NoteCardComponent: React.FC<NoteCardProps> = ({
   const headerImages = useMemo(() => {
     if (!activeNote.images || activeNote.images.length === 0) return [];
     if (!activeNote.content) return activeNote.images;
+    if (activeNote.content.includes('<img ') || activeNote.content.includes('data-keep-media') || /!\[[^\]]*\]\([^)]+\)/.test(activeNote.content)) return [];
     return activeNote.images.filter((img) => {
       const filename = img.split(/[/\\]/).pop() || img;
       return !activeNote.content.includes(img) && !activeNote.content.includes(filename) && !activeNote.content.includes(encodeURIComponent(filename));
