@@ -1095,6 +1095,33 @@ export function convertHtmlToMarkdown(html: string): string {
         }
       });
 
+      // Remove non-content elements
+      doc.querySelectorAll('script, style, noscript, iframe').forEach((el) => el.remove());
+
+      // Ensure block elements are separated by newlines so adjacent elements (e.g. ticket ID, author, date) don't get smashed together
+      const blockElements = doc.querySelectorAll('p, div, section, article, header, footer, aside, nav, dt, dd, tr, blockquote, figure, figcaption, h1, h2, h3, h4, h5, h6, li');
+      blockElements.forEach((el) => {
+        if (!el.previousSibling || el.previousSibling.nodeType !== 3 || !el.previousSibling.textContent?.endsWith('\n')) {
+          el.before(doc.createTextNode('\n'));
+        }
+        if (!el.nextSibling || el.nextSibling.nodeType !== 3 || !el.nextSibling.textContent?.startsWith('\n')) {
+          el.after(doc.createTextNode('\n'));
+        }
+      });
+
+      // Ensure touching inline elements (spans, badges, links) have space separation
+      const inlineElements = doc.querySelectorAll('span, label, button, small, strong, b, em, i, u, s, a');
+      inlineElements.forEach((el) => {
+        const next = el.nextSibling;
+        if (next) {
+          const elText = el.textContent || '';
+          const nextText = next.textContent || '';
+          if (elText && nextText && !/\s$/.test(elText) && !/^\s/.test(nextText)) {
+            el.after(doc.createTextNode(' '));
+          }
+        }
+      });
+
       md = doc.body ? doc.body.innerHTML : doc.documentElement.innerHTML;
     } catch {
       // Fallback to regex below if DOMParser is unavailable or fails
@@ -1244,11 +1271,16 @@ export function convertHtmlToMarkdown(html: string): string {
     return '\n\n' + cleanLines.map((l: string) => `> ${l.trim()}`).join('\n') + '\n\n';
   });
 
-  // 10. Paragraphs and divs (only wrap non-empty content in \n\n!)
-  md = md.replace(/<(?:p|div)[^>]*>([\s\S]*?)<\/(?:p|div)>/gi, (_m, text) => {
-    const clean = text.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').trim();
-    return clean ? `\n\n${clean}\n\n` : '\n';
-  });
+  // 10. Block-level container boundaries to newlines (p, div, section, article, header, footer, etc.)
+  const blockTags = 'p|div|section|article|header|footer|aside|nav|figure|figcaption|main|address';
+  md = md.replace(new RegExp(`<(?:${blockTags})\\b[^>]*>`, 'gi'), '\n\n');
+  md = md.replace(new RegExp(`</(?:${blockTags})>`, 'gi'), '\n\n');
+
+  // Insert space between adjacent touching inline elements (e.g. <span>#822500</span><span>Angelcho</span> or </span><a...)
+  const inlineTags = 'span|label|button|small|badge|strong|b|em|i|u|s|code|a';
+  md = md.replace(new RegExp(`</(?:${inlineTags})>(?=[^\\s<])`, 'gi'), ' ');
+  md = md.replace(new RegExp(`</(?:${inlineTags})>(?=<[a-zA-Z])`, 'gi'), ' ');
+  md = md.replace(new RegExp(`(?<=[^\\s>])<(?:${inlineTags})\\b[^>]*>`, 'gi'), ' ');
 
   // 11. Line breaks: <br>
   md = md.replace(/<br\s*\/?>/gi, '\n');
@@ -1273,6 +1305,10 @@ export function convertHtmlToMarkdown(html: string): string {
     const linkText = cleanText ? cleanText : 'link';
     return `[${linkText}](${cleanHref})`;
   });
+
+  // Ensure link brackets are cleanly separated from adjacent alphanumeric words (e.g. "Dimitrovski[email](...)" -> "Dimitrovski [email](...)")
+  md = md.replace(/(?<=[^\s\(\[\{])\[/g, ' [');
+  md = md.replace(/\]\(([^\)]+)\)(?=[^\s\.,;:!\?'"\)\]\}])/g, ']($1) ');
 
   // 14. Inline formatting
   md = md.replace(/<(?:strong|b)[^>]*>([\s\S]*?)<\/(?:strong|b)>/gi, '**$1**');

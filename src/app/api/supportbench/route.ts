@@ -189,7 +189,17 @@ function htmlToCleanMarkdown(html: string): string {
     return `\n- ${cleanText}`;
   });
 
-  text = text.replace(/<p\b[^>]*>([\s\S]*?)<\/p>/gi, '\n\n$1\n\n');
+  // Block tags to newlines
+  const blockTags = 'p|div|section|article|header|footer|aside|nav|figure|figcaption|main|address';
+  text = text.replace(new RegExp(`<(?:${blockTags})\\b[^>]*>`, 'gi'), '\n\n');
+  text = text.replace(new RegExp(`</(?:${blockTags})>`, 'gi'), '\n\n');
+
+  // Insert space between touching inline elements
+  const inlineTags = 'span|label|button|small|badge|strong|b|em|i|u|s|code|a';
+  text = text.replace(new RegExp(`</(?:${inlineTags})>(?=[^\\s<])`, 'gi'), ' ');
+  text = text.replace(new RegExp(`</(?:${inlineTags})>(?=<[a-zA-Z])`, 'gi'), ' ');
+  text = text.replace(new RegExp(`(?<=[^\\s>])<(?:${inlineTags})\\b[^>]*>`, 'gi'), ' ');
+
   text = text.replace(/<br\s*\/?>/gi, '\n');
 
   text = text.replace(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, (_match, href, linkText) => {
@@ -197,6 +207,10 @@ function htmlToCleanMarkdown(html: string): string {
     if (!cleanLink) return '';
     return `[${cleanLink}](${href})`;
   });
+
+  // Ensure link brackets are separated from touching words
+  text = text.replace(/(?<=[^\s\(\[\{])\[/g, ' [');
+  text = text.replace(/\]\(([^\)]+)\)(?=[^\s\.,;:!\?'"\)\]\}])/g, ']($1) ');
 
   text = text.replace(/<(?:strong|b)\b[^>]*>([\s\S]*?)<\/(?:strong|b)>/gi, '**$1**');
   text = text.replace(/<(?:em|i)\b[^>]*>([\s\S]*?)<\/(?:em|i)>/gi, '*$1*');
