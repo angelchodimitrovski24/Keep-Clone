@@ -540,9 +540,12 @@ export function KeepProvider({
         document.documentElement.style.setProperty('--note-font-size', getFontSizeInPx(initialFontSize));
       }
 
-      if (storedFolder) {
-        setLocalMediaFolderState(storedFolder);
-        setSyncLocalMediaFolder(storedFolder);
+      const resolvedStoredFolder =
+        storedFolder || (typeof window !== 'undefined' ? localStorage.getItem('keep_local_media_folder') || localStorage.getItem('localMediaFolder') || '' : '');
+      if (resolvedStoredFolder) {
+        setLocalMediaFolderState(resolvedStoredFolder);
+        setSyncLocalMediaFolder(resolvedStoredFolder);
+        saveSettingToDB('localMediaFolder', resolvedStoredFolder);
       } else {
         // Initialize with default server local-media path
         fetch('/api/local-media?action=default')
@@ -888,6 +891,10 @@ export function KeepProvider({
     setLocalMediaFolderState(folder);
     setSyncLocalMediaFolder(folder);
     saveSettingToDB('localMediaFolder', folder);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('keep_local_media_folder', folder);
+      localStorage.setItem('localMediaFolder', folder);
+    }
   }, []);
 
   // Selection handlers

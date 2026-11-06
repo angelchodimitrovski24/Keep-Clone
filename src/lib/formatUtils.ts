@@ -1073,16 +1073,19 @@ export function convertHtmlToMarkdown(html: string): string {
         }
       });
 
-      // Also extract any multi-line <code> tags or <code> tags with language classes
+      // Also extract any multi-line <code> tags (single-line <code> remains inline code ...)
       doc.querySelectorAll('code').forEach((codeEl) => {
         if (codeEl.closest(codeBlockSelectors.join(', '))) return;
 
-        const codeAttrs = codeEl.getAttribute('class') || '';
-        const lang = detectCodeLanguage('', codeAttrs);
         const rawText = codeEl.textContent || '';
-        const isMultiLine = rawText.includes('\n') || cleanCodeContent(codeEl.innerHTML).includes('\n');
+        const hasBr = codeEl.querySelector('br') !== null;
+        const isMultiLine = rawText.includes('\n') || cleanCodeContent(codeEl.innerHTML).includes('\n') || hasBr;
 
-        if (lang || isMultiLine) {
+        // ONLY convert to code block if it is genuinely multi-line.
+        // Single-line <code> (even with class/language attribute) must remain inline code.
+        if (isMultiLine) {
+          const codeAttrs = codeEl.getAttribute('class') || '';
+          const lang = detectCodeLanguage('', codeAttrs);
           codeEl.querySelectorAll('br').forEach((br) => br.replaceWith('\n'));
           const cleanCode = cleanCodeContent(codeEl.textContent || '');
           if (cleanCode.length > 0) {
@@ -1131,14 +1134,14 @@ export function convertHtmlToMarkdown(html: string): string {
     return inner;
   });
 
-  // 4. Multi-line <code> tags or <code> tags with language class / <br>
+  // 4. Multi-line <code> tags only (single-line <code> remains inline code ...)
   md = md.replace(/<code\b([^>]*)>([\s\S]*?)<\/code>/gi, (match, codeAttrs, inner) => {
-    const lang = detectCodeLanguage('', codeAttrs);
     const hasNewlines = inner.includes('\n') || /<br\s*\/?>/i.test(inner) || /<\/(?:p|div|li)>/i.test(inner);
-    const isMultiLine = cleanCodeContent(inner).includes('\n');
+    const cleanCode = cleanCodeContent(inner);
+    const isMultiLine = cleanCode.includes('\n');
 
-    if (lang || hasNewlines || isMultiLine) {
-      const cleanCode = cleanCodeContent(inner);
+    if (hasNewlines || isMultiLine) {
+      const lang = detectCodeLanguage('', codeAttrs);
       return addCodeBlock(lang, cleanCode);
     }
     return match; // Leave single-line inline code for later step
@@ -1286,7 +1289,9 @@ export function convertHtmlToMarkdown(html: string): string {
     if (clean.includes('\n')) {
       return addCodeBlock('', clean);
     }
-    return `\`${clean.trim()}\``;
+    const trimmed = clean.trim();
+    if (!trimmed) return '';
+    return `\`${trimmed}\``;
   });
 
   // 15. Strip any leftover HTML tags

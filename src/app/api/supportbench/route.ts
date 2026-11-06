@@ -203,6 +203,17 @@ function htmlToCleanMarkdown(html: string): string {
   text = text.replace(/<(?:del|s|strike)\b[^>]*>([\s\S]*?)<\/(?:del|s|strike)>/gi, '~~$1~~');
   text = text.replace(/<code\b[^>]*>([\s\S]*?)<\/code>/gi, '`$1`');
 
+  // Convert <img> tags to markdown images before stripping leftover HTML tags
+  text = text.replace(/<img\b([^>]*)>/gi, (_match, attrs) => {
+    const srcMatch = attrs.match(/src=["']([^"']+)["']/i);
+    if (!srcMatch) return '';
+    const src = srcMatch[1].trim();
+    if (!src) return '';
+    const altMatch = attrs.match(/alt=["']([^"']*)["']/i);
+    const alt = altMatch ? altMatch[1].trim() : 'image';
+    return `\n\n![${alt}](${src})\n\n`;
+  });
+
   text = text.replace(/<[^>]+>/g, '');
 
   text = text.replace(/___SUPPORTBENCH_CODE_BLOCK_(\d+)___/g, (_match, idx) => {
@@ -231,17 +242,93 @@ async function downloadMediaLocally(
   url: string,
   targetFolder: string,
   headers: Record<string, string>,
-  suggestedName?: string
+  suggestedName?: string,
+  baseUrl?: string
 ): Promise<{ fileName: string; fullPath: string; serveUrl: string } | null> {
+  if (!url || typeof url !== 'string') return null;
+  url = url.trim();
+  if (!url) return null;
+
   try {
-    const res = await fetch(url, {
-      headers: {
-        ...headers,
-        Accept: '*/*',
-      },
-    });
+    // 1. Direct Base64 data URL handling
+    if (url.startsWith('data:image/')) {
+      const dataMatch = url.match(/^data:image\/([a-zA-Z0-9+.-]+);base64,([\s\S]+)$/i);
+      if (dataMatch) {
+        const subType = dataMatch[1].toLowerCase();
+        const base64Content = dataMatch[2].replace(/\s/g, '');
+        let ext = '.png';
+        if (subType.includes('jpeg') || subType.includes('jpg')) ext = '.jpg';
+        else if (subType.includes('gif')) ext = '.gif';
+        else if (subType.includes('webp')) ext = '.webp';
+        else if (subType.includes('svg')) ext = '.svg';
+
+        let fallbackName = suggestedName || `sb-media-${Date.now()}${ext}`;
+        if (!path.extname(fallbackName)) fallbackName += ext;
+
+        if (!fs.existsSync(/*turbopackIgnore: true*/ targetFolder)) {
+          fs.mkdirSync(/*turbopackIgnore: true*/ targetFolder, { recursive: true });
+        }
+
+        const { finalName, fullPath } = getUniqueFilePath(targetFolder, fallbackName);
+        fs.writeFileSync(/*turbopackIgnore: true*/ fullPath, Buffer.from(base64Content, 'base64'));
+
+        return {
+          fileName: finalName,
+          fullPath,
+          serveUrl: `/api/local-media?file=${encodeURIComponent(finalName)}`,
+        };
+      }
+    }
+
+    // 2. Resolve relative URLs against baseUrl
+    let finalUrl = url;
+    if (!finalUrl.startsWith('http://') && !finalUrl.startsWith('https://')) {
+      try {
+        const base = baseUrl ? new URL(baseUrl) : new URL('https://api.supportbench.net');
+        finalUrl = new URL(finalUrl, base).toString();
+      } catch {
+        finalUrl = `https://api.supportbench.net/${finalUrl.replace(/^\/+/, '')}`;
+      }
+    }
+
+    // 3. Detect presigned or third-party cloud storage URLs (S3, Azure Blob, GCS, Cloudflare)
+    // Amazon S3 and Azure Blob reject requests with HTTP 400 if both query presigned signature AND Authorization headers are sent.
+    const isCloudSigned =
+      /[?&](?:X-Amz-|AWSAccessKeyId|Signature=|sig=|Expires=)/i.test(finalUrl) ||
+      /\.(?:amazonaws\.com|blob\.core\.windows\.net|storage\.googleapis\.com)/i.test(finalUrl);
+
+    // Fetch headers: omit Authorization if it's a signed cloud URL
+    const fetchHeaders: Record<string, string> = isCloudSigned
+      ? {
+          Accept: '*/*',
+          'User-Agent': 'Keep-Clone-Supportbench/1.0',
+        }
+      : {
+          ...headers,
+          Accept: '*/*',
+        };
+
+    let res = await fetch(finalUrl, { headers: fetchHeaders });
+
+    // Fallback attempt: if failed with 400/401/403 and had auth headers, try once without auth headers
+    if (!res.ok && !isCloudSigned && (res.status === 400 || res.status === 401 || res.status === 403)) {
+      try {
+        const retryRes = await fetch(finalUrl, {
+          headers: {
+            Accept: '*/*',
+            'User-Agent': 'Keep-Clone-Supportbench/1.0',
+          },
+        });
+        if (retryRes.ok) {
+          res = retryRes;
+        }
+      } catch {
+        // preserve original res
+      }
+    }
 
     if (!res.ok) {
+      console.warn(`[Supportbench] Download failed for ${finalUrl} (HTTP ${res.status})`);
       return null;
     }
 
@@ -253,6 +340,12 @@ async function downloadMediaLocally(
     else if (contentType.includes('svg')) ext = '.svg';
     else if (contentType.includes('pdf')) ext = '.pdf';
     else if (contentType.includes('zip')) ext = '.zip';
+    else {
+      try {
+        const pExt = path.extname(new URL(finalUrl).pathname);
+        if (pExt && pExt.length <= 5) ext = pExt;
+      } catch {}
+    }
 
     let fallbackName = suggestedName || `sb-media-${Date.now()}${ext}`;
     if (!path.extname(fallbackName)) fallbackName += ext;
@@ -943,9 +1036,44 @@ async function processSupportbenchCaseToNote(
     if (Array.isArray(act.files)) allAttachments.push(...act.files);
   }
 
-  // Download media files locally
+  // Pre-parse activity items
+  const userDirectory = buildUserDirectory(caseObj);
+  const parsedActivities = activities.map((act) => formatActivityItem(act, caseObj, userDirectory));
+
+  // Collect downloaded media files
   const downloadedFiles: Array<{ fileName: string; fullPath: string; serveUrl: string }> = [];
-  if (downloadAttachments && allAttachments.length > 0) {
+  const urlToLocalMap = new Map<string, { fileName: string; fullPath: string; serveUrl: string }>();
+
+  if (downloadAttachments) {
+    // A. Scan for inline images in description and comments: ![alt](url)
+    const inlineImageRegex = /!\[([^\]]*)\]\(([^\)]+)\)/g;
+    const allMarkdownTexts = [descriptionMd, ...parsedActivities.map((a) => a.markdown)];
+    const inlineImageCandidates: Array<{ alt: string; url: string }> = [];
+
+    for (const mdText of allMarkdownTexts) {
+      if (!mdText) continue;
+      let m: RegExpExecArray | null;
+      inlineImageRegex.lastIndex = 0;
+      while ((m = inlineImageRegex.exec(mdText)) !== null) {
+        const alt = m[1] || 'image';
+        const rawUrl = m[2];
+        if (rawUrl && !rawUrl.startsWith('/api/local-media') && !inlineImageCandidates.some((c) => c.url === rawUrl)) {
+          inlineImageCandidates.push({ alt, url: rawUrl });
+        }
+      }
+    }
+
+    // Download inline images
+    for (const item of inlineImageCandidates) {
+      if (urlToLocalMap.has(item.url)) continue;
+      const downloaded = await downloadMediaLocally(item.url, targetFolder, headers, item.alt, baseUrl);
+      if (downloaded) {
+        downloadedFiles.push(downloaded);
+        urlToLocalMap.set(item.url, downloaded);
+      }
+    }
+
+    // B. Download attachments
     for (const att of allAttachments) {
       const fileUrl =
         att.Url ||
@@ -959,6 +1087,8 @@ async function processSupportbenchCaseToNote(
         att.Href ||
         att.href;
       if (!fileUrl) continue;
+      if (urlToLocalMap.has(fileUrl)) continue;
+
       const fileName =
         att.Name ||
         att.name ||
@@ -967,10 +1097,29 @@ async function processSupportbenchCaseToNote(
         att.FileName ||
         att.file_name ||
         `attachment-${att.Id || att.id || Date.now()}`;
-      const downloaded = await downloadMediaLocally(fileUrl, targetFolder, headers, fileName);
+
+      const downloaded = await downloadMediaLocally(fileUrl, targetFolder, headers, fileName, baseUrl);
       if (downloaded) {
         downloadedFiles.push(downloaded);
+        urlToLocalMap.set(fileUrl, downloaded);
       }
+    }
+
+    // C. Rewrite inline image URLs to local-media serve URLs
+    const rewriteUrls = (content: string): string => {
+      if (!content) return '';
+      return content.replace(/!\[([^\]]*)\]\(([^\)]+)\)/g, (match, alt, origUrl) => {
+        const local = urlToLocalMap.get(origUrl);
+        if (local) {
+          return `![${alt || local.fileName}](${local.serveUrl})`;
+        }
+        return match;
+      });
+    };
+
+    descriptionMd = rewriteUrls(descriptionMd);
+    for (const act of parsedActivities) {
+      act.markdown = rewriteUrls(act.markdown);
     }
   }
 
@@ -988,10 +1137,20 @@ async function processSupportbenchCaseToNote(
     markdown += `### Case Description\n\n${descriptionMd.trim()}\n\n`;
   }
 
-  // Downloaded attachments section
-  if (downloadedFiles.length > 0) {
-    markdown += `### Attachments & Files (${downloadedFiles.length})\n\n`;
-    for (const f of downloadedFiles) {
+  // Find attachments that are NOT already embedded inline in description or activities
+  const embeddedServeUrls = new Set<string>();
+  const allFinalContent = `${descriptionMd} ${parsedActivities.map((a) => a.markdown).join(' ')}`;
+  for (const f of downloadedFiles) {
+    if (allFinalContent.includes(f.serveUrl) || allFinalContent.includes(f.fileName)) {
+      embeddedServeUrls.add(f.serveUrl);
+    }
+  }
+
+  const extraAttachments = downloadedFiles.filter((f) => !embeddedServeUrls.has(f.serveUrl));
+
+  if (extraAttachments.length > 0) {
+    markdown += `### Attachments & Files (${extraAttachments.length})\n\n`;
+    for (const f of extraAttachments) {
       const isImg = /\.(png|jpe?g|gif|webp|svg)$/i.test(f.fileName);
       if (isImg) {
         markdown += `![${f.fileName}](${f.serveUrl})\n\n`;
@@ -1003,12 +1162,10 @@ async function processSupportbenchCaseToNote(
   }
 
   // Activities & Comments Section (Chronological)
-  const userDirectory = buildUserDirectory(caseObj);
-  if (activities.length > 0) {
-    markdown += `### Case Timeline & Comments (${activities.length})\n\n`;
-    for (let i = 0; i < activities.length; i++) {
-      const act = activities[i];
-      const parsed = formatActivityItem(act, caseObj, userDirectory);
+  if (parsedActivities.length > 0) {
+    markdown += `### Case Timeline & Comments (${parsedActivities.length})\n\n`;
+    for (let i = 0; i < parsedActivities.length; i++) {
+      const parsed = parsedActivities[i];
 
       markdown += `#### 💬 **${parsed.author}** • *${parsed.date || 'Recent'}* \`[${parsed.type}]\`\n\n`;
       if (parsed.markdown) {
@@ -1017,7 +1174,7 @@ async function processSupportbenchCaseToNote(
         markdown += `*(empty update or status change)*\n\n`;
       }
 
-      if (i < activities.length - 1) {
+      if (i < parsedActivities.length - 1) {
         markdown += `---\n\n`;
       }
     }
@@ -1047,7 +1204,14 @@ export async function POST(req: NextRequest) {
     const cleanBase = normalizeSupportbenchBaseUrl(baseUrl);
     const subdomain = extractSubdomain(cleanBase) || (caseIdentifier ? extractSubdomain(caseIdentifier) : undefined);
     const headers = buildSupportbenchHeaders(apiToken, subdomain);
-    const targetFolder = folderPath && fs.existsSync(folderPath) ? folderPath : getDefaultMediaFolder();
+    let targetFolder = folderPath && typeof folderPath === 'string' && folderPath.trim() ? folderPath.trim() : getDefaultMediaFolder();
+    try {
+      if (!fs.existsSync(/*turbopackIgnore: true*/ targetFolder)) {
+        fs.mkdirSync(/*turbopackIgnore: true*/ targetFolder, { recursive: true });
+      }
+    } catch {
+      targetFolder = getDefaultMediaFolder();
+    }
 
     // 1. Action: Test Connection directly on the base URL (separate from case downloading)
     if (action === 'test-connection') {

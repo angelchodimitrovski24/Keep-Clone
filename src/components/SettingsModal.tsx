@@ -34,6 +34,8 @@ import {
   HardDrive,
   ChevronLeft,
   ChevronRight,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { useKeep, getFontSizeInPx } from '@/context/KeepContext';
 import { FontSizeOption, AppThemeMode } from '@/types/note';
@@ -70,6 +72,7 @@ export const SettingsModal: React.FC = () => {
     layoutMode,
     setLayoutMode,
     localMediaFolder,
+    setLocalMediaFolder,
     setIsLocalFolderModalOpen,
     notes,
     labels,
@@ -84,6 +87,24 @@ export const SettingsModal: React.FC = () => {
   } = useKeep();
 
   const [activeTab, setActiveTab] = useState<SettingsTab>('appearance');
+  const [displayMediaFolder, setDisplayMediaFolder] = useState<string>(localMediaFolder || '');
+  const [copiedFolder, setCopiedFolder] = useState(false);
+
+  useEffect(() => {
+    if (localMediaFolder) {
+      setDisplayMediaFolder(localMediaFolder);
+    } else {
+      fetch('/api/local-media?action=default')
+        .then((r) => r.json())
+        .then((d) => {
+          if (d?.defaultFolder) {
+            setDisplayMediaFolder(d.defaultFolder);
+            setLocalMediaFolder(d.defaultFolder);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [localMediaFolder, setLocalMediaFolder]);
 
   const [benchmarkProgress, setBenchmarkProgress] = useState<{
     running: boolean;
@@ -595,19 +616,36 @@ export const SettingsModal: React.FC = () => {
                 </button>
               </div>
 
-              {/* Tool 5: Local Paste Folder */}
-              <div className="p-4 rounded-xl border border-stone-200 dark:border-stone-700 bg-stone-50/50 dark:bg-stone-900/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="flex items-start gap-3">
+              {/* Tool 5: Local Media Storage Folder */}
+              <div className="p-4 rounded-xl border border-stone-200 dark:border-stone-700 bg-stone-50/50 dark:bg-stone-900/40 flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                <div className="flex items-start gap-3 min-w-0 flex-1">
                   <div className="w-9 h-9 rounded-xl bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 border border-stone-200 dark:border-stone-700 flex items-center justify-center shrink-0 mt-0.5">
                     <FolderOpen className="w-5 h-5" />
                   </div>
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <h4 className="text-sm font-semibold text-stone-900 dark:text-stone-100">
-                      Local Media Paste Folder
+                      Local Media &amp; Attachment Folder
                     </h4>
-                    <p className="text-xs text-stone-500 dark:text-stone-400 mt-0.5 truncate max-w-sm">
-                      {localMediaFolder || 'Default system directory for pasted screenshots & files'}
+                    <p className="text-xs text-stone-500 dark:text-stone-400 mt-1">
+                      Local directory on your computer where pasted screenshots, audio, and attachments are stored:
                     </p>
+                    <div className="mt-2 flex items-center gap-2 bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-700 rounded-lg px-2.5 py-1.5 text-xs font-mono text-stone-800 dark:text-stone-200 break-all select-all">
+                      <span className="truncate">{displayMediaFolder || 'Detecting system folder...'}</span>
+                      {displayMediaFolder && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(displayMediaFolder);
+                            setCopiedFolder(true);
+                            setTimeout(() => setCopiedFolder(false), 2000);
+                          }}
+                          className="ml-auto text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 p-0.5 shrink-0"
+                          title="Copy folder path"
+                        >
+                          {copiedFolder ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
                 <button
@@ -616,7 +654,7 @@ export const SettingsModal: React.FC = () => {
                     setIsSettingsOpen(false);
                     setIsLocalFolderModalOpen(true);
                   }}
-                  className="px-3.5 py-2 rounded-xl border border-stone-300 dark:border-stone-600 text-stone-800 dark:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-800 text-xs font-semibold shrink-0 transition-colors shadow-2xs"
+                  className="px-3.5 py-2 rounded-xl border border-stone-300 dark:border-stone-600 text-stone-800 dark:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-800 text-xs font-semibold shrink-0 transition-colors shadow-2xs self-start sm:self-auto"
                 >
                   Change Folder
                 </button>
@@ -667,6 +705,55 @@ export const SettingsModal: React.FC = () => {
               <p className="text-xs text-stone-500 dark:text-stone-400">
                 Connect external developer platforms, support trackers, and local AI engines.
               </p>
+
+              {/* Media Storage Directory for Integrations */}
+              <div className="p-4 rounded-xl border border-teal-200 dark:border-teal-900/60 bg-teal-50/40 dark:bg-teal-950/20 flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                <div className="flex items-start gap-3 min-w-0 flex-1">
+                  <div className="w-9 h-9 rounded-xl bg-teal-600 text-white flex items-center justify-center shrink-0 mt-0.5 shadow-xs">
+                    <FolderOpen className="w-5 h-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-sm font-semibold text-stone-900 dark:text-stone-100">
+                        Local Media &amp; Attachment Storage
+                      </h4>
+                      <span className="text-[10px] font-bold text-teal-700 dark:text-teal-300 bg-teal-500/15 border border-teal-500/30 px-2 py-0.5 rounded-full">
+                        Active Folder
+                      </span>
+                    </div>
+                    <p className="text-xs text-stone-500 dark:text-stone-400 mt-1">
+                      All images, screenshots, and file attachments downloaded from Supportbench &amp; Jira, or pasted from the clipboard, are stored here on your machine:
+                    </p>
+                    <div className="mt-2 flex items-center gap-2 bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-700 rounded-lg px-2.5 py-1.5 text-xs font-mono text-stone-800 dark:text-stone-200 break-all select-all">
+                      <span className="truncate">{displayMediaFolder || 'Detecting system media folder...'}</span>
+                      {displayMediaFolder && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(displayMediaFolder);
+                            setCopiedFolder(true);
+                            setTimeout(() => setCopiedFolder(false), 2000);
+                          }}
+                          className="ml-auto text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 p-0.5 shrink-0"
+                          title="Copy folder path"
+                        >
+                          {copiedFolder ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSettingsOpen(false);
+                    setIsLocalFolderModalOpen(true);
+                  }}
+                  className="px-3.5 py-2 rounded-xl border border-stone-300 dark:border-stone-600 text-stone-800 dark:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-800 text-xs font-semibold shrink-0 transition-colors shadow-2xs self-start sm:self-auto"
+                >
+                  Change Folder
+                </button>
+              </div>
 
               {/* Integration 1: Atlassian Jira */}
               <div className="p-4 rounded-xl border border-stone-200 dark:border-stone-700 bg-stone-50/50 dark:bg-stone-900/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
