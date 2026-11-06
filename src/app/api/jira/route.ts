@@ -616,12 +616,16 @@ export async function POST(req: NextRequest) {
     const baseUrl = normalizeJiraBaseUrl(rawBaseUrl);
     const authHeader = buildJiraAuthHeader(email, apiToken);
 
-    const targetFolder = folderPath && fs.existsSync(/*turbopackIgnore: true*/ folderPath)
-      ? folderPath
+    let targetFolder = folderPath && typeof folderPath === 'string' && folderPath.trim()
+      ? folderPath.trim()
       : getDefaultMediaFolder();
 
-    if (!fs.existsSync(/*turbopackIgnore: true*/ targetFolder)) {
-      fs.mkdirSync(/*turbopackIgnore: true*/ targetFolder, { recursive: true });
+    try {
+      if (!fs.existsSync(/*turbopackIgnore: true*/ targetFolder)) {
+        fs.mkdirSync(/*turbopackIgnore: true*/ targetFolder, { recursive: true });
+      }
+    } catch {
+      targetFolder = getDefaultMediaFolder();
     }
 
     const jiraHeaders: Record<string, string> = {
@@ -717,29 +721,107 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // 3. Action: Search JQL
+    // 3. Action: Search JQL (Updated for Atlassian CHANGE-2046: /rest/api/3/search/jql)
     if (action === 'search-jql') {
       const query = (jql || 'order by updated desc').trim();
-      const searchUrl = `${baseUrl}/rest/api/3/search?jql=${encodeURIComponent(query)}&maxResults=${maxResults}&fields=summary,status,priority,assignee,reporter,issuetype,updated,attachment`;
+      const fieldsList = [
+        'summary',
+        'status',
+        'priority',
+        'assignee',
+        'reporter',
+        'issuetype',
+        'updated',
+        'attachment',
+      ];
+      const parsedMaxResults = Math.min(Number(maxResults) || 50, 100);
 
-      let searchRes = await fetch(searchUrl, { headers: jiraHeaders });
+      let searchRes: Response | null = null;
+      let lastErrText = '';
 
-      if (!searchRes.ok) {
-        // Fallback to v2
-        const searchV2 = `${baseUrl}/rest/api/2/search?jql=${encodeURIComponent(query)}&maxResults=${maxResults}&fields=summary,status,priority,assignee,reporter,issuetype,updated,attachment`;
-        searchRes = await fetch(searchV2, { headers: jiraHeaders });
+      // Strategy 1 (Atlassian Cloud New Standard): POST /rest/api/3/search/jql
+      try {
+        const res = await fetch(`${baseUrl}/rest/api/3/search/jql`, {
+          method: 'POST',
+          headers: jiraHeaders,
+          body: JSON.stringify({
+            jql: query,
+            maxResults: parsedMaxResults,
+            fields: fieldsList,
+          }),
+        });
+        if (res.ok) {
+          searchRes = res;
+        } else if (res.status === 400) {
+          // Syntax error in user query, don't fall back to other endpoints
+          lastErrText = await res.text();
+          searchRes = res;
+        } else if (res.status !== 404 && res.status !== 405 && res.status !== 410) {
+          lastErrText = await res.text();
+          searchRes = res;
+        }
+      } catch (err: any) {
+        lastErrText = err?.message || '';
       }
 
-      if (!searchRes.ok) {
-        const errText = await searchRes.text();
+      // Strategy 2: GET /rest/api/3/search/jql
+      if (!searchRes || (!searchRes.ok && searchRes.status !== 400)) {
+        try {
+          const fieldsParam = fieldsList.join(',');
+          const getUrl = `${baseUrl}/rest/api/3/search/jql?jql=${encodeURIComponent(query)}&maxResults=${parsedMaxResults}&fields=${fieldsParam}`;
+          const res = await fetch(getUrl, { headers: jiraHeaders });
+          if (res.ok) {
+            searchRes = res;
+          } else if (res.status === 400) {
+            lastErrText = await res.text();
+            searchRes = res;
+          } else if (res.status !== 404 && res.status !== 405 && res.status !== 410) {
+            lastErrText = await res.text();
+            searchRes = res;
+          }
+        } catch (err: any) {
+          lastErrText = err?.message || lastErrText;
+        }
+      }
+
+      // Strategy 3: Legacy GET /rest/api/2/search (for on-premise Jira Server / Data Center instances)
+      if (!searchRes || (!searchRes.ok && searchRes.status !== 400)) {
+        try {
+          const legacyUrl = `${baseUrl}/rest/api/2/search?jql=${encodeURIComponent(query)}&maxResults=${parsedMaxResults}&fields=${fieldsList.join(',')}`;
+          const res = await fetch(legacyUrl, { headers: jiraHeaders });
+          if (res.ok) {
+            searchRes = res;
+          } else {
+            const txt = await res.text();
+            if (!lastErrText) lastErrText = txt;
+          }
+        } catch (err: any) {
+          lastErrText = err?.message || lastErrText;
+        }
+      }
+
+      if (!searchRes || !searchRes.ok) {
+        let errMessage = lastErrText || 'Jira search request failed';
+        try {
+          const parsed = JSON.parse(errMessage);
+          if (Array.isArray(parsed.errorMessages) && parsed.errorMessages.length > 0) {
+            errMessage = parsed.errorMessages.join('; ');
+          } else if (parsed.errors && Object.keys(parsed.errors).length > 0) {
+            errMessage = Object.entries(parsed.errors).map(([k, v]) => `${k}: ${v}`).join('; ');
+          }
+        } catch {
+          // Keep raw string if not JSON
+        }
         return NextResponse.json(
-          { error: `JQL query failed (HTTP ${searchRes.status}): ${errText}` },
-          { status: searchRes.status }
+          { error: `JQL query failed (HTTP ${searchRes?.status || 400}): ${errMessage}` },
+          { status: searchRes?.status || 400 }
         );
       }
 
       const data = await searchRes.json();
-      const issues = (data.issues || []).map((iss: any) => ({
+      const rawIssues = Array.isArray(data.issues) ? data.issues : [];
+
+      const issues = rawIssues.map((iss: any) => ({
         key: iss.key,
         summary: iss.fields?.summary || '',
         status: iss.fields?.status?.name || 'Unknown',
@@ -753,7 +835,7 @@ export async function POST(req: NextRequest) {
 
       return NextResponse.json({
         success: true,
-        total: data.total || issues.length,
+        total: typeof data.total === 'number' ? data.total : issues.length,
         issues,
       });
     }
