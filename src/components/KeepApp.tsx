@@ -34,6 +34,9 @@ import { ExcelExportModal } from '@/components/ExcelExportModal';
 import { JiraModal } from '@/components/JiraModal';
 import { SupportbenchModal } from '@/components/SupportbenchModal';
 import { AiChatModal } from '@/components/AiChatModal';
+import { ExtractUrlModal } from '@/components/ExtractUrlModal';
+import { ExtractUrlResult } from '@/lib/urlExtractor';
+import { convertMarkdownToHtml } from '@/lib/formatUtils';
 import { Note, NoteDrawing } from '@/types/note';
 
 interface KeepAppProps {
@@ -68,6 +71,8 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
     setIsJiraModalOpen,
     isSupportbenchModalOpen,
     setIsSupportbenchModalOpen,
+    isExtractUrlModalOpen,
+    setIsExtractUrlModalOpen,
     setCurrentFilter,
     searchQuery,
   } = useKeep();
@@ -243,6 +248,43 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
     if (!activeTabId) return null;
     return notes.find((n) => n.id === activeTabId) || (editingNote?.id === activeTabId ? editingNote : null);
   }, [activeTabId, notes, editingNote]);
+
+  const handleExtractedUrl = async (result: ExtractUrlResult, insertMode?: boolean) => {
+    const htmlContent = convertMarkdownToHtml(result.markdown);
+    const newLabels = Array.from(new Set([...(result.labels || []), 'clipped']));
+
+    if (insertMode && editingNote) {
+      await updateNote(editingNote.id, {
+        content: editingNote.content ? `${editingNote.content}\n\n${htmlContent}` : htmlContent,
+        labels: Array.from(new Set([...(editingNote.labels || []), ...newLabels])),
+      });
+      return;
+    }
+
+    const newNote = await addNote({
+      id: `note-web-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      title: result.title || 'Web Note',
+      content: htmlContent,
+      isList: false,
+      todos: [],
+      color: 'default',
+      theme: 'none',
+      category: result.isJira ? 'Work' : (selectedCategory || null),
+      labels: newLabels,
+      isPinned: false,
+      images: [],
+      drawings: [],
+      linkedNoteIds: [],
+      childNoteIds: [],
+      noteType: 'default',
+      isArchived: false,
+      isTrash: false,
+    });
+
+    if (newNote) {
+      setEditingNote(newNote);
+    }
+  };
 
   const handleSaveDrawing = async (drawing: NoteDrawing) => {
     if (drawingNoteId) {
@@ -428,6 +470,11 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
       <ExcelExportModal />
       <JiraModal isOpen={isJiraModalOpen} onClose={() => setIsJiraModalOpen(false)} />
       <SupportbenchModal isOpen={isSupportbenchModalOpen} onClose={() => setIsSupportbenchModalOpen(false)} />
+      <ExtractUrlModal
+        isOpen={isExtractUrlModalOpen}
+        onClose={() => setIsExtractUrlModalOpen(false)}
+        onExtracted={handleExtractedUrl}
+      />
       <AiChatModal />
 
       {/* Floating Calendar & Note Reminder Alerts */}

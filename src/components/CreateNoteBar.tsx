@@ -60,6 +60,7 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
     setIsNotionTemplateModalOpen,
     setIsJiraModalOpen,
     setIsSupportbenchModalOpen,
+    setIsExtractUrlModalOpen,
     importDataSmart,
   } = useKeep();
   const [isExpanded, setIsExpanded] = useState(false);
@@ -82,7 +83,6 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
   const [tempNoteId, setTempNoteId] = useState<string>(() => 'note-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6));
   const [showLinkModal, setShowLinkModal] = useState(false);
   const [isFormattingOpen, setIsFormattingOpen] = useState(false);
-  const [isExtractUrlModalOpen, setIsExtractUrlModalOpen] = useState(false);
   const [isEncrypted, setIsEncrypted] = useState(false);
   const [encryptionPassword, setEncryptionPassword] = useState('');
   const [encryptionHint, setEncryptionHint] = useState('');
@@ -1072,11 +1072,6 @@ const handleImportMhtml = async (file: File) => {
           setEncryptionHint('');
           setShowEncryptModal(false);
         }}
-      />
-      <ExtractUrlModal
-        isOpen={isExtractUrlModalOpen}
-        onClose={() => setIsExtractUrlModalOpen(false)}
-        onExtracted={handleExtractedUrl}
       />
     </div>
   );

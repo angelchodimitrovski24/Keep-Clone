@@ -93,6 +93,8 @@ interface KeepContextType {
   setIsJiraModalOpen: (open: boolean) => void;
   isSupportbenchModalOpen: boolean;
   setIsSupportbenchModalOpen: (open: boolean) => void;
+  isExtractUrlModalOpen: boolean;
+  setIsExtractUrlModalOpen: (open: boolean) => void;
   isAiChatModalOpen: boolean;
   setIsAiChatModalOpen: (open: boolean) => void;
   aiChatTargetNote: Note | null;
@@ -308,6 +310,7 @@ export function KeepProvider({
   const [isPdfExportModalOpen, setIsPdfExportModalOpen] = useState(false);
   const [isJiraModalOpen, setIsJiraModalOpen] = useState(false);
   const [isSupportbenchModalOpen, setIsSupportbenchModalOpen] = useState(false);
+  const [isExtractUrlModalOpen, setIsExtractUrlModalOpen] = useState(false);
   const [isAiChatModalOpen, setIsAiChatModalOpen] = useState(false);
   const [aiChatTargetNote, setAiChatTargetNote] = useState<Note | null>(null);
   const [aiChatInitialTab, setAiChatInitialTab] = useState<'chat' | 'bulk' | 'models'>('chat');
@@ -2045,6 +2048,8 @@ export function KeepProvider({
       setIsJiraModalOpen,
       isSupportbenchModalOpen,
       setIsSupportbenchModalOpen,
+      isExtractUrlModalOpen,
+      setIsExtractUrlModalOpen,
       isAiChatModalOpen,
       setIsAiChatModalOpen,
       aiChatTargetNote,
@@ -2197,6 +2202,8 @@ export function KeepProvider({
       setIsJiraModalOpen,
       isSupportbenchModalOpen,
       setIsSupportbenchModalOpen,
+      isExtractUrlModalOpen,
+      setIsExtractUrlModalOpen,
       isAiChatModalOpen,
       setIsAiChatModalOpen,
       aiChatTargetNote,

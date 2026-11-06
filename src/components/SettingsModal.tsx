@@ -59,6 +59,7 @@ export const SettingsModal: React.FC = () => {
     setIsDateCompileModalOpen,
     setIsNotionTemplateModalOpen,
     setIsMergeNotesModalOpen,
+    setIsExtractUrlModalOpen,
     setCurrentFilter,
     isInstallModalOpen,
     setIsInstallModalOpen,
@@ -999,7 +1000,10 @@ export const SettingsModal: React.FC = () => {
                 </div>
                 <button
                   type="button"
-                  onClick={() => mhtmlInputRef.current?.click()}
+                  onClick={() => {
+                    setIsSettingsOpen(false);
+                    setIsExtractUrlModalOpen(true);
+                  }}
                   className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shrink-0 transition-colors cursor-pointer"
                 >
                   Import Webpage
