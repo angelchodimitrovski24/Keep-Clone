@@ -989,34 +989,34 @@ export const SettingsModal: React.FC = () => {
                 </button>
               </div>
 
-              {/* MHTML Dedicated Import */}
+              {/* Webpage Dedicated Import */}
               <div className="p-3 rounded-xl border border-blue-500/20 bg-blue-500/5 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2.5">
                   <Globe className="w-4 h-4 text-blue-500 shrink-0" />
                   <span className="text-xs text-stone-700 dark:text-stone-300">
-                    Import Webpage Snapshot (<strong>.mhtml</strong> / <strong>.mht</strong>) with embedded formatting
+                    Import Webpage Snapshot (<strong>.html</strong>, <strong>.htm</strong>, <strong>.mhtml</strong>) with embedded formatting
                   </span>
                 </div>
                 <button
                   type="button"
                   onClick={() => mhtmlInputRef.current?.click()}
-                  className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shrink-0 transition-colors"
+                  className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shrink-0 transition-colors cursor-pointer"
                 >
-                  Import MHTML
+                  Import Webpage
                 </button>
               </div>
 
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".zip,.json,.ics,.mhtml,.mht,application/zip,application/x-zip-compressed,application/json,text/calendar,multipart/related,message/rfc822"
+                accept=".zip,.json,.ics,.mhtml,.mht,.html,.htm,application/zip,application/x-zip-compressed,application/json,text/calendar,text/html,multipart/related,message/rfc822"
                 onChange={handleImport}
                 className="hidden"
               />
               <input
                 ref={mhtmlInputRef}
                 type="file"
-                accept=".mhtml,.mht,multipart/related,message/rfc822"
+                accept=".html,.htm,.mhtml,.mht,text/html,multipart/related,message/rfc822"
                 onChange={handleImport}
                 className="hidden"
               />

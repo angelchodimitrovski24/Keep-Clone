@@ -380,8 +380,11 @@ const handleImportMhtml = async (file: File) => {
     const mhtmlFiles = filesArray.filter((f) =>
       f.name.toLowerCase().endsWith('.mhtml') ||
       f.name.toLowerCase().endsWith('.mht') ||
+      f.name.toLowerCase().endsWith('.html') ||
+      f.name.toLowerCase().endsWith('.htm') ||
       f.type.includes('message/rfc822') ||
-      f.type.includes('multipart/related')
+      f.type.includes('multipart/related') ||
+      f.type.includes('text/html')
     );
 
     if (mhtmlFiles.length > 0) {
@@ -497,26 +500,7 @@ const handleImportMhtml = async (file: File) => {
                 }}
               />
             </label>
-            {/* Import Webpage MHTML */}
-            <label
-              className="p-2 rounded-full hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-600 dark:text-stone-300 hover:text-blue-600 dark:hover:text-blue-400 cursor-pointer transition-colors"
-              title="Import webpage snapshot (.mhtml or .mht)"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <Globe className="w-5 h-5" />
-              <input
-                type="file"
-                accept=".mhtml,.mht,multipart/related,message/rfc822"
-                className="hidden"
-                onChange={async (e) => {
-                  const file = e.target.files?.[0];
-                  if (!file) return;
-                  await importDataSmart(file);
-                  e.target.value = '';
-                }}
-              />
-            </label>
-            {/* Extract from URL / Web Clipper */}
+            {/* Import from Webpage & Web Clipper (URL or HTML/MHTML File) */}
             <button
               type="button"
               onClick={(e) => {
@@ -526,9 +510,9 @@ const handleImportMhtml = async (file: File) => {
               }}
               onMouseDown={(e) => e.stopPropagation()}
               className="p-2 rounded-full hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-600 dark:text-stone-300 hover:text-blue-600 dark:hover:text-blue-400 cursor-pointer transition-colors"
-              title="Extract from URL (Web Clipper with Jira & Auth support)"
+              title="Import from Webpage (URL Web Clipper or HTML/MHTML File)"
             >
-              <DownloadCloud className="w-5 h-5" />
+              <Globe className="w-5 h-5" />
             </button>
             {/* Atlassian Jira Manager */}
             <button

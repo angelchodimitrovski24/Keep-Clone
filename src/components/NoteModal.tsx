@@ -952,8 +952,11 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const mhtmlFiles = filesArray.filter((f) =>
       f.name.toLowerCase().endsWith('.mhtml') ||
       f.name.toLowerCase().endsWith('.mht') ||
+      f.name.toLowerCase().endsWith('.html') ||
+      f.name.toLowerCase().endsWith('.htm') ||
       f.type.includes('message/rfc822') ||
-      f.type.includes('multipart/related')
+      f.type.includes('multipart/related') ||
+      f.type.includes('text/html')
     );
     const otherFiles = filesArray.filter((f) => !mhtmlFiles.includes(f));
 

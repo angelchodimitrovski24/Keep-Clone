@@ -404,7 +404,36 @@ export async function parseMhtmlFile(
   }
 
   if (!boundary) {
-    throw new Error('Invalid MHTML file: Multipart boundary delimiter not found.');
+    // If no multipart boundary is found, gracefully parse as a standard HTML/HTM webpage!
+    const isHtml = /<html\b|<body\b|<div\b|<p\b|<title\b|<head\b/i.test(content) ||
+      (typeof fileOrText !== 'string' && /\.(html?)$/i.test(fileOrText.name));
+
+    if (isHtml) {
+      let pageTitle = defaultTitle;
+      const titleMatch = content.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i);
+      if (titleMatch && titleMatch[1]) {
+        pageTitle = titleMatch[1].replace(/<[^>]+>/g, '').trim();
+      } else {
+        const h1Match = content.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i);
+        if (h1Match && h1Match[1]) {
+          pageTitle = h1Match[1].replace(/<[^>]+>/g, '').trim();
+        }
+      }
+
+      const cleanedHtml = cleanWebpageHtml(content);
+      const markdown = convertHtmlToMarkdown(cleanedHtml);
+
+      return {
+        title: pageTitle || 'Webpage Snapshot',
+        htmlContent: cleanedHtml,
+        markdownContent: markdown,
+        images: [],
+        sourceUrl,
+        date: snapshotDate,
+      };
+    }
+
+    throw new Error('Invalid webpage file: Could not parse document contents.');
   }
 
   // 3. Split into parts by boundary delimiter

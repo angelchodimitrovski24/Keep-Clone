@@ -603,21 +603,24 @@ export async function importBackupSmart(file: File): Promise<ImportResult> {
   } else if (
     file.name.toLowerCase().endsWith('.mhtml') ||
     file.name.toLowerCase().endsWith('.mht') ||
+    file.name.toLowerCase().endsWith('.html') ||
+    file.name.toLowerCase().endsWith('.htm') ||
     file.type.includes('message/rfc822') ||
-    file.type.includes('multipart/related')
+    file.type.includes('multipart/related') ||
+    file.type.includes('text/html')
   ) {
-    // Handle MHTML / MHT web archive file
+    // Handle MHTML / MHT / HTML webpage file
     try {
       const parsed = await parseMhtmlFile(file);
       const now = Date.now();
-      const noteId = `note-mhtml-${now}-${Math.random().toString(36).slice(2, 7)}`;
+      const noteId = `note-web-${now}-${Math.random().toString(36).slice(2, 7)}`;
       importedNoteId = noteId;
 
       // Note: Images are automatically saved to user's settings folder and IndexedDB via parseMhtmlFile
       // Images are embedded inline as Markdown in parsed.markdownContent, not in the top gallery (images: [])
       mediaExtractedCount += parsed.images.length;
 
-      const noteTitle = (parsed.title || file.name.replace(/\.(mhtml|mht)$/i, '') || 'Webpage Snapshot').trim();
+      const noteTitle = (parsed.title || file.name.replace(/\.(mhtml|mht|html|htm)$/i, '') || 'Webpage Snapshot').trim();
       const newNote: Note = {
         id: noteId,
         title: noteTitle,

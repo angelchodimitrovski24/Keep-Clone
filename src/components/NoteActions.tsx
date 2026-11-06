@@ -537,7 +537,7 @@ export const NoteActions = React.forwardRef<NoteActionsHandle, NoteActionsProps>
           <input
             ref={mhtmlInputRef}
             type="file"
-            accept=".mhtml,.mht,multipart/related,message/rfc822"
+            accept=".html,.htm,.mhtml,.mht,text/html,multipart/related,message/rfc822"
             className="hidden"
             onChange={(e) => {
               const f = e.target.files?.[0];
@@ -994,7 +994,7 @@ export const NoteActions = React.forwardRef<NoteActionsHandle, NoteActionsProps>
                 className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
               >
                 <Globe className="w-4 h-4 text-blue-500 shrink-0" />
-                <span>Import MHTML into note</span>
+                <span>Import Webpage into note (.html, .mhtml)</span>
               </button>
             )}
             {onSummarizeWithAi && (
@@ -1020,8 +1020,8 @@ export const NoteActions = React.forwardRef<NoteActionsHandle, NoteActionsProps>
                 }}
                 className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
               >
-                <DownloadCloud className="w-4 h-4 text-sky-500 shrink-0" />
-                <span>Extract from URL (Web Clipper)</span>
+                <Globe className="w-4 h-4 text-sky-500 shrink-0" />
+                <span>Import from Webpage (URL / Web Clipper)</span>
               </button>
             )}
 

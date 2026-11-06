@@ -23,9 +23,11 @@ import {
   StopCircle,
   ListPlus,
   Play,
+  Upload,
 } from 'lucide-react';
 import { useKeep } from '@/context/KeepContext';
 import { convertMarkdownToHtml } from '@/lib/formatUtils';
+import { parseMhtmlFile } from '@/lib/mhtmlParser';
 import {
   UrlAuthType,
   extractFromUrl,
@@ -50,10 +52,56 @@ export const ExtractUrlModal: React.FC<ExtractUrlModalProps> = ({
   initialUrl = '',
   isInsertMode = false,
 }) => {
-  const { addNote, selectedCategory } = useKeep();
+  const { addNote, selectedCategory, importDataSmart } = useKeep();
 
-  const [extractionMode, setExtractionMode] = useState<'single' | 'batch'>('single');
+  const [extractionMode, setExtractionMode] = useState<'single' | 'file' | 'batch'>('single');
   const [url, setUrl] = useState(initialUrl);
+
+  // File Upload State
+  const [isUploadingFile, setIsUploadingFile] = useState(false);
+  const [fileUploadError, setFileUploadError] = useState<string | null>(null);
+  const [fileUploadSuccess, setFileUploadSuccess] = useState<string | null>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleWebpageFile = async (file: File) => {
+    if (!file) return;
+    setIsUploadingFile(true);
+    setFileUploadError(null);
+    setFileUploadSuccess(null);
+
+    try {
+      if (isInsertMode) {
+        const parsed = await parseMhtmlFile(file);
+        onExtracted(
+          {
+            success: true,
+            title: parsed.title,
+            markdown: parsed.markdownContent,
+            sourceUrl: parsed.sourceUrl || '',
+            images: [],
+          },
+          true
+        );
+        onClose();
+        return;
+      }
+
+      const res = await importDataSmart(file);
+      if (res.success) {
+        setFileUploadSuccess(`Imported "${file.name}" as a note!`);
+        setTimeout(() => {
+          onClose();
+        }, 500);
+      } else {
+        setFileUploadError(res.message || 'Failed to import webpage file.');
+      }
+    } catch (err: any) {
+      setFileUploadError(err?.message || 'Error processing webpage file.');
+    } finally {
+      setIsUploadingFile(false);
+    }
+  };
 
   // Multi-URL Batch Scraping State
   const [batchUrlsText, setBatchUrlsText] = useState('');
@@ -424,7 +472,7 @@ export const ExtractUrlModal: React.FC<ExtractUrlModalProps> = ({
             </div>
             <div>
               <h2 className="text-base font-bold text-stone-900 dark:text-stone-100 flex items-center gap-2">
-                Extract from URL
+                Import from Webpage
                 {isJiraDomain && (
                   <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-medium">
                     Jira Supported
@@ -432,7 +480,7 @@ export const ExtractUrlModal: React.FC<ExtractUrlModalProps> = ({
                 )}
               </h2>
               <p className="text-xs text-stone-500 dark:text-stone-400">
-                Extract webpage or Jira tickets (including up to 100 comments, subtasks &amp; local attachments) as Markdown
+                Clip any webpage or Jira ticket from URL, or upload saved webpage files (.html, .htm, .mhtml)
               </p>
             </div>
           </div>
@@ -446,24 +494,37 @@ export const ExtractUrlModal: React.FC<ExtractUrlModalProps> = ({
         </div>
 
         {/* Mode Tabs */}
-        <div className="flex items-center px-5 pt-2.5 border-b border-black/10 dark:border-white/10 bg-stone-50/70 dark:bg-stone-850/70 gap-2">
+        <div className="flex items-center px-5 pt-2.5 border-b border-black/10 dark:border-white/10 bg-stone-50/70 dark:bg-stone-850/70 gap-2 overflow-x-auto no-scrollbar">
           <button
             type="button"
             onClick={() => setExtractionMode('single')}
             disabled={batchProgress.active}
-            className={`pb-2.5 px-3 text-xs font-semibold border-b-2 flex items-center gap-1.5 transition-colors cursor-pointer ${
+            className={`pb-2.5 px-3 text-xs font-semibold border-b-2 flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 ${
               extractionMode === 'single'
                 ? 'border-blue-600 text-blue-600 dark:text-blue-400'
                 : 'border-transparent text-stone-500 hover:text-stone-800 dark:hover:text-stone-300'
             }`}
           >
             <Globe className="w-3.5 h-3.5" />
-            Single URL
+            Webpage URL
+          </button>
+          <button
+            type="button"
+            onClick={() => setExtractionMode('file')}
+            disabled={batchProgress.active}
+            className={`pb-2.5 px-3 text-xs font-semibold border-b-2 flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 ${
+              extractionMode === 'file'
+                ? 'border-blue-600 text-blue-600 dark:text-blue-400'
+                : 'border-transparent text-stone-500 hover:text-stone-800 dark:hover:text-stone-300'
+            }`}
+          >
+            <Upload className="w-3.5 h-3.5" />
+            Upload Webpage File (.html / .mhtml)
           </button>
           <button
             type="button"
             onClick={() => setExtractionMode('batch')}
-            className={`pb-2.5 px-3 text-xs font-semibold border-b-2 flex items-center gap-1.5 transition-colors cursor-pointer ${
+            className={`pb-2.5 px-3 text-xs font-semibold border-b-2 flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 ${
               extractionMode === 'batch'
                 ? 'border-blue-600 text-blue-600 dark:text-blue-400'
                 : 'border-transparent text-stone-500 hover:text-stone-800 dark:hover:text-stone-300'
@@ -481,6 +542,84 @@ export const ExtractUrlModal: React.FC<ExtractUrlModalProps> = ({
 
         {/* Modal Body */}
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          {/* Mode: Webpage File Upload */}
+          {extractionMode === 'file' && (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-stone-700 dark:text-stone-300 mb-1.5">
+                  Upload Saved Webpage Document
+                </label>
+                <p className="text-xs text-stone-500 dark:text-stone-400 mb-3">
+                  Import webpages saved from Chrome, Edge, Safari, or Firefox. Supports <strong>.html</strong>, <strong>.htm</strong>, and <strong>.mhtml</strong> / <strong>.mht</strong> files with embedded text, styles, and inline images.
+                </p>
+
+                <div
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setIsDragOver(true);
+                  }}
+                  onDragLeave={() => setIsDragOver(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setIsDragOver(false);
+                    const file = e.dataTransfer.files?.[0];
+                    if (file) handleWebpageFile(file);
+                  }}
+                  onClick={() => fileInputRef.current?.click()}
+                  className={`border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all flex flex-col items-center justify-center gap-3 ${
+                    isDragOver
+                      ? 'border-blue-500 bg-blue-500/10 scale-[1.01]'
+                      : 'border-stone-300 dark:border-stone-700 hover:border-blue-400 hover:bg-stone-50 dark:hover:bg-stone-800/50'
+                  }`}
+                >
+                  <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                    <Globe className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <div className="text-sm font-semibold text-stone-900 dark:text-stone-100">
+                      Drop your webpage file here, or <span className="text-blue-600 dark:text-blue-400 underline">browse</span>
+                    </div>
+                    <div className="text-xs text-stone-400 mt-1">
+                      Supports .html, .htm, .mhtml, .mht web archives
+                    </div>
+                  </div>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".html,.htm,.mhtml,.mht,text/html,multipart/related,message/rfc822"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleWebpageFile(file);
+                      e.target.value = '';
+                    }}
+                  />
+                </div>
+              </div>
+
+              {isUploadingFile && (
+                <div className="p-3 rounded-xl bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 flex items-center gap-2.5 text-xs text-blue-700 dark:text-blue-300">
+                  <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                  <span>Processing webpage snapshot, cleaning clutter and converting to note...</span>
+                </div>
+              )}
+
+              {fileUploadSuccess && (
+                <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 flex items-center gap-2.5 text-xs text-emerald-700 dark:text-emerald-300">
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  <span>{fileUploadSuccess}</span>
+                </div>
+              )}
+
+              {fileUploadError && (
+                <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 flex items-center gap-2.5 text-xs text-red-700 dark:text-red-300">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{fileUploadError}</span>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Mode 1: Single URL Input */}
           {extractionMode === 'single' && (
             <div>
