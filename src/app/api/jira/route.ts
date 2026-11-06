@@ -721,7 +721,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // 3. Action: Search JQL (Updated for Atlassian CHANGE-2046: /rest/api/3/search/jql)
+    // 3. Action: Search JQL (Supports paginated retrieval of ALL matching issues via /rest/api/3/search/jql)
     if (action === 'search-jql') {
       const query = (jql || 'order by updated desc').trim();
       const fieldsList = [
@@ -734,94 +734,140 @@ export async function POST(req: NextRequest) {
         'updated',
         'attachment',
       ];
-      const parsedMaxResults = Math.min(Number(maxResults) || 50, 100);
+      // Target limit: if maxResults is passed and > 0, use it; otherwise fetch all matching (up to 500)
+      const requestedMax = Number(maxResults);
+      const targetLimit = requestedMax > 0 ? requestedMax : 500;
 
-      let searchRes: Response | null = null;
+      const allRawIssues: any[] = [];
+      let reportedTotal = 0;
       let lastErrText = '';
+      let successfulStrategy: 'post-v3' | 'get-v3' | 'get-v2' | null = null;
+      let nextPageToken: string | undefined = undefined;
 
-      // Strategy 1 (Atlassian Cloud New Standard): POST /rest/api/3/search/jql
-      try {
-        const res = await fetch(`${baseUrl}/rest/api/3/search/jql`, {
-          method: 'POST',
-          headers: jiraHeaders,
-          body: JSON.stringify({
-            jql: query,
-            maxResults: parsedMaxResults,
-            fields: fieldsList,
-          }),
-        });
-        if (res.ok) {
-          searchRes = res;
-        } else if (res.status === 400) {
-          // Syntax error in user query, don't fall back to other endpoints
-          lastErrText = await res.text();
-          searchRes = res;
-        } else if (res.status !== 404 && res.status !== 405 && res.status !== 410) {
-          lastErrText = await res.text();
-          searchRes = res;
-        }
-      } catch (err: any) {
-        lastErrText = err?.message || '';
-      }
+      // Paginate through Jira search results to fetch all matching issues
+      while (allRawIssues.length < targetLimit) {
+        const remaining = targetLimit - allRawIssues.length;
+        const pageSize = Math.min(remaining, 100);
+        let pageRes: Response | null = null;
 
-      // Strategy 2: GET /rest/api/3/search/jql
-      if (!searchRes || (!searchRes.ok && searchRes.status !== 400)) {
-        try {
-          const fieldsParam = fieldsList.join(',');
-          const getUrl = `${baseUrl}/rest/api/3/search/jql?jql=${encodeURIComponent(query)}&maxResults=${parsedMaxResults}&fields=${fieldsParam}`;
-          const res = await fetch(getUrl, { headers: jiraHeaders });
-          if (res.ok) {
-            searchRes = res;
-          } else if (res.status === 400) {
-            lastErrText = await res.text();
-            searchRes = res;
-          } else if (res.status !== 404 && res.status !== 405 && res.status !== 410) {
-            lastErrText = await res.text();
-            searchRes = res;
+        // Strategy 1 (Atlassian Cloud New Standard): POST /rest/api/3/search/jql
+        if (!successfulStrategy || successfulStrategy === 'post-v3') {
+          try {
+            const bodyPayload: any = {
+              jql: query,
+              maxResults: pageSize,
+              fields: fieldsList,
+            };
+            if (nextPageToken) {
+              bodyPayload.nextPageToken = nextPageToken;
+            }
+            const postRes: Response = await fetch(`${baseUrl}/rest/api/3/search/jql`, {
+              method: 'POST',
+              headers: jiraHeaders,
+              body: JSON.stringify(bodyPayload),
+            });
+            if (postRes.ok) {
+              pageRes = postRes;
+              successfulStrategy = 'post-v3';
+            } else if (postRes.status === 400) {
+              lastErrText = await postRes.text();
+              pageRes = postRes;
+            } else if (postRes.status !== 404 && postRes.status !== 405 && postRes.status !== 410) {
+              lastErrText = await postRes.text();
+            }
+          } catch (err: any) {
+            lastErrText = err?.message || '';
           }
-        } catch (err: any) {
-          lastErrText = err?.message || lastErrText;
         }
-      }
 
-      // Strategy 3: Legacy GET /rest/api/2/search (for on-premise Jira Server / Data Center instances)
-      if (!searchRes || (!searchRes.ok && searchRes.status !== 400)) {
-        try {
-          const legacyUrl = `${baseUrl}/rest/api/2/search?jql=${encodeURIComponent(query)}&maxResults=${parsedMaxResults}&fields=${fieldsList.join(',')}`;
-          const res = await fetch(legacyUrl, { headers: jiraHeaders });
-          if (res.ok) {
-            searchRes = res;
-          } else {
-            const txt = await res.text();
-            if (!lastErrText) lastErrText = txt;
+        // Strategy 2: GET /rest/api/3/search/jql
+        if (!pageRes && (!successfulStrategy || successfulStrategy === 'get-v3')) {
+          try {
+            const fieldsParam: string = fieldsList.join(',');
+            const tokenParam: string = nextPageToken ? `&nextPageToken=${encodeURIComponent(nextPageToken)}` : '';
+            const getUrl: string = `${baseUrl}/rest/api/3/search/jql?jql=${encodeURIComponent(query)}&maxResults=${pageSize}&fields=${fieldsParam}${tokenParam}`;
+            const getRes: Response = await fetch(getUrl, { headers: jiraHeaders });
+            if (getRes.ok) {
+              pageRes = getRes;
+              successfulStrategy = 'get-v3';
+            } else if (getRes.status === 400) {
+              lastErrText = await getRes.text();
+              pageRes = getRes;
+            } else if (getRes.status !== 404 && getRes.status !== 405 && getRes.status !== 410) {
+              lastErrText = await getRes.text();
+            }
+          } catch (err: any) {
+            lastErrText = err?.message || lastErrText;
           }
-        } catch (err: any) {
-          lastErrText = err?.message || lastErrText;
         }
-      }
 
-      if (!searchRes || !searchRes.ok) {
-        let errMessage = lastErrText || 'Jira search request failed';
-        try {
-          const parsed = JSON.parse(errMessage);
-          if (Array.isArray(parsed.errorMessages) && parsed.errorMessages.length > 0) {
-            errMessage = parsed.errorMessages.join('; ');
-          } else if (parsed.errors && Object.keys(parsed.errors).length > 0) {
-            errMessage = Object.entries(parsed.errors).map(([k, v]) => `${k}: ${v}`).join('; ');
+        // Strategy 3: Legacy GET /rest/api/2/search (for on-premise Jira Server / Data Center instances)
+        if (!pageRes && (!successfulStrategy || successfulStrategy === 'get-v2')) {
+          try {
+            const startAt: number = allRawIssues.length;
+            const legacyUrl: string = `${baseUrl}/rest/api/2/search?jql=${encodeURIComponent(query)}&startAt=${startAt}&maxResults=${pageSize}&fields=${fieldsList.join(',')}`;
+            const legRes: Response = await fetch(legacyUrl, { headers: jiraHeaders });
+            if (legRes.ok) {
+              pageRes = legRes;
+              successfulStrategy = 'get-v2';
+            } else {
+              const txt = await legRes.text();
+              if (!lastErrText) lastErrText = txt;
+            }
+          } catch (err: any) {
+            lastErrText = err?.message || lastErrText;
           }
-        } catch {
-          // Keep raw string if not JSON
         }
-        return NextResponse.json(
-          { error: `JQL query failed (HTTP ${searchRes?.status || 400}): ${errMessage}` },
-          { status: searchRes?.status || 400 }
-        );
+
+        if (!pageRes || !pageRes.ok) {
+          if (allRawIssues.length > 0) {
+            // Already retrieved some issues, return what we have
+            break;
+          }
+          let errMessage = lastErrText || 'Jira search request failed';
+          try {
+            const parsed = JSON.parse(errMessage);
+            if (Array.isArray(parsed.errorMessages) && parsed.errorMessages.length > 0) {
+              errMessage = parsed.errorMessages.join('; ');
+            } else if (parsed.errors && Object.keys(parsed.errors).length > 0) {
+              errMessage = Object.entries(parsed.errors).map(([k, v]) => `${k}: ${v}`).join('; ');
+            }
+          } catch {
+            // Keep raw string if not JSON
+          }
+          return NextResponse.json(
+            { error: `JQL query failed (HTTP ${pageRes?.status || 400}): ${errMessage}` },
+            { status: pageRes?.status || 400 }
+          );
+        }
+
+        const pageData: any = await pageRes.json();
+        const pageIssues: any[] = Array.isArray(pageData.issues) ? pageData.issues : [];
+        if (typeof pageData.total === 'number') {
+          reportedTotal = pageData.total;
+        }
+
+        allRawIssues.push(...pageIssues);
+
+        // Check if there are more pages
+        if (pageData.isLast === true || pageIssues.length === 0) {
+          break;
+        }
+
+        if (successfulStrategy === 'get-v2') {
+          if (typeof pageData.total === 'number' && allRawIssues.length >= pageData.total) {
+            break;
+          }
+        } else {
+          // Token-based pagination for /rest/api/3/search/jql
+          if (!pageData.nextPageToken) {
+            break;
+          }
+          nextPageToken = pageData.nextPageToken;
+        }
       }
 
-      const data = await searchRes.json();
-      const rawIssues = Array.isArray(data.issues) ? data.issues : [];
-
-      const issues = rawIssues.map((iss: any) => ({
+      const issues = allRawIssues.map((iss: any) => ({
         key: iss.key,
         summary: iss.fields?.summary || '',
         status: iss.fields?.status?.name || 'Unknown',
@@ -835,7 +881,7 @@ export async function POST(req: NextRequest) {
 
       return NextResponse.json({
         success: true,
-        total: typeof data.total === 'number' ? data.total : issues.length,
+        total: reportedTotal > 0 ? reportedTotal : issues.length,
         issues,
       });
     }
@@ -853,7 +899,7 @@ export async function POST(req: NextRequest) {
       const results = [];
       const errors = [];
 
-      for (const k of keys.slice(0, 30)) {
+      for (const k of keys.slice(0, 200)) {
         // Max 30 per batch to prevent long server timeouts
         try {
           const cleanK = k.trim().toUpperCase();

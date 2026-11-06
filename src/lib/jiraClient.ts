@@ -153,7 +153,7 @@ export async function fetchJiraIssue(
 export async function searchJiraJql(
   config: JiraConfig,
   jql: string,
-  maxResults: number = 30
+  maxResults: number = 0
 ): Promise<{ issues: JiraIssueSummary[]; total: number }> {
   const res = await fetch('/api/jira', {
     method: 'POST',

@@ -60,6 +60,7 @@ export const JiraModal: React.FC<JiraModalProps> = ({ isOpen, onClose }) => {
   const [jqlQuery, setJqlQuery] = useState('assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC');
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<JiraIssueSummary[]>([]);
+  const [searchTotalCount, setSearchTotalCount] = useState<number | null>(null);
   const [selectedIssueKeys, setSelectedIssueKeys] = useState<Set<string>>(new Set());
   const [downloadAttachments, setDownloadAttachments] = useState(true);
   const [includeComments, setIncludeComments] = useState(true);
@@ -153,8 +154,10 @@ export const JiraModal: React.FC<JiraModalProps> = ({ isOpen, onClose }) => {
     setDownloadSuccessMsg(null);
 
     try {
-      const res = await searchJiraJql(currentConfig, q, 30);
+      // Pass 0 to fetch all matching issues up to system limit
+      const res = await searchJiraJql(currentConfig, q, 0);
       setSearchResults(res.issues);
+      setSearchTotalCount(res.total);
       // Select all by default
       setSelectedIssueKeys(new Set(res.issues.map((i) => i.key)));
     } catch (err: any) {
@@ -463,10 +466,17 @@ export const JiraModal: React.FC<JiraModalProps> = ({ isOpen, onClose }) => {
                             Select All ({selectedIssueKeys.size}/{searchResults.length})
                           </span>
                         </button>
-                        <span>Matching Issues</span>
+                        <span>
+                          {searchResults.length} Matching Issues
+                          {searchTotalCount !== null && searchTotalCount > searchResults.length && (
+                            <span className="text-stone-400 font-normal ml-1">
+                              (of {searchTotalCount} total)
+                            </span>
+                          )}
+                        </span>
                       </div>
 
-                      <div className="max-h-48 overflow-y-auto divide-y divide-stone-100 dark:divide-stone-800">
+                      <div className="max-h-72 overflow-y-auto divide-y divide-stone-100 dark:divide-stone-800">
                         {searchResults.map((issue) => {
                           const isChecked = selectedIssueKeys.has(issue.key);
                           return (
