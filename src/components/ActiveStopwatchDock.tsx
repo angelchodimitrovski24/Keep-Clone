@@ -29,7 +29,7 @@ export const ActiveStopwatchDock: React.FC = () => {
     stopAndSaveReadingStopwatch,
     discardReadingStopwatch,
     setEditingNote,
-    notes,
+    getNoteById,
     setCurrentFilter,
   } = useKeep();
 
@@ -45,9 +45,9 @@ export const ActiveStopwatchDock: React.FC = () => {
     }
   };
 
-  const handleOpenNote = () => {
+  const handleOpenNote = async () => {
     if (!activeStopwatch) return;
-    const target = notes.find((n) => n.id === activeStopwatch.noteId);
+    const target = await getNoteById(activeStopwatch.noteId);
     if (target) {
       setEditingNote(target);
     }

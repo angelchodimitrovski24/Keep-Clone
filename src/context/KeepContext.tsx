@@ -1669,7 +1669,9 @@ export function KeepProvider({
 
   const startReadingStopwatch = useCallback(
     (noteId: string, noteTitle?: string, category?: string | null) => {
-      const note = notes.find((n) => n.id === noteId);
+      const note =
+        notes.find((n) => n.id === noteId) ||
+        (editingNote && editingNote.id === noteId ? editingNote : undefined);
       const title = noteTitle || note?.title || 'Untitled Note';
       const cat = category !== undefined ? category : (note?.category || null);
       setActiveStopwatch({
@@ -1681,7 +1683,7 @@ export function KeepProvider({
         startedAt: Date.now(),
       });
     },
-    [notes]
+    [notes, editingNote]
   );
 
   const pauseReadingStopwatch = useCallback(() => {
@@ -1719,23 +1721,23 @@ export function KeepProvider({
     setReadingSessions((prev) => [session, ...prev]);
     setActiveStopwatch(null);
 
-    // Update note total reading time
-    setNotes((prev) =>
-      prev.map((n) => {
-        if (n.id === current.noteId) {
-          const updated = {
-            ...n,
-            totalReadingTime: (n.totalReadingTime || 0) + duration,
-          };
-          saveNoteToDB(updated);
-          return updated;
-        }
-        return n;
-      })
-    );
+    const existing =
+      notes.find((n) => n.id === current.noteId) ||
+      (editingNote && editingNote.id === current.noteId ? editingNote : undefined) ||
+      (await getNoteByIdFromDB(current.noteId));
+
+    if (existing) {
+      const updated = {
+        ...existing,
+        totalReadingTime: (existing.totalReadingTime || 0) + duration,
+      };
+      await saveNoteToDB(updated);
+      setNotes((prev) => prev.map((n) => (n.id === current.noteId ? updated : n)));
+      setEditingNote((prev) => (prev && prev.id === current.noteId ? updated : prev));
+    }
 
     return session;
-  }, [activeStopwatch]);
+  }, [activeStopwatch, notes, editingNote]);
 
   const discardReadingStopwatch = useCallback(() => {
     setActiveStopwatch(null);

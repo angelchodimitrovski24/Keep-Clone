@@ -591,6 +591,25 @@ export const NoteActions = React.forwardRef<NoteActionsHandle, NoteActionsProps>
         </button>
       )}
 
+      {/* Reading Timer / Stopwatch Quick Toggle */}
+      {onStartReading && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onStartReading();
+            setShowColorPicker(false);
+            setShowReminderPicker(false);
+            setShowMenu(false);
+            setShowLabelPicker(false);
+          }}
+          className={`${iconBtnClass} text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/15`}
+          title="Start reading timer"
+        >
+          <Timer className="w-4 h-4" />
+        </button>
+      )}
+
       {/* Archive / Unarchive */}
       {onArchiveToggle && (
         <button
@@ -1346,6 +1365,19 @@ export const NoteActions = React.forwardRef<NoteActionsHandle, NoteActionsProps>
                           <ChevronRight className="w-4 h-4 text-stone-400 shrink-0" />
                         </button>
                       )}
+                      {onStartReading && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowMenu(false);
+                            onStartReading();
+                          }}
+                          className="w-full text-left px-6 py-3.5 flex items-center gap-4 hover:bg-emerald-500/10 active:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 text-[14.5px] font-medium tracking-[0.15px] transition-colors"
+                        >
+                          <Timer className="w-5 h-5 shrink-0" />
+                          <span>Start reading stopwatch</span>
+                        </button>
+                      )}
                     </div>
 
                     <div className="my-1 border-t border-black/[0.06] dark:border-white/[0.08]" />
@@ -1523,20 +1555,6 @@ export const NoteActions = React.forwardRef<NoteActionsHandle, NoteActionsProps>
                               {note.versions.length} versions
                             </span>
                           )}
-                        </button>
-                      )}
-
-                      {onStartReading && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setShowMenu(false);
-                            onStartReading();
-                          }}
-                          className="w-full text-left px-6 py-3.5 flex items-center gap-4 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] active:bg-black/[0.08] dark:active:bg-white/[0.1] text-emerald-600 dark:text-emerald-400 text-[14.5px] font-normal tracking-[0.15px] transition-colors"
-                        >
-                          <Timer className="w-5 h-5 shrink-0" />
-                          <span>Start reading stopwatch</span>
                         </button>
                       )}
                     </div>
