@@ -5,6 +5,7 @@ import { Note, NoteVersion, Label, Category, ViewFilter, LayoutViewMode, FontSiz
 import {
   getAllNotesFromDB,
   getNoteByIdFromDB,
+  findNoteByTitleOrIdFromDB,
   getChildNotesForParentFromDB,
   getNotesPagedFromDB,
   getNotesCountsSummaryFromDB,
@@ -72,6 +73,7 @@ interface KeepContextType {
   currentFilter: ViewFilter;
   selectedLabel: string | null;
   selectedCategory: string | null;
+  defaultCategory: string | null;
   searchQuery: string;
   layoutMode: LayoutViewMode;
   darkMode: boolean;
@@ -118,6 +120,7 @@ interface KeepContextType {
   setCurrentPage: (page: number) => void;
   setPageSize: (size: number) => void;
   getNoteById: (id: string) => Promise<Note | undefined>;
+  resolveNoteByTitleOrId: (titleOrId: string) => Promise<Note | undefined>;
   getChildNotes: (parentId: string, childNoteIds?: string[]) => Promise<Note[]>;
   refreshNotesList: () => Promise<void>;
   databaseStats: {
@@ -133,6 +136,7 @@ interface KeepContextType {
 
   // Setters
   setCurrentFilter: (filter: ViewFilter, paramName?: string) => void;
+  setDefaultCategory: (categoryName: string | null) => void;
   setSearchQuery: (query: string) => void;
   setLayoutMode: (mode: LayoutViewMode) => void;
   setDarkMode: (dark: boolean) => void;
@@ -284,6 +288,7 @@ export function KeepProvider({
   const [currentFilter, setCurrentFilterState] = useState<ViewFilter>(initialFilter);
   const [selectedLabel, setSelectedLabel] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [defaultCategory, setDefaultCategoryState] = useState<string | null>(null);
   const [searchQuery, setSearchQueryState] = useState('');
   const setSearchQuery = useCallback((query: string) => {
     setSearchQueryState(query);
@@ -427,6 +432,7 @@ export function KeepProvider({
         storedFolder,
         storedThemeMode,
         storedFontSize,
+        storedDefaultCategory,
         storedReadingSessions,
         storedCalendarItems,
       ] = await Promise.all([
@@ -438,6 +444,7 @@ export function KeepProvider({
         getSettingFromDB<string>('localMediaFolder', ''),
         getSettingFromDB<AppThemeMode>('themeMode', 'system'),
         getSettingFromDB<FontSizeOption>('fontSize', 'medium'),
+        getSettingFromDB<string>('defaultCategory', ''),
         getAllReadingSessionsFromDB(),
         getAllCalendarItemsFromDB(),
       ]);
@@ -654,6 +661,7 @@ export function KeepProvider({
       }
 
       // Initialize default categories if none exist
+      let resolvedCategories = storedCategories;
       if (storedCategories.length === 0) {
         const defaultCategories: Category[] = [
           { id: 'cat-personal', name: 'Personal', color: '#3b82f6', icon: '👤', createdAt: Date.now() },
@@ -664,9 +672,20 @@ export function KeepProvider({
         for (const cat of defaultCategories) {
           await saveCategoryToDB(cat);
         }
-        setCategories(defaultCategories);
+        resolvedCategories = defaultCategories;
+      }
+      setCategories(resolvedCategories);
+
+      if (
+        storedDefaultCategory &&
+        resolvedCategories.some((c) => c.name.toLowerCase() === storedDefaultCategory.toLowerCase())
+      ) {
+        const matchedCat = resolvedCategories.find(
+          (c) => c.name.toLowerCase() === storedDefaultCategory.toLowerCase()
+        );
+        setDefaultCategoryState(matchedCat ? matchedCat.name : storedDefaultCategory);
       } else {
-        setCategories(storedCategories);
+        setDefaultCategoryState(null);
       }
 
       setLayoutModeState(storedLayout);
@@ -704,6 +723,26 @@ export function KeepProvider({
       if (fromMem) return fromMem;
       if (editingNote && editingNote.id === id) return editingNote;
       return await getNoteByIdFromDB(id);
+    },
+    [notes, editingNote]
+  );
+
+  const resolveNoteByTitleOrId = useCallback(
+    async (titleOrId: string): Promise<Note | undefined> => {
+      const q = (titleOrId || '').trim().toLowerCase();
+      if (!q) return undefined;
+      const fromMem = notes.find(
+        (n) => !n.isTrash && (n.id.toLowerCase() === q || (n.title && n.title.trim().toLowerCase() === q))
+      );
+      if (fromMem) return fromMem;
+      if (
+        editingNote &&
+        !editingNote.isTrash &&
+        (editingNote.id.toLowerCase() === q || (editingNote.title && editingNote.title.trim().toLowerCase() === q))
+      ) {
+        return editingNote;
+      }
+      return await findNoteByTitleOrIdFromDB(titleOrId);
     },
     [notes, editingNote]
   );
@@ -840,6 +879,13 @@ export function KeepProvider({
     saveSettingToDB('fontSize', size);
   }, []);
 
+  // Default Category setter
+  const setDefaultCategory = useCallback((categoryName: string | null) => {
+    const normalized = categoryName && categoryName.trim() ? categoryName.trim() : null;
+    setDefaultCategoryState(normalized);
+    saveSettingToDB('defaultCategory', normalized || '');
+  }, []);
+
   // Theme Mode setter (system | light | dark)
   const setThemeMode = useCallback((mode: AppThemeMode) => {
     setThemeModeState(mode);
@@ -941,7 +987,7 @@ export function KeepProvider({
         color: noteData.color || 'default',
         theme: noteData.theme || 'none',
         labels: noteData.labels || (selectedLabel ? [selectedLabel] : []),
-        category: noteData.category !== undefined ? noteData.category : (selectedCategory || null),
+        category: noteData.category !== undefined ? noteData.category : (selectedCategory || defaultCategory || null),
         isPinned: noteData.isPinned || false,
         isArchived: noteData.isArchived || false,
         isTrash: false,
@@ -964,7 +1010,7 @@ export function KeepProvider({
       setNotes((prev) => [newNote, ...prev]);
       return newNote;
     },
-    [selectedLabel, selectedCategory]
+    [selectedLabel, selectedCategory, defaultCategory]
   );
 
   const updateNote = useCallback(async (id: string, updates: Partial<Note>, changeSummary?: string) => {
@@ -1412,9 +1458,12 @@ export function KeepProvider({
         if (selectedCategory === current.name) {
           setSelectedCategory(trimmed);
         }
+        if (defaultCategory && defaultCategory.toLowerCase() === current.name.toLowerCase()) {
+          setDefaultCategory(trimmed);
+        }
       }
     },
-    [categories, selectedCategory]
+    [categories, selectedCategory, defaultCategory, setDefaultCategory]
   );
 
   const deleteCategory = useCallback(
@@ -1427,8 +1476,11 @@ export function KeepProvider({
       if (selectedCategory === name) {
         setCurrentFilter('notes');
       }
+      if (defaultCategory && defaultCategory.toLowerCase() === name.toLowerCase()) {
+        setDefaultCategory(null);
+      }
     },
-    [selectedCategory, setCurrentFilter]
+    [selectedCategory, defaultCategory, setDefaultCategory, setCurrentFilter]
   );
 
   const deleteAllNotesFromCategory = useCallback(
@@ -2024,6 +2076,7 @@ export function KeepProvider({
       currentFilter,
       selectedLabel,
       selectedCategory,
+      defaultCategory,
       searchQuery,
       layoutMode,
       darkMode,
@@ -2087,6 +2140,7 @@ export function KeepProvider({
       setCurrentPage,
       setPageSize,
       getNoteById,
+      resolveNoteByTitleOrId,
       getChildNotes,
       refreshNotesList,
       databaseStats,
@@ -2099,6 +2153,7 @@ export function KeepProvider({
       setDarkMode,
       setThemeMode,
       setFontSize,
+      setDefaultCategory,
       setEditingNote,
       setVersionHistoryNote,
       restoreNoteVersion,
@@ -2180,6 +2235,7 @@ export function KeepProvider({
       currentFilter,
       selectedLabel,
       selectedCategory,
+      defaultCategory,
       searchQuery,
       layoutMode,
       darkMode,
@@ -2230,12 +2286,14 @@ export function KeepProvider({
       promptInstallPwa,
       sharingNote,
       setSharingNote,
+      resolveNoteByTitleOrId,
       setCurrentFilter,
       setSearchQuery,
       setLayoutMode,
       setDarkMode,
       setThemeMode,
       setFontSize,
+      setDefaultCategory,
       setEditingNote,
       setVersionHistoryNote,
       restoreNoteVersion,

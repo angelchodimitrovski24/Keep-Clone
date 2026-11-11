@@ -52,7 +52,7 @@ export const ExtractUrlModal: React.FC<ExtractUrlModalProps> = ({
   initialUrl = '',
   isInsertMode = false,
 }) => {
-  const { addNote, selectedCategory, importDataSmart } = useKeep();
+  const { addNote, selectedCategory, defaultCategory, importDataSmart } = useKeep();
 
   const [extractionMode, setExtractionMode] = useState<'single' | 'file' | 'batch'>('single');
   const [url, setUrl] = useState(initialUrl);
@@ -333,7 +333,7 @@ export const ExtractUrlModal: React.FC<ExtractUrlModalProps> = ({
           todos: [],
           color: 'default',
           theme: 'none',
-          category: selectedCategory || (result.isJira ? 'Work' : null),
+          category: selectedCategory || (result.isJira ? 'Work' : (defaultCategory || null)),
           labels: newLabels,
           isPinned: false,
           images: [], // Images are already embedded inline in content

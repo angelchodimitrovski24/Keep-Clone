@@ -778,6 +778,8 @@ export const NotionSubpagesSection: React.FC<NotionSubpagesSectionProps> = ({
         onClose={() => setIsLinkModalOpen(false)}
         onSelectNote={(targetNote) => handleAttachExistingNote(targetNote)}
         currentNoteId={parentNoteId}
+        currentCategory={category}
+        excludeNoteIds={childNoteIds}
         notes={notes.filter((n) => !childNoteIds.includes(n.id))}
       />
     </div>

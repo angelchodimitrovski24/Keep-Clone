@@ -51,6 +51,7 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
     addNote,
     selectedLabel,
     selectedCategory,
+    defaultCategory,
     categories,
     editingNote,
     setEditingNote,
@@ -72,7 +73,7 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
   const [isPinned, setIsPinned] = useState(false);
   const [color, setColor] = useState<NoteColor>('default');
   const [theme, setTheme] = useState<NoteBackgroundTheme>('none');
-  const [category, setCategory] = useState<string | null>(selectedCategory || null);
+  const [category, setCategory] = useState<string | null>(selectedCategory || defaultCategory || null);
   const [labels, setLabels] = useState<string[]>([]);
   const [reminder, setReminder] = useState<string | null>(null);
   const [images, setImages] = useState<string[]>([]);
@@ -88,12 +89,12 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
   const [encryptionHint, setEncryptionHint] = useState('');
   const [showEncryptModal, setShowEncryptModal] = useState(false);
 
-  // Sync category with active category filter when collapsed
+  // Sync category with active category filter or defaultCategory when collapsed
   React.useEffect(() => {
     if (!isExpanded) {
-      setCategory(selectedCategory || null);
+      setCategory(selectedCategory || defaultCategory || null);
     }
-  }, [selectedCategory, isExpanded]);
+  }, [selectedCategory, defaultCategory, isExpanded]);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<KeepWysiwygEditorHandle>(null);
@@ -196,7 +197,7 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
     setIsPinned(false);
     setColor('default');
     setTheme('none');
-    setCategory(selectedCategory || null);
+    setCategory(selectedCategory || defaultCategory || null);
     setLabels([]);
     setReminder(null);
     setImages([]);
@@ -1016,6 +1017,7 @@ const handleImportMhtml = async (file: File) => {
 
       <LinkNoteModal
         currentNoteId=""
+        currentCategory={category}
         notes={notes}
         isOpen={showLinkModal}
         onClose={() => setShowLinkModal(false)}

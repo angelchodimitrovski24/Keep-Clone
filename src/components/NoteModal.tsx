@@ -44,7 +44,8 @@ import { GoogleKeepFormatCommand, resolveLocalMediaUrl, copyNoteToClipboard } fr
 import { extractClipboardPayload, copyFilesToLocalFolder } from '@/lib/localPaste';
 import { EncryptNoteModal } from './EncryptNoteModal';
 import { LinkNoteModal } from './LinkNoteModal';
-import { getBidirectionalLinks } from '@/lib/noteLinks';
+import { getBidirectionalLinks, NoteLinkTarget } from '@/lib/noteLinks';
+import { getBidirectionalLinksFromDB } from '@/lib/db';
 import { encryptNote } from '@/lib/crypto';
 import { getUnlockedNote, setUnlockedNote, getSessionPassword, lockNoteInSession } from '@/lib/encryptionSession';
 import { NoteThemeArtwork } from './NoteThemeArtwork';
@@ -119,6 +120,8 @@ export const NoteModal: React.FC<NoteModalProps> = ({
     setIsNotionTemplateModalOpen,
     setIsDateCompileModalOpen,
     openAiChatForNote,
+    getNoteById,
+    resolveNoteByTitleOrId,
   } = useKeep();
 
   const [title, setTitle] = useState('');
@@ -436,13 +439,54 @@ export const NoteModal: React.FC<NoteModalProps> = ({
       content,
       linkedNoteIds,
     }),
-    [note?.id, linkedNoteIds]
+    [note, title, content, linkedNoteIds]
   );
 
-  const { outgoing, backlinks } = useMemo(
+  const memLinks = useMemo(
     () => (note ? getBidirectionalLinks(currentNoteForLinks, notes) : { outgoing: [], backlinks: [] }),
     [currentNoteForLinks, notes, note]
   );
+
+  const [dbLinks, setDbLinks] = useState<{ outgoing: NoteLinkTarget[]; backlinks: NoteLinkTarget[] } | null>(null);
+
+  useEffect(() => {
+    if (!isOpen || !note) {
+      setDbLinks(null);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      getBidirectionalLinksFromDB(currentNoteForLinks)
+        .then((res) => {
+          if (!cancelled) setDbLinks(res);
+        })
+        .catch(() => {});
+    }, 150);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [isOpen, note?.id, title, content, linkedNoteIds]);
+
+  const { outgoing, backlinks } = useMemo(() => {
+    if (!dbLinks) return memLinks;
+
+    const mergeList = (dbList: NoteLinkTarget[], memList: NoteLinkTarget[]) => {
+      const map = new Map<string, NoteLinkTarget>();
+      for (const item of dbList) map.set(item.id, item);
+      for (const item of memList) {
+        if (!map.has(item.id) && item.title !== 'Linked Note') {
+          map.set(item.id, item);
+        }
+      }
+      return Array.from(map.values());
+    };
+
+    return {
+      outgoing: mergeList(dbLinks.outgoing, memLinks.outgoing),
+      backlinks: mergeList(dbLinks.backlinks, memLinks.backlinks),
+    };
+  }, [dbLinks, memLinks]);
 
   const performAutoSnapshot = useCallback(
     async (reason?: string) => {
@@ -1832,10 +1876,7 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
                       <MarkdownRenderer
                         content={content}
                         onOpenLinkedNote={async (titleOrId) => {
-                          const q = titleOrId.toLowerCase().trim();
-                          const found = notes.find(
-                            (n) => n.id.toLowerCase() === q || (n.title && n.title.toLowerCase() === q)
-                          );
+                          const found = await resolveNoteByTitleOrId(titleOrId);
                           if (found) {
                             await saveCurrentNote('Auto snapshot before following link');
                             setEditingNote(found);
@@ -1874,13 +1915,18 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
                         type="button"
                         onClick={async () => {
                           await saveCurrentNote('Auto snapshot before following link');
-                          const targetNote = notes.find((n) => n.id === target.id);
+                          const targetNote = await getNoteById(target.id);
                           if (targetNote) setEditingNote(targetNote);
                         }}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors border border-blue-200/50 dark:border-blue-800/40"
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors border border-blue-200/50 dark:border-blue-800/40"
                       >
                         <Link2 className="w-3 h-3 text-blue-500" />
-                        {target.title || 'Untitled note'}
+                        <span>{target.title || 'Untitled note'}</span>
+                        {target.category && target.category !== category && (
+                          <span className="text-[10px] px-1.5 py-0.2 rounded bg-blue-100/80 dark:bg-blue-900/60 text-blue-600 dark:text-blue-300">
+                            {target.category}
+                          </span>
+                        )}
                       </button>
                     ))}
                   </div>
@@ -1900,13 +1946,18 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
                         type="button"
                         onClick={async () => {
                           await saveCurrentNote('Auto snapshot before following link');
-                          const sourceNote = notes.find((n) => n.id === source.id);
+                          const sourceNote = await getNoteById(source.id);
                           if (sourceNote) setEditingNote(sourceNote);
                         }}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900/50 transition-colors border border-purple-200/50 dark:border-purple-800/40"
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900/50 transition-colors border border-purple-200/50 dark:border-purple-800/40"
                       >
                         <span className="text-purple-500 font-bold text-[10px]">↩</span>
-                        {source.title || 'Untitled note'}
+                        <span>{source.title || 'Untitled note'}</span>
+                        {source.category && source.category !== category && (
+                          <span className="text-[10px] px-1.5 py-0.2 rounded bg-purple-100/80 dark:bg-purple-900/60 text-purple-600 dark:text-purple-300">
+                            {source.category}
+                          </span>
+                        )}
                       </button>
                     ))}
                   </div>
@@ -2144,6 +2195,7 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
       {/* Link to another note Modal */}
       <LinkNoteModal
         currentNoteId={note.id}
+        currentCategory={category}
         notes={notes}
         isOpen={showLinkModal}
         onClose={() => setShowLinkModal(false)}

@@ -38,6 +38,7 @@ export const NotionNotesList: React.FC<NotionNotesListProps> = ({
     trashNote,
     categories,
     selectedCategory,
+    defaultCategory,
     selectedLabel,
     currentFilter,
     layoutMode,
@@ -104,7 +105,7 @@ export const NotionNotesList: React.FC<NotionNotesListProps> = ({
     const created = await addNote({
       title: trimmed,
       content: '',
-      category: selectedCategory || null,
+      category: selectedCategory || defaultCategory || null,
       labels: selectedLabel ? [selectedLabel] : [],
       noteType: 'notion',
     });

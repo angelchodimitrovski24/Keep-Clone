@@ -72,6 +72,10 @@ export const SettingsModal: React.FC = () => {
     setThemeMode,
     layoutMode,
     setLayoutMode,
+    categories,
+    defaultCategory,
+    setDefaultCategory,
+    setIsCategoryModalOpen,
     localMediaFolder,
     setLocalMediaFolder,
     setIsLocalFolderModalOpen,
@@ -496,6 +500,59 @@ export const SettingsModal: React.FC = () => {
                     <FileText className="w-4 h-4" />
                     <span>Notion List</span>
                   </button>
+                </div>
+              </div>
+
+              <hr className="border-stone-200 dark:border-stone-800" />
+
+              {/* Default Category for New Notes */}
+              <div>
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <label
+                    htmlFor="settings-default-category"
+                    className="text-sm font-semibold text-stone-900 dark:text-stone-100 flex items-center gap-2"
+                  >
+                    <FolderOpen className="w-4 h-4 text-amber-500" />
+                    <span>Default Category for New Notes</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsSettingsOpen(false);
+                      setIsCategoryModalOpen(true);
+                    }}
+                    className="text-xs font-medium text-amber-600 dark:text-amber-400 hover:underline"
+                  >
+                    Manage Categories
+                  </button>
+                </div>
+                <p className="text-xs text-stone-500 dark:text-stone-400 mb-3">
+                  Automatically assign this category to newly created notes when you are in All Notes or Notes view (when viewing a specific category, that category still applies).
+                </p>
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                  <select
+                    id="settings-default-category"
+                    value={defaultCategory || ''}
+                    onChange={(e) => setDefaultCategory(e.target.value ? e.target.value : null)}
+                    className="w-full sm:max-w-xs px-3 py-2 text-sm rounded-xl border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-900 text-stone-900 dark:text-stone-100 outline-none focus:ring-2 focus:ring-amber-500"
+                  >
+                    <option value="">None (Uncategorized)</option>
+                    {categories.map((cat) => (
+                      <option key={cat.id} value={cat.name}>
+                        {cat.icon ? `${cat.icon} ` : ''}
+                        {cat.name}
+                      </option>
+                    ))}
+                  </select>
+                  {defaultCategory && (
+                    <button
+                      type="button"
+                      onClick={() => setDefaultCategory(null)}
+                      className="px-3 py-2 rounded-xl border border-stone-200 dark:border-stone-700 text-xs font-medium text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors self-start sm:self-auto"
+                    >
+                      Clear Default
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

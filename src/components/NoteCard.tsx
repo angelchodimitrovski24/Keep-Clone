@@ -62,6 +62,7 @@ const NoteCardComponent: React.FC<NoteCardProps> = ({
     setSharingNote,
     openAiChatForNote,
     getChildNotes,
+    resolveNoteByTitleOrId,
   } = useKeep();
 
   const [showUnlockModal, setShowUnlockModal] = useState(false);
@@ -166,11 +167,8 @@ const NoteCardComponent: React.FC<NoteCardProps> = ({
     onClick?.();
   };
 
-  const handleOpenLinkedNote = (titleOrId: string) => {
-    const q = titleOrId.toLowerCase().trim();
-    const found = notes.find(
-      (n) => n.id.toLowerCase() === q || (n.title && n.title.toLowerCase() === q)
-    );
+  const handleOpenLinkedNote = async (titleOrId: string) => {
+    const found = await resolveNoteByTitleOrId(titleOrId);
     if (found) {
       setEditingNote(found);
     }
@@ -759,6 +757,7 @@ const NoteCardComponent: React.FC<NoteCardProps> = ({
       {/* Link to another note Modal */}
       <LinkNoteModal
         currentNoteId={note.id}
+        currentCategory={activeNote.category}
         notes={notes}
         isOpen={showLinkModal}
         onClose={() => setShowLinkModal(false)}

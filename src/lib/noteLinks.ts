@@ -3,6 +3,7 @@ import { Note } from '@/types/note';
 export interface NoteLinkTarget {
   id: string;
   title: string;
+  category?: string | null;
 }
 
 export interface BidirectionalLinksResult {
@@ -88,6 +89,7 @@ export function getBidirectionalLinks(
       outgoingMap.set(other.id, {
         id: other.id,
         title: other.title || 'Untitled Note',
+        category: other.category || null,
       });
     }
   }
@@ -129,6 +131,18 @@ export function getBidirectionalLinks(
       backlinksMap.set(other.id, {
         id: other.id,
         title: other.title || 'Untitled Note',
+        category: other.category || null,
+      });
+    }
+  }
+
+  // Include fallback entries for linkedNoteIds whose targets reside in another category or page
+  for (const linkedId of currentLinkedIds) {
+    if (linkedId && linkedId !== currentNote.id && !outgoingMap.has(linkedId)) {
+      outgoingMap.set(linkedId, {
+        id: linkedId,
+        title: 'Linked Note',
+        category: null,
       });
     }
   }

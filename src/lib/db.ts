@@ -1,5 +1,6 @@
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import { Note, Label, Category, ReadingSession, CalendarItem, NoteColor } from '@/types/note';
+import { extractNoteLinksFromContent, NoteLinkTarget, BidirectionalLinksResult } from './noteLinks';
 
 export interface SearchTokenRecord {
   id: string; // `${token}_${noteId}`
@@ -670,6 +671,156 @@ export async function getChildNotesForParentFromDB(parentId: string, childNoteId
   }
 
   return result;
+}
+
+export async function searchLinkableNotesFromDB(params: {
+  query?: string;
+  categoryFilter?: string | null;
+  excludeNoteIds?: string[];
+  limit?: number;
+}): Promise<Note[]> {
+  const db = await getKeepDB();
+  if (!db) return [];
+
+  const q = (params.query || '').trim().toLowerCase();
+  const limit = Math.max(1, Math.min(100, params.limit || 40));
+  const excludeSet = new Set(params.excludeNoteIds || []);
+  const catFilter = params.categoryFilter;
+
+  const matchesCategory = (note: Note) => {
+    if (!catFilter || catFilter === '__all__') return true;
+    if (catFilter === '__uncategorized__') return !note.category;
+    return (note.category || '').toLowerCase() === catFilter.toLowerCase();
+  };
+
+  const results: Note[] = [];
+  const seenIds = new Set<string>();
+  const tx = db.transaction('notes', 'readonly');
+  const index = tx.store.index('by-updated');
+  let cursor = await index.openCursor(null, 'prev');
+  let scanned = 0;
+  const maxScan = q ? 50000 : 10000;
+
+  while (cursor && results.length < limit && scanned < maxScan) {
+    scanned++;
+    const note = cursor.value;
+    if (!note.isTrash && !excludeSet.has(note.id) && !seenIds.has(note.id) && matchesCategory(note)) {
+      if (!q || noteMatchesSearchQuery(note, q)) {
+        seenIds.add(note.id);
+        results.push(note);
+      }
+    }
+    cursor = await cursor.continue();
+  }
+
+  return results;
+}
+
+export async function findNoteByTitleOrIdFromDB(titleOrId: string): Promise<Note | undefined> {
+  const db = await getKeepDB();
+  if (!db) return undefined;
+  const trimmed = (titleOrId || '').trim();
+  if (!trimmed) return undefined;
+
+  const byId = await db.get('notes', trimmed);
+  if (byId && !byId.isTrash) return byId;
+
+  const q = trimmed.toLowerCase();
+  const tx = db.transaction('notes', 'readonly');
+  const index = tx.store.index('by-updated');
+  let cursor = await index.openCursor(null, 'prev');
+  let scanned = 0;
+  while (cursor && scanned < 50000) {
+    scanned++;
+    const note = cursor.value;
+    if (!note.isTrash) {
+      if (note.id.toLowerCase() === q || (note.title && note.title.trim().toLowerCase() === q)) {
+        return note;
+      }
+    }
+    cursor = await cursor.continue();
+  }
+  return undefined;
+}
+
+export async function getBidirectionalLinksFromDB(currentNote: Note): Promise<BidirectionalLinksResult> {
+  const db = await getKeepDB();
+  if (!db || !currentNote) return { outgoing: [], backlinks: [] };
+
+  const outgoingMap = new Map<string, NoteLinkTarget>();
+  const backlinksMap = new Map<string, NoteLinkTarget>();
+
+  const linkedIds = currentNote.linkedNoteIds || [];
+  for (const id of linkedIds) {
+    if (!id || id === currentNote.id) continue;
+    try {
+      const target = await db.get('notes', id);
+      if (target && !target.isTrash) {
+        outgoingMap.set(target.id, {
+          id: target.id,
+          title: target.title || 'Untitled Note',
+          category: target.category || null,
+        });
+      }
+    } catch {}
+  }
+
+  const currentExtracted = extractNoteLinksFromContent(currentNote.content || '');
+  const currentExtractedSet = new Set(currentExtracted);
+  const currentTitleLower = (currentNote.title || '').trim().toLowerCase();
+  const currentIdLower = currentNote.id.toLowerCase();
+
+  const tx = db.transaction('notes', 'readonly');
+  const index = tx.store.index('by-updated');
+  let cursor = await index.openCursor(null, 'prev');
+  let scanned = 0;
+
+  while (cursor && scanned < 5000) {
+    scanned++;
+    const other = cursor.value;
+    if (!other.isTrash && other.id !== currentNote.id) {
+      const otherTitleLower = (other.title || '').trim().toLowerCase();
+      const otherIdLower = other.id.toLowerCase();
+
+      if (
+        !outgoingMap.has(other.id) &&
+        (currentExtractedSet.has(otherIdLower) || (otherTitleLower && currentExtractedSet.has(otherTitleLower)))
+      ) {
+        outgoingMap.set(other.id, {
+          id: other.id,
+          title: other.title || 'Untitled Note',
+          category: other.category || null,
+        });
+      }
+
+      const directBacklink = Boolean(other.linkedNoteIds && other.linkedNoteIds.includes(currentNote.id));
+      let contentBacklink = false;
+      if (!directBacklink && other.content && (other.content.includes('[[') || other.content.includes('data-note-'))) {
+        const contentLower = other.content.toLowerCase();
+        if ((currentTitleLower && contentLower.includes(currentTitleLower)) || contentLower.includes(currentIdLower)) {
+          const otherExtracted = extractNoteLinksFromContent(other.content);
+          contentBacklink = Boolean(
+            otherExtracted.includes(currentIdLower) ||
+            (currentTitleLower && otherExtracted.includes(currentTitleLower))
+          );
+        }
+      }
+
+      if (directBacklink || contentBacklink) {
+        backlinksMap.set(other.id, {
+          id: other.id,
+          title: other.title || 'Untitled Note',
+          category: other.category || null,
+        });
+      }
+    }
+    cursor = await cursor.continue();
+  }
+
+  return {
+    outgoing: Array.from(outgoingMap.values()),
+    backlinks: Array.from(backlinksMap.values()),
+  };
 }
 
 export async function saveNoteToDB(note: Note): Promise<void> {
