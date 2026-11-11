@@ -102,6 +102,8 @@ export const NoteModal: React.FC<NoteModalProps> = ({
     updateNote,
     toggleArchiveNote,
     trashNote,
+    restoreNote,
+    deleteNotePermanently,
     duplicateNote,
     setEditingNote,
     categories,
@@ -490,7 +492,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
 
   const performAutoSnapshot = useCallback(
     async (reason?: string) => {
-      if (!note) return;
+      if (!note || activeNoteIdRef.current !== note.id) return;
 
       const rawContent = editorRef.current?.getHTML() || content;
       const latestContent = renderMarkdownTablesInHtml(rawContent);
@@ -746,7 +748,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
   );
 
   const saveCurrentNote = async (snapshotReason?: string) => {
-    if (!note) return;
+    if (!note || activeNoteIdRef.current !== note.id) return;
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     if (maxWaitTimerRef.current) clearTimeout(maxWaitTimerRef.current);
 
@@ -1990,9 +1992,9 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
             </div>
 
             <div className="text-[11px] text-stone-400 dark:text-stone-500 flex items-center justify-between gap-2 flex-wrap pt-1">
-              <div className="flex items-center gap-1.5 font-mono text-[11px] bg-black/5 dark:bg-white/5 px-2.5 py-1 rounded-md border border-black/5 dark:border-white/5">
+              <div className="flex items-center gap-1.5 font-mono text-[11px] bg-black/5 dark:bg-white/5 px-2.5 py-1 rounded-md border border-black/5 dark:border-white/5 max-w-full min-w-0">
                 <Link2 className="w-3 h-3 text-stone-400 shrink-0" />
-                <span className="truncate max-w-[200px] sm:max-w-[340px] text-stone-600 dark:text-stone-400 select-all">
+                <span className="truncate min-w-0 flex-1 sm:flex-initial sm:max-w-[340px] text-stone-600 dark:text-stone-400 select-all">
                   {typeof window !== 'undefined' ? `${window.location.origin}/note/${note.id}` : `/note/${note.id}`}
                 </span>
                 <button
@@ -2034,8 +2036,8 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
         )}
 
         {/* Footer toolbar */}
-        <div className="flex items-center justify-between px-2.5 sm:px-5 py-2 sm:py-3.5 pb-[max(0.6rem,env(safe-area-inset-bottom))] border-t border-black/5 dark:border-white/5 bg-black/2 dark:bg-white/2 shrink-0 gap-2 relative">
-          <div className="flex-1 min-w-0">
+        <div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-5 py-2.5 sm:py-3.5 pb-[max(0.6rem,env(safe-area-inset-bottom))] border-t border-black/5 dark:border-white/5 bg-black/2 dark:bg-white/2 shrink-0 relative">
+          <div className="w-full sm:w-auto sm:flex-1 min-w-0">
             <NoteActions
               ref={noteActionsRef}
               note={{
@@ -2050,6 +2052,8 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
                 reminder,
                 category,
               }}
+              isTrash={note.isTrash}
+              hideInlinePrint={true}
               onColorChange={setColor}
               onThemeChange={setTheme}
               onSelectCategory={handleCategoryChange}
@@ -2072,12 +2076,29 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
                 });
               }}
               onCopyContent={handleCopyTitleAndContent}
-              onArchiveToggle={() => {
-                toggleArchiveNote(note.id);
+              onArchiveToggle={async () => {
+                if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+                if (maxWaitTimerRef.current) clearTimeout(maxWaitTimerRef.current);
+                await saveCurrentNote('Auto snapshot before archive toggle');
+                await toggleArchiveNote(note.id);
                 onClose();
               }}
-              onDelete={() => {
-                trashNote(note.id);
+              onDelete={async () => {
+                if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+                if (maxWaitTimerRef.current) clearTimeout(maxWaitTimerRef.current);
+                activeNoteIdRef.current = null;
+                await trashNote(note.id);
+                onClose();
+              }}
+              onRestore={async () => {
+                await restoreNote(note.id);
+                onClose();
+              }}
+              onDeletePermanently={async () => {
+                if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+                if (maxWaitTimerRef.current) clearTimeout(maxWaitTimerRef.current);
+                activeNoteIdRef.current = null;
+                await deleteNotePermanently(note.id);
                 onClose();
               }}
               onDuplicate={async () => {
@@ -2117,44 +2138,46 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
             />
           </div>
 
-          <div className="flex items-center gap-1.5 shrink-0">
-            <button
-              type="button"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setIsDateCompileModalOpen(true);
-              }}
-              className="p-1.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10 text-stone-600 dark:text-stone-300 transition-colors"
-              title="Create note from date range (Today, 7d, 14d, 30d...)"
-            >
-              <CalendarRange className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setIsNotionTemplateModalOpen(true);
-              }}
-              className="p-1.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10 text-amber-600 dark:text-amber-400 hover:text-amber-700 transition-colors"
-              title="Notion Template Hub (Today's Notes, Days, Per Keyword)"
-            >
-              <Sparkles className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              onClick={handlePrint}
-              className="px-3.5 py-1.5 text-sm font-medium rounded-lg text-stone-700 dark:text-stone-300 hover:bg-black/5 dark:hover:bg-white/10 active:bg-black/10 dark:active:bg-white/15 flex items-center gap-1.5 transition-colors"
-              title="Print note"
-            >
-              <Printer className="w-4 h-4" />
-              <span>Print</span>
-            </button>
+          <div className="flex items-center justify-between sm:justify-end gap-1.5 w-full sm:w-auto shrink-0 ml-auto pt-1.5 sm:pt-0 border-t sm:border-t-0 border-black/5 dark:border-white/5">
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setIsDateCompileModalOpen(true);
+                }}
+                className="p-1.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10 text-stone-600 dark:text-stone-300 transition-colors shrink-0"
+                title="Create note from date range (Today, 7d, 14d, 30d...)"
+              >
+                <CalendarRange className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setIsNotionTemplateModalOpen(true);
+                }}
+                className="p-1.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10 text-amber-600 dark:text-amber-400 hover:text-amber-700 transition-colors shrink-0"
+                title="Notion Template Hub (Today's Notes, Days, Per Keyword)"
+              >
+                <Sparkles className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={handlePrint}
+                className="px-2.5 sm:px-3 py-1.5 text-xs sm:text-sm font-medium rounded-lg text-stone-700 dark:text-stone-300 hover:bg-black/5 dark:hover:bg-white/10 active:bg-black/10 dark:active:bg-white/15 flex items-center gap-1.5 transition-colors shrink-0"
+                title="Print note"
+              >
+                <Printer className="w-4 h-4" />
+                <span>Print</span>
+              </button>
+            </div>
             <button
               type="button"
               onClick={handleSaveAndClose}
-              className="px-5 py-1.5 text-sm font-medium rounded-lg text-stone-800 dark:text-stone-200 hover:bg-black/5 dark:hover:bg-white/10 active:bg-black/10 dark:active:bg-white/15 transition-colors shrink-0 cursor-pointer"
+              className="px-3.5 sm:px-5 py-1.5 text-xs sm:text-sm font-medium rounded-lg text-stone-800 dark:text-stone-200 hover:bg-black/5 dark:hover:bg-white/10 active:bg-black/10 dark:active:bg-white/15 transition-colors shrink-0 cursor-pointer whitespace-nowrap"
             >
               {fullPage ? 'Close & Save' : 'Close'}
             </button>

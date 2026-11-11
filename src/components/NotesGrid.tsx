@@ -74,13 +74,19 @@ export const NotesGrid: React.FC<NotesGridProps> = ({
   // Separate pinned vs unpinned notes (relevant for notes, category view, and search)
   const isNotesOrCategory = currentFilter === 'notes' || currentFilter === 'category' || searchQuery.trim().length > 0;
 
+  const viewFilteredNotes = useMemo(() => {
+    if (currentFilter === 'trash') return notes.filter((n) => n.isTrash);
+    if (currentFilter === 'archive') return notes.filter((n) => !n.isTrash && n.isArchived);
+    return notes.filter((n) => !n.isTrash && !n.isArchived);
+  }, [notes, currentFilter]);
+
   const pagedPinnedNotes = useMemo(() => {
-    return isNotesOrCategory ? notes.filter((n) => n.isPinned) : [];
-  }, [notes, isNotesOrCategory]);
+    return isNotesOrCategory ? viewFilteredNotes.filter((n) => n.isPinned) : [];
+  }, [viewFilteredNotes, isNotesOrCategory]);
 
   const pagedUnpinnedNotes = useMemo(() => {
-    return isNotesOrCategory ? notes.filter((n) => !n.isPinned) : notes;
-  }, [notes, isNotesOrCategory]);
+    return isNotesOrCategory ? viewFilteredNotes.filter((n) => !n.isPinned) : viewFilteredNotes;
+  }, [viewFilteredNotes, isNotesOrCategory]);
 
   const handlePageChange = (newPage: number) => {
     if (newPage < 1 || newPage > totalPages || newPage === currentPage) return;
@@ -255,7 +261,7 @@ export const NotesGrid: React.FC<NotesGridProps> = ({
         )}
 
         <NotionNotesList
-          notes={notes}
+          notes={viewFilteredNotes}
           onSelectNote={onSelectNote}
           onOpenDrawingModal={onOpenDrawingModal}
         />

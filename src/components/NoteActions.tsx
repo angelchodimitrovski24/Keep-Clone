@@ -59,6 +59,7 @@ interface NoteActionsProps {
   onOpenVersions?: () => void;
   onStartReading?: () => void;
   onPrint?: () => void;
+  hideInlinePrint?: boolean;
   onCopyContent?: () => void;
   onToggleSubpages?: () => void;
   hasSubpages?: boolean;
@@ -109,6 +110,7 @@ export const NoteActions = React.forwardRef<NoteActionsHandle, NoteActionsProps>
   onOpenVersions,
   onStartReading,
   onPrint,
+  hideInlinePrint = false,
   onCopyContent,
   onToggleSubpages,
   hasSubpages = false,
@@ -355,7 +357,7 @@ export const NoteActions = React.forwardRef<NoteActionsHandle, NoteActionsProps>
   return (
     <div
       ref={containerRef}
-      className={`relative flex items-center gap-0.5 sm:gap-1 text-stone-600 dark:text-stone-300 ${className}`}
+      className={`relative flex flex-wrap items-center gap-0.5 sm:gap-1 text-stone-600 dark:text-stone-300 ${className}`}
     >
       {/* Reminder button */}
       <div className="relative">
@@ -616,7 +618,7 @@ export const NoteActions = React.forwardRef<NoteActionsHandle, NoteActionsProps>
             e.stopPropagation();
             onDelete();
           }}
-          className={`hidden md:inline-flex ${iconBtnClass} hover:text-red-600 dark:hover:text-red-400`}
+          className={`${iconBtnClass} hover:text-red-600 dark:hover:text-red-400`}
           title="Delete note"
         >
           <Trash2 className="w-4 h-4" />
@@ -703,7 +705,7 @@ export const NoteActions = React.forwardRef<NoteActionsHandle, NoteActionsProps>
       )}
 
       {/* Print Note action directly on toolbar */}
-      {onPrint && (
+      {onPrint && !hideInlinePrint && (
         <button
           type="button"
           onClick={(e) => {

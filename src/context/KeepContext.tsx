@@ -768,6 +768,9 @@ export function KeepProvider({
       setNotes(res.notes);
       setTotalNotesCount(res.totalCount);
       setTotalPages(res.totalPages);
+      if (currentPage > res.totalPages && res.totalPages >= 1) {
+        setCurrentPage(res.totalPages);
+      }
 
       const catNames = categories.map((c) => c.name);
       const summary = await getNotesCountsSummaryFromDB(catNames);
@@ -1008,15 +1011,32 @@ export function KeepProvider({
 
       await saveNoteToDB(newNote);
       setNotes((prev) => [newNote, ...prev]);
+      refreshNotesList().catch(() => {});
       return newNote;
     },
-    [selectedLabel, selectedCategory, defaultCategory]
+    [selectedLabel, selectedCategory, defaultCategory, refreshNotesList]
   );
 
-  const updateNote = useCallback(async (id: string, updates: Partial<Note>, changeSummary?: string) => {
-    setNotes((prev) => {
-      const target = prev.find((n) => n.id === id);
-      if (!target) return prev;
+  const noteMatchesCurrentView = useCallback(
+    (n: Note): boolean => {
+      if (currentFilter === 'trash') return Boolean(n.isTrash);
+      if (currentFilter === 'archive') return !n.isTrash && Boolean(n.isArchived);
+      if (n.isTrash || n.isArchived) return false;
+      if (currentFilter === 'reminders') return Boolean(n.reminder);
+      if (currentFilter === 'category') return (n.category || null) === selectedCategory;
+      if (currentFilter === 'label') return Boolean(selectedLabel && (n.labels || []).includes(selectedLabel));
+      return true;
+    },
+    [currentFilter, selectedCategory, selectedLabel]
+  );
+
+  const updateNote = useCallback(
+    async (id: string, updates: Partial<Note>, changeSummary?: string) => {
+      const target =
+        notes.find((n) => n.id === id) ||
+        (editingNote && editingNote.id === id ? editingNote : undefined) ||
+        (await getNoteByIdFromDB(id));
+      if (!target) return;
 
       const hasContentChange =
         (updates.title !== undefined && updates.title !== target.title) ||
@@ -1061,25 +1081,46 @@ export function KeepProvider({
         versions: newVersions,
         updatedAt: Date.now(),
       };
-      saveNoteToDB(updated);
-      const remaining = prev.filter((n) => n.id !== id);
-      return [updated, ...remaining];
-    });
 
-    setEditingNote((prev) => {
-      if (prev && prev.id === id) {
-        return { ...prev, ...updates, updatedAt: Date.now() };
-      }
-      return prev;
-    });
+      await saveNoteToDB(updated);
 
-    setVersionHistoryNote((prev) => {
-      if (prev && prev.id === id) {
-        return { ...prev, ...updates, updatedAt: Date.now() };
+      const staysInView = noteMatchesCurrentView(updated);
+      setNotes((prev) => {
+        const remaining = prev.filter((n) => n.id !== id);
+        if (!staysInView) {
+          return remaining;
+        }
+        return [updated, ...remaining];
+      });
+
+      setEditingNote((prev) => {
+        if (prev && prev.id === id) {
+          return updated;
+        }
+        return prev;
+      });
+
+      setVersionHistoryNote((prev) => {
+        if (prev && prev.id === id) {
+          return updated;
+        }
+        return prev;
+      });
+
+      const membershipChanged =
+        updates.isTrash !== undefined ||
+        updates.isArchived !== undefined ||
+        updates.category !== undefined ||
+        updates.labels !== undefined ||
+        updates.reminder !== undefined ||
+        updates.isPinned !== undefined;
+
+      if (membershipChanged) {
+        refreshNotesList().catch(() => {});
       }
-      return prev;
-    });
-  }, []);
+    },
+    [notes, editingNote, noteMatchesCurrentView, refreshNotesList]
+  );
 
   const restoreNoteVersion = useCallback(
     async (noteId: string, versionId: string) => {
@@ -1163,17 +1204,18 @@ export function KeepProvider({
 
   const toggleArchiveNote = useCallback(
     async (id: string) => {
-      const note = notes.find((n) => n.id === id);
+      const note = await getNoteById(id);
       if (!note) return;
       await updateNote(id, { isArchived: !note.isArchived, isPinned: false });
     },
-    [notes, updateNote]
+    [getNoteById, updateNote]
   );
 
   const trashNote = useCallback(
     async (id: string) => {
       await updateNote(id, { isTrash: true, isPinned: false, trashedAt: Date.now() });
       setSelectedNoteIds((prev) => prev.filter((i) => i !== id));
+      setEditingNote((prev) => (prev?.id === id ? null : prev));
     },
     [updateNote]
   );
@@ -1185,17 +1227,23 @@ export function KeepProvider({
     [updateNote]
   );
 
-  const deleteNotePermanently = useCallback(async (id: string) => {
-    await deleteNotePermanentlyFromDB(id);
-    setNotes((prev) => prev.filter((n) => n.id !== id));
-    setSelectedNoteIds((prev) => prev.filter((i) => i !== id));
-  }, []);
+  const deleteNotePermanently = useCallback(
+    async (id: string) => {
+      await deleteNotePermanentlyFromDB(id);
+      setNotes((prev) => prev.filter((n) => n.id !== id));
+      setSelectedNoteIds((prev) => prev.filter((i) => i !== id));
+      setEditingNote((prev) => (prev?.id === id ? null : prev));
+      await refreshNotesList();
+    },
+    [refreshNotesList]
+  );
 
   const emptyTrash = useCallback(async () => {
     await clearTrashFromDB();
     setNotes((prev) => prev.filter((n) => !n.isTrash));
     setSelectedNoteIds([]);
-  }, []);
+    await refreshNotesList();
+  }, [refreshNotesList]);
 
   const duplicateNote = useCallback(
     async (id: string): Promise<Note | null> => {
@@ -1304,7 +1352,8 @@ export function KeepProvider({
     }
     setNotes((prev) => prev.filter((n) => !selectedNoteIds.includes(n.id)));
     clearSelection();
-  }, [selectedNoteIds, clearSelection]);
+    await refreshNotesList();
+  }, [selectedNoteIds, clearSelection, refreshNotesList]);
 
   const batchAddLabel = useCallback(
     async (labelName: string) => {
