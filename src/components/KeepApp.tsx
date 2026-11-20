@@ -18,6 +18,7 @@ import { UnlockCategoryModal } from '@/components/UnlockCategoryModal';
 import { NoteVersionModal } from '@/components/NoteVersionModal';
 import { ReadingStatsView } from '@/components/ReadingStatsView';
 import { CalendarView } from '@/components/CalendarView';
+import { PsiDashboardView } from '@/components/PsiDashboardView';
 import { CalendarReminderToast } from '@/components/CalendarReminderToast';
 import { ImportSummaryModal } from '@/components/ImportSummaryModal';
 import { ShareNoteModal } from '@/components/ShareNoteModal';
@@ -100,6 +101,8 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
       setCurrentFilter('calendar');
     } else if (window.location.pathname === '/stats') {
       setCurrentFilter('stats');
+    } else if (window.location.pathname === '/psi') {
+      setCurrentFilter('psi');
     }
 
     if (!pendingNoteIdRef.current) {
@@ -134,14 +137,16 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
     }
   }, [notes, isLoading, setEditingNote]);
 
-  // Whenever editingNote changes from outside (e.g. reminders, docks), sync to tabs
+  // Whenever editingNote changes from outside (e.g. reminders, docks, nav switches), sync to tabs
   useEffect(() => {
     if (editingNote) {
       setOpenTabIds((prev) => (prev.includes(editingNote.id) ? prev : [...prev, editingNote.id]));
       setActiveTabId(editingNote.id);
       setNoteNotFoundId(null);
+    } else if (activeTabId) {
+      setActiveTabId(null);
     }
-  }, [editingNote]);
+  }, [editingNote, activeTabId]);
 
   // Tab action handlers
   const openNoteInTab = (noteId: string) => {
@@ -202,12 +207,12 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
         }
       } else {
         if (currentPath.startsWith('/note/')) {
-          const revertPath = currentFilter === 'calendar' ? '/calendar' : currentFilter === 'stats' ? '/stats' : '/';
+          const revertPath = currentFilter === 'calendar' ? '/calendar' : currentFilter === 'stats' ? '/stats' : currentFilter === 'psi' ? '/psi' : '/';
           if (currentPath !== revertPath) {
             window.history.pushState(null, '', revertPath);
           }
           if (typeof document !== 'undefined') {
-            document.title = currentFilter === 'calendar' ? 'Calendar - Keep Clone' : currentFilter === 'stats' ? 'Reading Stats - Keep Clone' : 'Google Keep Clone';
+            document.title = currentFilter === 'calendar' ? 'Calendar - Keep Clone' : currentFilter === 'stats' ? 'Reading Stats - Keep Clone' : currentFilter === 'psi' ? 'PSI Dashboard - Keep Clone' : 'Google Keep Clone';
           }
         }
       }
@@ -373,6 +378,8 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
               <ReadingStatsView />
             ) : currentFilter === 'calendar' ? (
               <CalendarView />
+            ) : currentFilter === 'psi' ? (
+              <PsiDashboardView />
             ) : (
               <>
                 {/* Category Filter Pills */}

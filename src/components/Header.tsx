@@ -22,6 +22,7 @@ import {
   GitMerge,
   Globe,
   FileSpreadsheet,
+  LayoutDashboard,
 } from 'lucide-react';
 import { useKeep } from '@/context/KeepContext';
 import { NOTE_COLORS } from '@/lib/constants';
@@ -272,7 +273,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
               setSearchQuery(val);
               if (val.trim()) {
                 setEditingNote(null);
-                if (currentFilter === 'calendar' || currentFilter === 'stats') {
+                if (currentFilter === 'calendar' || currentFilter === 'stats' || currentFilter === 'psi') {
                   setCurrentFilter('notes');
                 }
               }
@@ -312,7 +313,12 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
           onClick={() => {
             setEditingNote(null);
             setCurrentFilter('notes');
-            if (window.location.pathname.startsWith('/note/')) {
+            if (
+              window.location.pathname.startsWith('/note/') ||
+              window.location.pathname === '/psi' ||
+              window.location.pathname === '/calendar' ||
+              window.location.pathname === '/stats'
+            ) {
               window.history.pushState(null, '', '/');
             }
           }}
@@ -355,7 +361,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
               setSearchQuery(val);
               if (val.trim()) {
                 setEditingNote(null);
-                if (currentFilter === 'calendar' || currentFilter === 'stats') {
+                if (currentFilter === 'calendar' || currentFilter === 'stats' || currentFilter === 'psi') {
                   setCurrentFilter('notes');
                 }
               }
@@ -380,6 +386,27 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
 
       {/* Clean, Streamlined Action Controls */}
       <div className="flex items-center gap-0.5 sm:gap-1.5 text-stone-600 dark:text-stone-300 shrink-0">
+        {/* Quick PSI Jira Dashboard Button */}
+        <button
+          type="button"
+          onClick={() => {
+            setEditingNote(null);
+            setCurrentFilter('psi');
+            if (typeof window !== 'undefined') {
+              window.history.pushState(null, '', '/psi');
+            }
+          }}
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-bold transition-colors shrink-0 cursor-pointer ${
+            currentFilter === 'psi'
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'bg-blue-500/10 text-blue-700 dark:text-blue-300 hover:bg-blue-500/20'
+          }`}
+          title="Open PSI Jira Dashboard (Last 3 days)"
+        >
+          <LayoutDashboard className="w-3.5 h-3.5" />
+          <span className="hidden md:inline">PSI</span>
+        </button>
+
         {/* Layout Toggle (Grid / List / Notion) */}
         <button
           type="button"

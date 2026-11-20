@@ -731,6 +731,7 @@ export async function POST(req: NextRequest) {
         'assignee',
         'reporter',
         'issuetype',
+        'created',
         'updated',
         'attachment',
       ];
@@ -874,7 +875,10 @@ export async function POST(req: NextRequest) {
         statusCategory: iss.fields?.status?.statusCategory?.key || 'indeterminate',
         priority: iss.fields?.priority?.name || 'None',
         assignee: iss.fields?.assignee?.displayName || 'Unassigned',
+        created: iss.fields?.created ? new Date(iss.fields.created).toLocaleDateString() : '',
+        createdIso: iss.fields?.created || '',
         updated: iss.fields?.updated ? new Date(iss.fields.updated).toLocaleDateString() : '',
+        updatedIso: iss.fields?.updated || '',
         issueType: iss.fields?.issuetype?.name || 'Issue',
         attachmentCount: Array.isArray(iss.fields?.attachment) ? iss.fields.attachment.length : 0,
       }));

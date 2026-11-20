@@ -22,7 +22,10 @@ export interface JiraIssueSummary {
   statusCategory: string;
   priority: string;
   assignee: string;
+  created?: string;
+  createdIso?: string;
   updated: string;
+  updatedIso?: string;
   issueType: string;
   attachmentCount: number;
 }

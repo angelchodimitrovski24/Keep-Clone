@@ -12,6 +12,7 @@ import {
   Trash2,
   Tag,
   Folder,
+  LayoutDashboard,
 } from 'lucide-react';
 import { Note } from '@/types/note';
 import { ViewFilter } from '@/types/note';
@@ -45,6 +46,7 @@ export const NoteTabsBar: React.FC<NoteTabsBarProps> = ({
   const getMainViewLabel = () => {
     if (currentFilter === 'calendar') return 'Calendar';
     if (currentFilter === 'stats') return 'Reading Stats';
+    if (currentFilter === 'psi') return 'PSI Dashboard';
     if (currentFilter === 'archive') return 'Archive';
     if (currentFilter === 'trash') return 'Trash';
     if (currentFilter === 'label' && selectedLabel) return `#${selectedLabel}`;
@@ -55,6 +57,7 @@ export const NoteTabsBar: React.FC<NoteTabsBarProps> = ({
   const getMainViewIcon = () => {
     if (currentFilter === 'calendar') return <Calendar className="w-3.5 h-3.5 text-blue-500" />;
     if (currentFilter === 'stats') return <BarChart2 className="w-3.5 h-3.5 text-purple-500" />;
+    if (currentFilter === 'psi') return <LayoutDashboard className="w-3.5 h-3.5 text-blue-600" />;
     if (currentFilter === 'archive') return <Archive className="w-3.5 h-3.5 text-stone-500" />;
     if (currentFilter === 'trash') return <Trash2 className="w-3.5 h-3.5 text-red-500" />;
     if (currentFilter === 'label') return <Tag className="w-3.5 h-3.5 text-amber-500" />;
