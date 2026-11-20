@@ -950,7 +950,7 @@ export async function POST(req: NextRequest) {
       const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const memberMatchers = members.map((name) => ({
         name,
-        regex: new RegExp(`(?:^|[\\s._-])${escapeRegex(name)}(?:$|[\\s._-@])`, 'i'),
+        regex: new RegExp(`(?:^|[\\s._@-])${escapeRegex(name)}(?:$|[\\s._@-])`, 'i'),
       }));
 
       // Resolve Jira accountIds for team member names in parallel
