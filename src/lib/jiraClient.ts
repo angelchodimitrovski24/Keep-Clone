@@ -28,6 +28,8 @@ export interface JiraIssueSummary {
   updatedIso?: string;
   issueType: string;
   attachmentCount: number;
+  matchedMembers?: string[];
+  activityReasons?: string[];
 }
 
 export interface JiraNotePayload {
@@ -179,6 +181,42 @@ export async function searchJiraJql(
   return {
     issues: data.issues || [],
     total: data.total || 0,
+  };
+}
+
+/**
+ * Searches Jira for tickets created or updated in the last N days
+ * that are assigned to or updated by any of the specified team members.
+ */
+export async function searchJiraTeamActivity(
+  config: JiraConfig,
+  teamNames: string[],
+  days: number = 3,
+  includeUpdated: boolean = true
+): Promise<{ issues: JiraIssueSummary[]; total: number; resolvedUsersCount?: number }> {
+  const res = await fetch('/api/jira', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'search-team-activity',
+      baseUrl: config.baseUrl,
+      email: config.email,
+      apiToken: config.apiToken,
+      teamNames,
+      days,
+      includeUpdated,
+    }),
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || 'Failed searching team Jira activity');
+  }
+
+  return {
+    issues: data.issues || [],
+    total: data.total || 0,
+    resolvedUsersCount: data.resolvedUsersCount,
   };
 }
 

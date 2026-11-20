@@ -19,6 +19,7 @@ import { NoteVersionModal } from '@/components/NoteVersionModal';
 import { ReadingStatsView } from '@/components/ReadingStatsView';
 import { CalendarView } from '@/components/CalendarView';
 import { PsiDashboardView } from '@/components/PsiDashboardView';
+import { TeamDashboardView } from '@/components/TeamDashboardView';
 import { CalendarReminderToast } from '@/components/CalendarReminderToast';
 import { ImportSummaryModal } from '@/components/ImportSummaryModal';
 import { ShareNoteModal } from '@/components/ShareNoteModal';
@@ -103,6 +104,8 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
       setCurrentFilter('stats');
     } else if (window.location.pathname === '/psi') {
       setCurrentFilter('psi');
+    } else if (window.location.pathname === '/team') {
+      setCurrentFilter('team');
     }
 
     if (!pendingNoteIdRef.current) {
@@ -207,12 +210,12 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
         }
       } else {
         if (currentPath.startsWith('/note/')) {
-          const revertPath = currentFilter === 'calendar' ? '/calendar' : currentFilter === 'stats' ? '/stats' : currentFilter === 'psi' ? '/psi' : '/';
+          const revertPath = currentFilter === 'calendar' ? '/calendar' : currentFilter === 'stats' ? '/stats' : currentFilter === 'psi' ? '/psi' : currentFilter === 'team' ? '/team' : '/';
           if (currentPath !== revertPath) {
             window.history.pushState(null, '', revertPath);
           }
           if (typeof document !== 'undefined') {
-            document.title = currentFilter === 'calendar' ? 'Calendar - Keep Clone' : currentFilter === 'stats' ? 'Reading Stats - Keep Clone' : currentFilter === 'psi' ? 'PSI Dashboard - Keep Clone' : 'Google Keep Clone';
+            document.title = currentFilter === 'calendar' ? 'Calendar - Keep Clone' : currentFilter === 'stats' ? 'Reading Stats - Keep Clone' : currentFilter === 'psi' ? 'PSI Dashboard - Keep Clone' : currentFilter === 'team' ? 'Team Dashboard - Keep Clone' : 'Google Keep Clone';
           }
         }
       }
@@ -380,6 +383,8 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
               <CalendarView />
             ) : currentFilter === 'psi' ? (
               <PsiDashboardView />
+            ) : currentFilter === 'team' ? (
+              <TeamDashboardView />
             ) : (
               <>
                 {/* Category Filter Pills */}

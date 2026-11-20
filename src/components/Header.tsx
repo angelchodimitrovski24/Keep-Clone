@@ -23,6 +23,7 @@ import {
   Globe,
   FileSpreadsheet,
   LayoutDashboard,
+  Users,
 } from 'lucide-react';
 import { useKeep } from '@/context/KeepContext';
 import { NOTE_COLORS } from '@/lib/constants';
@@ -273,7 +274,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
               setSearchQuery(val);
               if (val.trim()) {
                 setEditingNote(null);
-                if (currentFilter === 'calendar' || currentFilter === 'stats' || currentFilter === 'psi') {
+                if (currentFilter === 'calendar' || currentFilter === 'stats' || currentFilter === 'psi' || currentFilter === 'team') {
                   setCurrentFilter('notes');
                 }
               }
@@ -316,6 +317,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
             if (
               window.location.pathname.startsWith('/note/') ||
               window.location.pathname === '/psi' ||
+              window.location.pathname === '/team' ||
               window.location.pathname === '/calendar' ||
               window.location.pathname === '/stats'
             ) {
@@ -361,7 +363,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
               setSearchQuery(val);
               if (val.trim()) {
                 setEditingNote(null);
-                if (currentFilter === 'calendar' || currentFilter === 'stats' || currentFilter === 'psi') {
+                if (currentFilter === 'calendar' || currentFilter === 'stats' || currentFilter === 'psi' || currentFilter === 'team') {
                   setCurrentFilter('notes');
                 }
               }
@@ -405,6 +407,27 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
         >
           <LayoutDashboard className="w-3.5 h-3.5" />
           <span className="hidden md:inline">PSI</span>
+        </button>
+
+        {/* Quick Team Jira Dashboard Button */}
+        <button
+          type="button"
+          onClick={() => {
+            setEditingNote(null);
+            setCurrentFilter('team');
+            if (typeof window !== 'undefined') {
+              window.history.pushState(null, '', '/team');
+            }
+          }}
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-bold transition-colors shrink-0 cursor-pointer ${
+            currentFilter === 'team'
+              ? 'bg-indigo-600 text-white shadow-xs'
+              : 'bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-500/20'
+          }`}
+          title="Open Team Jira Dashboard (Last 3 days activity)"
+        >
+          <Users className="w-3.5 h-3.5" />
+          <span className="hidden md:inline">Team</span>
         </button>
 
         {/* Layout Toggle (Grid / List / Notion) */}

@@ -589,6 +589,182 @@ async function processJiraIssueToNote(
   };
 }
 
+/**
+ * Maps a raw Jira issue object to a compact summary item.
+ */
+function mapJiraIssueSummary(iss: any) {
+  return {
+    key: iss.key,
+    summary: iss.fields?.summary || '',
+    status: iss.fields?.status?.name || 'Unknown',
+    statusCategory: iss.fields?.status?.statusCategory?.key || 'indeterminate',
+    priority: iss.fields?.priority?.name || 'None',
+    assignee: iss.fields?.assignee?.displayName || 'Unassigned',
+    created: iss.fields?.created ? new Date(iss.fields.created).toLocaleDateString() : '',
+    createdIso: iss.fields?.created || '',
+    updated: iss.fields?.updated ? new Date(iss.fields.updated).toLocaleDateString() : '',
+    updatedIso: iss.fields?.updated || '',
+    issueType: iss.fields?.issuetype?.name || 'Issue',
+    attachmentCount: Array.isArray(iss.fields?.attachment) ? iss.fields.attachment.length : 0,
+  };
+}
+
+/**
+ * Executes a paginated Jira JQL search supporting /rest/api/3/search/jql (POST & GET) and legacy /rest/api/2/search.
+ */
+async function executeJiraJqlSearch(params: {
+  baseUrl: string;
+  jiraHeaders: Record<string, string>;
+  query: string;
+  fieldsList: string[];
+  targetLimit: number;
+  expandList?: string[];
+}): Promise<{ ok: true; issues: any[]; total: number } | { ok: false; status: number; error: string }> {
+  const { baseUrl, jiraHeaders, query, fieldsList, targetLimit, expandList } = params;
+  const allRawIssues: any[] = [];
+  let reportedTotal = 0;
+  let lastErrText = '';
+  let lastErrStatus = 400;
+  let successfulStrategy: 'post-v3' | 'get-v3' | 'get-v2' | null = null;
+  let nextPageToken: string | undefined = undefined;
+
+  while (allRawIssues.length < targetLimit) {
+    const remaining = targetLimit - allRawIssues.length;
+    const pageSize = Math.min(remaining, expandList?.length ? 50 : 100);
+    let pageRes: Response | null = null;
+
+    // Strategy 1 (Atlassian Cloud New Standard): POST /rest/api/3/search/jql
+    if (!successfulStrategy || successfulStrategy === 'post-v3') {
+      try {
+        const bodyPayload: any = {
+          jql: query,
+          maxResults: pageSize,
+          fields: fieldsList,
+        };
+        if (expandList && expandList.length > 0) {
+          bodyPayload.expand = expandList;
+        }
+        if (nextPageToken) {
+          bodyPayload.nextPageToken = nextPageToken;
+        }
+        const postRes: Response = await fetch(`${baseUrl}/rest/api/3/search/jql`, {
+          method: 'POST',
+          headers: jiraHeaders,
+          body: JSON.stringify(bodyPayload),
+        });
+        if (postRes.ok) {
+          pageRes = postRes;
+          successfulStrategy = 'post-v3';
+        } else {
+          lastErrStatus = postRes.status;
+          lastErrText = await postRes.text();
+          // If 400 without expand, it's likely a JQL syntax error; if expand was sent, allow GET fallback
+          if (postRes.status === 400 && (!expandList || expandList.length === 0)) {
+            pageRes = postRes;
+          }
+        }
+      } catch (err: any) {
+        lastErrText = err?.message || '';
+      }
+    }
+
+    // Strategy 2: GET /rest/api/3/search/jql
+    if (!pageRes && (!successfulStrategy || successfulStrategy === 'get-v3')) {
+      try {
+        const fieldsParam: string = fieldsList.join(',');
+        const expandParam: string = expandList && expandList.length > 0 ? `&expand=${encodeURIComponent(expandList.join(','))}` : '';
+        const tokenParam: string = nextPageToken ? `&nextPageToken=${encodeURIComponent(nextPageToken)}` : '';
+        const getUrl: string = `${baseUrl}/rest/api/3/search/jql?jql=${encodeURIComponent(query)}&maxResults=${pageSize}&fields=${fieldsParam}${expandParam}${tokenParam}`;
+        const getRes: Response = await fetch(getUrl, { headers: jiraHeaders });
+        if (getRes.ok) {
+          pageRes = getRes;
+          successfulStrategy = 'get-v3';
+        } else {
+          lastErrStatus = getRes.status;
+          lastErrText = await getRes.text();
+          if (getRes.status === 400) {
+            pageRes = getRes;
+          }
+        }
+      } catch (err: any) {
+        lastErrText = err?.message || lastErrText;
+      }
+    }
+
+    // Strategy 3: Legacy GET /rest/api/2/search (for on-premise Jira Server / Data Center instances)
+    if (!pageRes && (!successfulStrategy || successfulStrategy === 'get-v2')) {
+      try {
+        const startAt: number = allRawIssues.length;
+        const expandParam: string = expandList && expandList.length > 0 ? `&expand=${encodeURIComponent(expandList.join(','))}` : '';
+        const legacyUrl: string = `${baseUrl}/rest/api/2/search?jql=${encodeURIComponent(query)}&startAt=${startAt}&maxResults=${pageSize}&fields=${fieldsList.join(',')}${expandParam}`;
+        const legRes: Response = await fetch(legacyUrl, { headers: jiraHeaders });
+        if (legRes.ok) {
+          pageRes = legRes;
+          successfulStrategy = 'get-v2';
+        } else {
+          lastErrStatus = legRes.status;
+          const txt = await legRes.text();
+          if (!lastErrText) lastErrText = txt;
+        }
+      } catch (err: any) {
+        lastErrText = err?.message || lastErrText;
+      }
+    }
+
+    if (!pageRes || !pageRes.ok) {
+      if (allRawIssues.length > 0) {
+        break;
+      }
+      let errMessage = lastErrText || 'Jira search request failed';
+      try {
+        const parsed = JSON.parse(errMessage);
+        if (Array.isArray(parsed.errorMessages) && parsed.errorMessages.length > 0) {
+          errMessage = parsed.errorMessages.join('; ');
+        } else if (parsed.errors && Object.keys(parsed.errors).length > 0) {
+          errMessage = Object.entries(parsed.errors).map(([k, v]) => `${k}: ${v}`).join('; ');
+        }
+      } catch {
+        // Keep raw string if not JSON
+      }
+      const status = pageRes?.status || lastErrStatus || 400;
+      return {
+        ok: false,
+        status,
+        error: `JQL query failed (HTTP ${status}): ${errMessage}`,
+      };
+    }
+
+    const pageData: any = await pageRes.json();
+    const pageIssues: any[] = Array.isArray(pageData.issues) ? pageData.issues : [];
+    if (typeof pageData.total === 'number') {
+      reportedTotal = pageData.total;
+    }
+
+    allRawIssues.push(...pageIssues);
+
+    if (pageData.isLast === true || pageIssues.length === 0) {
+      break;
+    }
+
+    if (successfulStrategy === 'get-v2') {
+      if (typeof pageData.total === 'number' && allRawIssues.length >= pageData.total) {
+        break;
+      }
+    } else {
+      if (!pageData.nextPageToken) {
+        break;
+      }
+      nextPageToken = pageData.nextPageToken;
+    }
+  }
+
+  return {
+    ok: true,
+    issues: allRawIssues,
+    total: reportedTotal > 0 ? reportedTotal : allRawIssues.length,
+  };
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -601,6 +777,9 @@ export async function POST(req: NextRequest) {
       issueKeys,
       jql,
       maxResults = 25,
+      teamNames,
+      days = 3,
+      includeUpdated = true,
       downloadAttachments = true,
       includeComments = true,
       folderPath,
@@ -735,158 +914,240 @@ export async function POST(req: NextRequest) {
         'updated',
         'attachment',
       ];
-      // Target limit: if maxResults is passed and > 0, use it; otherwise fetch all matching (up to 500)
       const requestedMax = Number(maxResults);
       const targetLimit = requestedMax > 0 ? requestedMax : 500;
 
-      const allRawIssues: any[] = [];
-      let reportedTotal = 0;
-      let lastErrText = '';
-      let successfulStrategy: 'post-v3' | 'get-v3' | 'get-v2' | null = null;
-      let nextPageToken: string | undefined = undefined;
+      const searchResult = await executeJiraJqlSearch({
+        baseUrl,
+        jiraHeaders,
+        query,
+        fieldsList,
+        targetLimit,
+      });
 
-      // Paginate through Jira search results to fetch all matching issues
-      while (allRawIssues.length < targetLimit) {
-        const remaining = targetLimit - allRawIssues.length;
-        const pageSize = Math.min(remaining, 100);
-        let pageRes: Response | null = null;
+      if (!searchResult.ok) {
+        return NextResponse.json({ error: searchResult.error }, { status: searchResult.status });
+      }
 
-        // Strategy 1 (Atlassian Cloud New Standard): POST /rest/api/3/search/jql
-        if (!successfulStrategy || successfulStrategy === 'post-v3') {
-          try {
-            const bodyPayload: any = {
-              jql: query,
-              maxResults: pageSize,
-              fields: fieldsList,
-            };
-            if (nextPageToken) {
-              bodyPayload.nextPageToken = nextPageToken;
+      const issues = searchResult.issues.map(mapJiraIssueSummary);
+      return NextResponse.json({
+        success: true,
+        total: searchResult.total,
+        issues,
+      });
+    }
+
+    // 3b. Action: Search Team Activity (tickets created/updated in last N days assigned to OR updated by team members)
+    if (action === 'search-team-activity') {
+      const defaultTeam = ['Angelcho', 'Jaime', 'Szabolcs', 'Scarlat', 'David', 'Luca', 'Adam'];
+      const members: string[] = Array.isArray(teamNames) && teamNames.length > 0
+        ? teamNames.map((n: any) => String(n).trim()).filter(Boolean)
+        : defaultTeam;
+      const daysNum = Math.max(1, Math.min(Number(days) || 3, 60));
+      const checkUpdated = includeUpdated !== false;
+      const cutoffMs = Date.now() - daysNum * 24 * 60 * 60 * 1000;
+
+      const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const memberMatchers = members.map((name) => ({
+        name,
+        regex: new RegExp(`(?:^|[\\s._-])${escapeRegex(name)}(?:$|[\\s._-@])`, 'i'),
+      }));
+
+      // Resolve Jira accountIds for team member names in parallel
+      const accountIdToMember = new Map<string, string>();
+      await Promise.all(
+        members.map(async (memberName) => {
+          const matcher = memberMatchers.find((m) => m.name === memberName)!;
+          for (const apiVer of ['3', '2']) {
+            try {
+              const userRes = await fetch(
+                `${baseUrl}/rest/api/${apiVer}/user/search?query=${encodeURIComponent(memberName)}&maxResults=20`,
+                { headers: jiraHeaders }
+              );
+              if (userRes.ok) {
+                const users: any[] = await userRes.json();
+                if (Array.isArray(users)) {
+                  for (const u of users) {
+                    const hay = `${u?.displayName || ''} ${u?.emailAddress || ''} ${u?.name || ''}`;
+                    if (u?.accountId && matcher.regex.test(hay)) {
+                      accountIdToMember.set(u.accountId, memberName);
+                    }
+                  }
+                }
+                break;
+              }
+            } catch {
+              // Non-fatal: fall back to displayName/email matching on returned issues
             }
-            const postRes: Response = await fetch(`${baseUrl}/rest/api/3/search/jql`, {
-              method: 'POST',
-              headers: jiraHeaders,
-              body: JSON.stringify(bodyPayload),
+          }
+        })
+      );
+
+      const dateClause = checkUpdated
+        ? `(created >= -${daysNum}d OR updated >= -${daysNum}d)`
+        : `created >= -${daysNum}d`;
+
+      const teamFields = [
+        'summary',
+        'status',
+        'priority',
+        'assignee',
+        'reporter',
+        'creator',
+        'issuetype',
+        'created',
+        'updated',
+        'attachment',
+        'comment',
+      ];
+
+      const accountIds = Array.from(accountIdToMember.keys());
+      const searchPromises: Array<Promise<{ ok: true; issues: any[]; total: number } | { ok: false; status: number; error: string }>> = [];
+
+      // Query A: Direct JQL match by resolved accountIds (guarantees catching all assigned/reported/created tickets even on large sites)
+      if (accountIds.length > 0) {
+        const quotedIds = accountIds.map((id) => `"${id}"`).join(', ');
+        const directJql = `${dateClause} AND (assignee in (${quotedIds}) OR reporter in (${quotedIds}) OR creator in (${quotedIds})) ORDER BY updated DESC`;
+        searchPromises.push(
+          executeJiraJqlSearch({
+            baseUrl,
+            jiraHeaders,
+            query: directJql,
+            fieldsList: teamFields,
+            targetLimit: 500,
+          })
+        );
+      }
+
+      // Query B: Scan recent tickets with changelog & comments to catch any ticket updated/commented by team members even if assigned elsewhere
+      const recentJql = `${dateClause} ORDER BY updated DESC`;
+      searchPromises.push(
+        executeJiraJqlSearch({
+          baseUrl,
+          jiraHeaders,
+          query: recentJql,
+          fieldsList: teamFields,
+          targetLimit: 500,
+          expandList: ['changelog'],
+        }).then(async (res) => {
+          // If changelog expansion triggers a Jira limit or rejection, fall back gracefully to comments + fields
+          if (!res.ok) {
+            return executeJiraJqlSearch({
+              baseUrl,
+              jiraHeaders,
+              query: recentJql,
+              fieldsList: teamFields,
+              targetLimit: 500,
             });
-            if (postRes.ok) {
-              pageRes = postRes;
-              successfulStrategy = 'post-v3';
-            } else if (postRes.status === 400) {
-              lastErrText = await postRes.text();
-              pageRes = postRes;
-            } else if (postRes.status !== 404 && postRes.status !== 405 && postRes.status !== 410) {
-              lastErrText = await postRes.text();
+          }
+          return res;
+        })
+      );
+
+      const results = await Promise.all(searchPromises);
+      const anySuccess = results.some((r) => r.ok);
+      if (!anySuccess) {
+        const firstErr = results[0] as { ok: false; status: number; error: string };
+        return NextResponse.json({ error: firstErr.error }, { status: firstErr.status });
+      }
+
+      const matchUserToMember = (userObj: any): string | null => {
+        if (!userObj) return null;
+        if (userObj.accountId && accountIdToMember.has(userObj.accountId)) {
+          return accountIdToMember.get(userObj.accountId)!;
+        }
+        const hay = `${userObj.displayName || ''} ${userObj.emailAddress || ''} ${userObj.name || ''}`.trim();
+        if (!hay) return null;
+        for (const m of memberMatchers) {
+          if (m.regex.test(hay)) {
+            return m.name;
+          }
+        }
+        return null;
+      };
+
+      // Deduplicate and merge issues while extracting matched team members & activity reasons
+      const mergedMap = new Map<string, { raw: any; members: Set<string>; reasons: Set<string> }>();
+
+      for (const res of results) {
+        if (!res.ok) continue;
+        for (const iss of res.issues) {
+          if (!iss?.key) continue;
+          let entry = mergedMap.get(iss.key);
+          if (!entry) {
+            entry = { raw: iss, members: new Set<string>(), reasons: new Set<string>() };
+            mergedMap.set(iss.key, entry);
+          } else if (iss.changelog && !entry.raw.changelog) {
+            entry.raw = iss;
+          }
+
+          // 1. Check Assignee
+          const assigneeMember = matchUserToMember(iss.fields?.assignee);
+          if (assigneeMember) {
+            entry.members.add(assigneeMember);
+            entry.reasons.add(`Assigned: ${assigneeMember}`);
+          }
+
+          // 2. Check Creator / Reporter if created within the requested window
+          const createdMs = iss.fields?.created ? new Date(iss.fields.created).getTime() : 0;
+          if (createdMs >= cutoffMs) {
+            const creatorMember = matchUserToMember(iss.fields?.creator) || matchUserToMember(iss.fields?.reporter);
+            if (creatorMember) {
+              entry.members.add(creatorMember);
+              entry.reasons.add(`Created by ${creatorMember}`);
             }
-          } catch (err: any) {
-            lastErrText = err?.message || '';
           }
-        }
 
-        // Strategy 2: GET /rest/api/3/search/jql
-        if (!pageRes && (!successfulStrategy || successfulStrategy === 'get-v3')) {
-          try {
-            const fieldsParam: string = fieldsList.join(',');
-            const tokenParam: string = nextPageToken ? `&nextPageToken=${encodeURIComponent(nextPageToken)}` : '';
-            const getUrl: string = `${baseUrl}/rest/api/3/search/jql?jql=${encodeURIComponent(query)}&maxResults=${pageSize}&fields=${fieldsParam}${tokenParam}`;
-            const getRes: Response = await fetch(getUrl, { headers: jiraHeaders });
-            if (getRes.ok) {
-              pageRes = getRes;
-              successfulStrategy = 'get-v3';
-            } else if (getRes.status === 400) {
-              lastErrText = await getRes.text();
-              pageRes = getRes;
-            } else if (getRes.status !== 404 && getRes.status !== 405 && getRes.status !== 410) {
-              lastErrText = await getRes.text();
+          // 3. Check Changelog Histories within window (for "updated by them")
+          const histories = iss.changelog?.histories;
+          if (checkUpdated && Array.isArray(histories)) {
+            for (const h of histories) {
+              const histMs = h?.created ? new Date(h.created).getTime() : 0;
+              if (histMs >= cutoffMs) {
+                const actorMember = matchUserToMember(h.author);
+                if (actorMember) {
+                  entry.members.add(actorMember);
+                  entry.reasons.add(`Updated by ${actorMember}`);
+                }
+              }
             }
-          } catch (err: any) {
-            lastErrText = err?.message || lastErrText;
           }
-        }
 
-        // Strategy 3: Legacy GET /rest/api/2/search (for on-premise Jira Server / Data Center instances)
-        if (!pageRes && (!successfulStrategy || successfulStrategy === 'get-v2')) {
-          try {
-            const startAt: number = allRawIssues.length;
-            const legacyUrl: string = `${baseUrl}/rest/api/2/search?jql=${encodeURIComponent(query)}&startAt=${startAt}&maxResults=${pageSize}&fields=${fieldsList.join(',')}`;
-            const legRes: Response = await fetch(legacyUrl, { headers: jiraHeaders });
-            if (legRes.ok) {
-              pageRes = legRes;
-              successfulStrategy = 'get-v2';
-            } else {
-              const txt = await legRes.text();
-              if (!lastErrText) lastErrText = txt;
+          // 4. Check Comments within window (commenting also updates the ticket)
+          const comments = iss.fields?.comment?.comments;
+          if (checkUpdated && Array.isArray(comments)) {
+            for (const c of comments) {
+              const cMs = new Date(c?.updated || c?.created || 0).getTime();
+              if (cMs >= cutoffMs) {
+                const cMember = matchUserToMember(c.updateAuthor) || matchUserToMember(c.author);
+                if (cMember) {
+                  entry.members.add(cMember);
+                  entry.reasons.add(`Commented by ${cMember}`);
+                }
+              }
             }
-          } catch (err: any) {
-            lastErrText = err?.message || lastErrText;
           }
-        }
-
-        if (!pageRes || !pageRes.ok) {
-          if (allRawIssues.length > 0) {
-            // Already retrieved some issues, return what we have
-            break;
-          }
-          let errMessage = lastErrText || 'Jira search request failed';
-          try {
-            const parsed = JSON.parse(errMessage);
-            if (Array.isArray(parsed.errorMessages) && parsed.errorMessages.length > 0) {
-              errMessage = parsed.errorMessages.join('; ');
-            } else if (parsed.errors && Object.keys(parsed.errors).length > 0) {
-              errMessage = Object.entries(parsed.errors).map(([k, v]) => `${k}: ${v}`).join('; ');
-            }
-          } catch {
-            // Keep raw string if not JSON
-          }
-          return NextResponse.json(
-            { error: `JQL query failed (HTTP ${pageRes?.status || 400}): ${errMessage}` },
-            { status: pageRes?.status || 400 }
-          );
-        }
-
-        const pageData: any = await pageRes.json();
-        const pageIssues: any[] = Array.isArray(pageData.issues) ? pageData.issues : [];
-        if (typeof pageData.total === 'number') {
-          reportedTotal = pageData.total;
-        }
-
-        allRawIssues.push(...pageIssues);
-
-        // Check if there are more pages
-        if (pageData.isLast === true || pageIssues.length === 0) {
-          break;
-        }
-
-        if (successfulStrategy === 'get-v2') {
-          if (typeof pageData.total === 'number' && allRawIssues.length >= pageData.total) {
-            break;
-          }
-        } else {
-          // Token-based pagination for /rest/api/3/search/jql
-          if (!pageData.nextPageToken) {
-            break;
-          }
-          nextPageToken = pageData.nextPageToken;
         }
       }
 
-      const issues = allRawIssues.map((iss: any) => ({
-        key: iss.key,
-        summary: iss.fields?.summary || '',
-        status: iss.fields?.status?.name || 'Unknown',
-        statusCategory: iss.fields?.status?.statusCategory?.key || 'indeterminate',
-        priority: iss.fields?.priority?.name || 'None',
-        assignee: iss.fields?.assignee?.displayName || 'Unassigned',
-        created: iss.fields?.created ? new Date(iss.fields.created).toLocaleDateString() : '',
-        createdIso: iss.fields?.created || '',
-        updated: iss.fields?.updated ? new Date(iss.fields.updated).toLocaleDateString() : '',
-        updatedIso: iss.fields?.updated || '',
-        issueType: iss.fields?.issuetype?.name || 'Issue',
-        attachmentCount: Array.isArray(iss.fields?.attachment) ? iss.fields.attachment.length : 0,
-      }));
+      const matchedIssues = Array.from(mergedMap.values())
+        .filter((item) => item.members.size > 0)
+        .map((item) => ({
+          ...mapJiraIssueSummary(item.raw),
+          matchedMembers: Array.from(item.members),
+          activityReasons: Array.from(item.reasons),
+        }))
+        .sort((a, b) => {
+          const ta = a.updatedIso ? new Date(a.updatedIso).getTime() : 0;
+          const tb = b.updatedIso ? new Date(b.updatedIso).getTime() : 0;
+          return tb - ta;
+        });
 
       return NextResponse.json({
         success: true,
-        total: reportedTotal > 0 ? reportedTotal : issues.length,
-        issues,
+        total: matchedIssues.length,
+        resolvedUsersCount: accountIds.length,
+        issues: matchedIssues,
       });
     }
 

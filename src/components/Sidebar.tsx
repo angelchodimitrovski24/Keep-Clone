@@ -18,6 +18,7 @@ import {
   CalendarRange,
   Calendar as CalendarIcon,
   LayoutDashboard,
+  Users,
 } from 'lucide-react';
 import { useKeep } from '@/context/KeepContext';
 import { ViewFilter } from '@/types/note';
@@ -60,6 +61,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const navItems: { id: ViewFilter; label: string; icon: React.ReactNode }[] = [
     { id: 'notes', label: 'Notes', icon: <Lightbulb className="w-5 h-5" /> },
     { id: 'psi', label: 'PSI Dashboard', icon: <LayoutDashboard className="w-5 h-5" /> },
+    { id: 'team', label: 'Team Dashboard', icon: <Users className="w-5 h-5" /> },
     { id: 'reminders', label: 'Reminders', icon: <Bell className="w-5 h-5" /> },
     { id: 'calendar', label: 'Calendar', icon: <CalendarIcon className="w-5 h-5" /> },
     { id: 'archive', label: 'Archive', icon: <Archive className="w-5 h-5" /> },
@@ -77,7 +79,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
         window.history.pushState(null, '', '/stats');
       } else if (id === 'psi') {
         window.history.pushState(null, '', '/psi');
-      } else if (window.location.pathname === '/stats' || window.location.pathname === '/calendar' || window.location.pathname === '/psi') {
+      } else if (id === 'team') {
+        window.history.pushState(null, '', '/team');
+      } else if (window.location.pathname === '/stats' || window.location.pathname === '/calendar' || window.location.pathname === '/psi' || window.location.pathname === '/team') {
         window.history.pushState(null, '', '/');
       }
     }

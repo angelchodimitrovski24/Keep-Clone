@@ -137,7 +137,8 @@ export type ViewFilter =
   | 'trash'
   | 'search'
   | 'stats'
-  | 'psi';
+  | 'psi'
+  | 'team';
 
 export * from './calendar';
 
