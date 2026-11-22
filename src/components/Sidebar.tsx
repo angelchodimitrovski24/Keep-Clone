@@ -19,6 +19,13 @@ import {
   Calendar as CalendarIcon,
   LayoutDashboard,
   Users,
+  Inbox,
+  Compass,
+  Home,
+  ChevronRight,
+  ChevronDown,
+  Plus,
+  FileText,
 } from 'lucide-react';
 import { useKeep } from '@/context/KeepContext';
 import { ViewFilter } from '@/types/note';
@@ -56,10 +63,59 @@ export const Sidebar: React.FC<SidebarProps> = ({
     isPwaInstalled,
     setIsDateCompileModalOpen,
     setEditingNote,
+    unconnectedCount,
+    hubTrees,
+    layoutMode,
+    setLayoutMode,
+    openInKnowledgeMap,
+    addNote,
+    connectNotes,
   } = useKeep();
 
-  const navItems: { id: ViewFilter; label: string; icon: React.ReactNode }[] = [
+  const [expandedHubIds, setExpandedHubIds] = React.useState<Record<string, boolean>>({});
+  const [isCreatingHub, setIsCreatingHub] = React.useState(false);
+  const [newHubTitle, setNewHubTitle] = React.useState('');
+
+  const toggleHubExpanded = (hubId: string) => {
+    setExpandedHubIds((prev) => ({ ...prev, [hubId]: !prev[hubId] }));
+  };
+
+  const handleQuickCreateHub = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = newHubTitle.trim();
+    if (!trimmed) return;
+    const created = await addNote({
+      title: trimmed,
+      content: `## 🏠 ${trimmed} Hub\n\nCentral index note for ${trimmed}. Add sub-pages below or type \`[[\` to connect related notes.`,
+      isHub: true,
+      noteType: 'notion',
+    });
+    setNewHubTitle('');
+    setIsCreatingHub(false);
+    if (created) {
+      setExpandedHubIds((prev) => ({ ...prev, [created.id]: true }));
+      setEditingNote(created);
+    }
+  };
+
+  const handleQuickCreateChild = async (hubId: string, hubCategory?: string | null) => {
+    const created = await addNote({
+      title: 'Untitled Page',
+      content: '',
+      parentNoteId: hubId,
+      category: hubCategory || null,
+      noteType: 'notion',
+    });
+    if (created) {
+      await connectNotes(created.id, hubId, 'part_of');
+      setExpandedHubIds((prev) => ({ ...prev, [hubId]: true }));
+      setEditingNote(created);
+    }
+  };
+
+  const navItems: { id: ViewFilter; label: string; icon: React.ReactNode; badge?: number }[] = [
     { id: 'notes', label: 'Notes', icon: <Lightbulb className="w-5 h-5" /> },
+    { id: 'unconnected', label: 'Unconnected', icon: <Inbox className="w-5 h-5" />, badge: unconnectedCount },
     { id: 'psi', label: 'PSI Dashboard', icon: <LayoutDashboard className="w-5 h-5" /> },
     { id: 'team', label: 'Team Dashboard', icon: <Users className="w-5 h-5" /> },
     { id: 'reminders', label: 'Reminders', icon: <Bell className="w-5 h-5" /> },
@@ -71,6 +127,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const handleSelectNav = (id: ViewFilter, labelName?: string) => {
     setEditingNote(null);
+    if (id === 'notes' && layoutMode === 'map') {
+      setLayoutMode('grid');
+    }
     setCurrentFilter(id, labelName);
     if (typeof window !== 'undefined') {
       if (id === 'calendar') {
@@ -110,7 +169,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="flex flex-col gap-1">
           {/* Main tabs */}
           {navItems.map((item) => {
-            const isActive = currentFilter === item.id;
+            const isActive =
+              currentFilter === item.id && !(item.id === 'notes' && layoutMode === 'map');
             return (
               <button
                 key={item.id}
@@ -126,12 +186,42 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <span className={`shrink-0 ${isActive ? 'text-stone-900 dark:text-stone-100' : ''}`}>
                   {item.icon}
                 </span>
-                <span className={`truncate ${isOpen ? 'inline' : 'hidden lg:hidden'}`}>
-                  {item.label}
+                <span className={`truncate flex-1 flex items-center justify-between ${isOpen ? 'inline-flex' : 'hidden lg:hidden'}`}>
+                  <span className="truncate">{item.label}</span>
+                  {item.badge !== undefined && item.badge > 0 && (
+                    <span className="ml-2 px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-800 dark:text-amber-300">
+                      {item.badge}
+                    </span>
+                  )}
                 </span>
               </button>
             );
           })}
+
+          {/* Knowledge Map quick entry */}
+          <button
+            type="button"
+            onClick={() => {
+              openInKnowledgeMap(null);
+              if (typeof window !== 'undefined' && window.location.pathname !== '/') {
+                window.history.pushState(null, '', '/');
+              }
+              if (window.innerWidth < 1024) {
+                onCloseMobile?.();
+              }
+            }}
+            className={`flex items-center gap-5 px-4 py-3 rounded-r-full text-sm font-medium transition-colors ${
+              currentFilter === 'notes' && layoutMode === 'map'
+                ? 'bg-amber-500/15 text-amber-900 font-semibold dark:bg-amber-500/20 dark:text-amber-200'
+                : 'text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800'
+            }`}
+            title="Open Visual Knowledge Map"
+          >
+            <Compass className={`w-5 h-5 shrink-0 ${currentFilter === 'notes' && layoutMode === 'map' ? 'text-amber-500' : 'text-stone-500 dark:text-stone-400'}`} />
+            <span className={`truncate ${isOpen ? 'inline' : 'hidden lg:hidden'}`}>
+              Knowledge Map
+            </span>
+          </button>
 
           {/* Create Note from Date Range */}
           <button
@@ -150,6 +240,132 @@ export const Sidebar: React.FC<SidebarProps> = ({
               Notes by Date Range
             </span>
           </button>
+
+          <div className="my-2 border-t border-stone-200 dark:border-stone-800" />
+
+          {/* Knowledge Hubs Tree section */}
+          {isOpen && (
+            <div className="px-4 py-1 text-xs font-semibold text-stone-500 uppercase tracking-wider flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <Home className="w-3.5 h-3.5 text-amber-500" />
+                <span>Knowledge Hubs</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsCreatingHub(!isCreatingHub)}
+                className="p-0.5 rounded hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-500 hover:text-stone-800 dark:hover:text-stone-200 cursor-pointer"
+                title="Create a new Knowledge Hub"
+              >
+                <Plus className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
+          {isOpen && isCreatingHub && (
+            <form onSubmit={handleQuickCreateHub} className="px-3 py-1 flex items-center gap-1">
+              <input
+                type="text"
+                autoFocus
+                value={newHubTitle}
+                onChange={(e) => setNewHubTitle(e.target.value)}
+                placeholder="New Hub title..."
+                className="flex-1 min-w-0 px-2 py-1 text-xs rounded-lg bg-stone-100 dark:bg-stone-800 border border-amber-500/40 outline-none"
+              />
+              <button
+                type="submit"
+                className="px-2 py-1 rounded-lg bg-amber-500 text-stone-950 text-[11px] font-semibold cursor-pointer"
+              >
+                Add
+              </button>
+            </form>
+          )}
+
+          {isMounted && isOpen && hubTrees.length === 0 && !isCreatingHub && (
+            <div className="px-4 py-1.5 text-[11px] text-stone-400 dark:text-stone-500 leading-snug">
+              Pin any note as a <strong className="text-stone-600 dark:text-stone-300">Hub</strong> to build your quick-access tree.
+            </div>
+          )}
+
+          {isMounted && hubTrees.map(({ hub, children }) => {
+            const isExpanded = Boolean(expandedHubIds[hub.id]);
+            return (
+              <div key={hub.id} className="flex flex-col">
+                <div className="group flex items-center gap-1 pr-2 rounded-r-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors">
+                  {isOpen && (
+                    <button
+                      type="button"
+                      onClick={() => toggleHubExpanded(hub.id)}
+                      className="p-1.5 ml-1.5 rounded text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 cursor-pointer shrink-0"
+                      title={isExpanded ? 'Collapse Hub' : 'Expand Hub sub-pages'}
+                    >
+                      {isExpanded ? (
+                        <ChevronDown className="w-3.5 h-3.5" />
+                      ) : (
+                        <ChevronRight className="w-3.5 h-3.5" />
+                      )}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingNote(hub);
+                      if (window.innerWidth < 1024) onCloseMobile?.();
+                    }}
+                    className={`flex-1 min-w-0 flex items-center gap-3 py-2 text-sm font-medium text-stone-700 dark:text-stone-300 text-left cursor-pointer ${
+                      isOpen ? 'px-1' : 'px-4 justify-center'
+                    }`}
+                    title={hub.title || 'Untitled Hub'}
+                  >
+                    <span className="shrink-0 text-sm">🏠</span>
+                    <span className={`truncate flex-1 ${isOpen ? 'inline' : 'hidden lg:hidden'}`}>
+                      {hub.title || 'Untitled Hub'}
+                    </span>
+                    {isOpen && children.length > 0 && (
+                      <span className="text-[10px] font-mono text-stone-400 shrink-0">
+                        {children.length}
+                      </span>
+                    )}
+                  </button>
+                  {isOpen && (
+                    <button
+                      type="button"
+                      onClick={() => handleQuickCreateChild(hub.id, hub.category)}
+                      className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-amber-500/20 text-stone-400 hover:text-amber-600 dark:hover:text-amber-400 transition-opacity cursor-pointer shrink-0"
+                      title={`New sub-page inside "${hub.title || 'Hub'}"`}
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {isOpen && isExpanded && (
+                  <div className="pl-7 pr-2 space-y-0.5 border-l border-stone-200 dark:border-stone-800 ml-5 my-0.5">
+                    {children.length > 0 ? (
+                      children.map((child) => (
+                        <button
+                          key={child.id}
+                          type="button"
+                          onClick={() => {
+                            setEditingNote(child);
+                            if (window.innerWidth < 1024) onCloseMobile?.();
+                          }}
+                          className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors text-left cursor-pointer"
+                          title={child.title || 'Untitled Page'}
+                        >
+                          <FileText className="w-3.5 h-3.5 text-stone-400 shrink-0" />
+                          <span className="truncate">{child.title || 'Untitled Page'}</span>
+                        </button>
+                      ))
+                    ) : (
+                      <div className="px-2 py-1 text-[11px] text-stone-400 italic">
+                        No sub-pages yet
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
 
           <div className="my-2 border-t border-stone-200 dark:border-stone-800" />
 

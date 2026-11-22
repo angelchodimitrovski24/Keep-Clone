@@ -1,10 +1,11 @@
 'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Search, X, Link2, FileText, CheckSquare, FolderOpen, Lock } from 'lucide-react';
-import { Note } from '@/types/note';
+import { Search, X, Link2, FileText, CheckSquare, FolderOpen, Lock, Plus } from 'lucide-react';
+import { Note, NoteConnectionRole } from '@/types/note';
 import { useKeep } from '@/context/KeepContext';
 import { searchLinkableNotesFromDB } from '@/lib/db';
+import { CONNECTION_ROLE_META, CONNECTION_ROLES_ORDER } from '@/lib/noteGraph';
 
 interface LinkNoteModalProps {
   currentNoteId?: string;
@@ -13,32 +14,43 @@ interface LinkNoteModalProps {
   notes: Note[];
   isOpen: boolean;
   onClose: () => void;
-  onSelectNote: (targetNote: Note) => void;
+  onSelectNote: (targetNote: Note, role: NoteConnectionRole) => void;
+  initialRole?: NoteConnectionRole;
+  enableRoleSelector?: boolean;
+  modalTitle?: string;
+  modalSubtitle?: string;
 }
 
-export const LinkNoteModal: React.FC<LinkNoteModalProps> = ({
+export const LinkNoteModal: React.FC<LinkNoteModalProps> = (props) => {
+  if (!props.isOpen) return null;
+  return (
+    <LinkNoteModalInner
+      key={`${props.currentNoteId || 'new'}:${props.initialRole || 'related'}`}
+      {...props}
+    />
+  );
+};
+
+const LinkNoteModalInner: React.FC<LinkNoteModalProps> = ({
   currentNoteId,
   currentCategory,
   excludeNoteIds,
   notes,
-  isOpen,
   onClose,
   onSelectNote,
+  initialRole = 'related',
+  enableRoleSelector = true,
+  modalTitle = 'Link to Another Note',
+  modalSubtitle = 'Connect notes across categories with optional meaning',
 }) => {
-  const { categories, selectedCategory, isCategoryLocked } = useKeep();
+  const { categories, selectedCategory, isCategoryLocked, addNote, hubTrees } = useKeep();
   const [query, setQuery] = useState('');
   const [categoryScope, setCategoryScope] = useState<string>('__all__');
+  const [selectedRole, setSelectedRole] = useState<NoteConnectionRole>(initialRole);
   const [dbNotes, setDbNotes] = useState<Note[] | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
 
   const activeNoteCategory = currentCategory !== undefined ? currentCategory : selectedCategory;
-
-  // Reset search state and default to cross-category search whenever modal opens
-  useEffect(() => {
-    if (isOpen) {
-      setQuery('');
-      setCategoryScope('__all__');
-    }
-  }, [isOpen]);
 
   const excludedIds = useMemo(() => {
     const list = [...(excludeNoteIds || [])];
@@ -47,13 +59,12 @@ export const LinkNoteModal: React.FC<LinkNoteModalProps> = ({
   }, [excludeNoteIds, currentNoteId]);
 
   useEffect(() => {
-    if (!isOpen) return;
     let cancelled = false;
 
     const timer = setTimeout(() => {
       searchLinkableNotesFromDB({
         query,
-        categoryFilter: categoryScope,
+        categoryFilter: categoryScope === '__hubs__' ? '__all__' : categoryScope,
         excludeNoteIds: excludedIds,
         limit: 40,
       })
@@ -69,7 +80,7 @@ export const LinkNoteModal: React.FC<LinkNoteModalProps> = ({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [isOpen, query, categoryScope, excludedIds]);
+  }, [query, categoryScope, excludedIds]);
 
   const categoryColorMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -85,6 +96,7 @@ export const LinkNoteModal: React.FC<LinkNoteModalProps> = ({
 
     const matchesCategory = (n: Note) => {
       if (categoryScope === '__all__') return true;
+      if (categoryScope === '__hubs__') return Boolean(n.isHub);
       if (categoryScope === '__uncategorized__') return !n.category;
       return (n.category || '').toLowerCase() === categoryScope.toLowerCase();
     };
@@ -100,7 +112,8 @@ export const LinkNoteModal: React.FC<LinkNoteModalProps> = ({
     };
 
     const merged = new Map<string, Note>();
-    const sourceList = dbNotes ? [...dbNotes, ...notes] : notes;
+    const hubNodes = hubTrees.map((t) => t.hub);
+    const sourceList = dbNotes ? [...hubNodes, ...dbNotes, ...notes] : [...hubNodes, ...notes];
     for (const n of sourceList) {
       if (n.isTrash || excludeSet.has(n.id) || merged.has(n.id)) continue;
       if (!matchesCategory(n) || !matchesQuery(n)) continue;
@@ -108,10 +121,33 @@ export const LinkNoteModal: React.FC<LinkNoteModalProps> = ({
       if (merged.size >= 40) break;
     }
 
-    return Array.from(merged.values());
-  }, [dbNotes, notes, excludedIds, query, categoryScope]);
+    const list = Array.from(merged.values());
+    if (selectedRole === 'part_of') {
+      list.sort((a, b) => Number(Boolean(b.isHub)) - Number(Boolean(a.isHub)));
+    }
+    return list;
+  }, [dbNotes, notes, hubTrees, excludedIds, query, categoryScope, selectedRole]);
 
-  if (!isOpen) return null;
+  const handleCreateAndLink = async () => {
+    const trimmed = query.trim();
+    if (!trimmed || isCreating) return;
+    setIsCreating(true);
+    try {
+      const created = await addNote({
+        title: trimmed,
+        content: '',
+        category: activeNoteCategory || null,
+        isHub: selectedRole === 'part_of',
+        noteType: selectedRole === 'part_of' ? 'notion' : 'default',
+      });
+      if (created) {
+        onSelectNote(created, selectedRole);
+        onClose();
+      }
+    } finally {
+      setIsCreating(false);
+    }
+  };
 
   return (
     <div
@@ -128,7 +164,7 @@ export const LinkNoteModal: React.FC<LinkNoteModalProps> = ({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-md max-h-[82vh] bg-white dark:bg-[#202124] rounded-2xl shadow-2xl border border-stone-200 dark:border-stone-700/80 p-5 flex flex-col gap-3 text-stone-800 dark:text-stone-200"
+        className="w-full max-w-md max-h-[85vh] bg-white dark:bg-[#202124] rounded-2xl shadow-2xl border border-stone-200 dark:border-stone-700/80 p-5 flex flex-col gap-3 text-stone-800 dark:text-stone-200"
       >
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -136,10 +172,10 @@ export const LinkNoteModal: React.FC<LinkNoteModalProps> = ({
             <Link2 className="w-5 h-5 text-amber-500" />
             <div>
               <h3 className="font-semibold text-base text-stone-900 dark:text-stone-100 leading-tight">
-                Link to Another Note
+                {modalTitle}
               </h3>
               <p className="text-[11px] text-stone-500 dark:text-stone-400">
-                Link notes within the same or different categories
+                {modalSubtitle}
               </p>
             </div>
           </div>
@@ -155,12 +191,50 @@ export const LinkNoteModal: React.FC<LinkNoteModalProps> = ({
           </button>
         </div>
 
+        {/* Connection Role Selector */}
+        {enableRoleSelector && (
+          <div className="space-y-1">
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-stone-400">
+              Connection Meaning
+            </div>
+            <div className="grid grid-cols-2 gap-1.5">
+              {CONNECTION_ROLES_ORDER.map((r) => {
+                const meta = CONNECTION_ROLE_META[r];
+                const isActive = selectedRole === r;
+                return (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => {
+                      setSelectedRole(r);
+                      if (r === 'part_of' && hubTrees.length > 0 && categoryScope === '__all__') {
+                        setCategoryScope('__hubs__');
+                      } else if (r !== 'part_of' && categoryScope === '__hubs__') {
+                        setCategoryScope('__all__');
+                      }
+                    }}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium border text-left transition-all cursor-pointer ${
+                      isActive
+                        ? `${meta.badgeClass} font-semibold shadow-2xs`
+                        : 'bg-stone-50 dark:bg-stone-800/70 border-stone-200 dark:border-stone-700/80 text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800'
+                    }`}
+                    title={meta.description}
+                  >
+                    <span className="shrink-0">{meta.emoji}</span>
+                    <span className="truncate">{meta.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Search */}
         <div className="relative">
           <Search className="w-4 h-4 absolute left-3 top-3 text-stone-400" />
           <input
             type="text"
-            placeholder="Search notes across all categories..."
+            placeholder="Search notes or type a new note title..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             autoFocus
@@ -179,14 +253,28 @@ export const LinkNoteModal: React.FC<LinkNoteModalProps> = ({
                 : 'bg-stone-100 dark:bg-stone-800/80 border-transparent text-stone-600 dark:text-stone-300 hover:bg-stone-200/70 dark:hover:bg-stone-700/70'
             }`}
           >
-            All Categories
+            All
           </button>
+
+          {hubTrees.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setCategoryScope('__hubs__')}
+              className={`px-2.5 py-1 rounded-lg font-medium border transition-colors ${
+                categoryScope === '__hubs__'
+                  ? 'bg-amber-500/15 border-amber-500/40 text-amber-700 dark:text-amber-300'
+                  : 'bg-stone-100 dark:bg-stone-800/80 border-transparent text-stone-600 dark:text-stone-300 hover:bg-stone-200/70 dark:hover:bg-stone-700/70'
+              }`}
+            >
+              🏠 Hubs ({hubTrees.length})
+            </button>
+          )}
 
           {activeNoteCategory && (
             <button
               type="button"
               onClick={() => setCategoryScope(activeNoteCategory)}
-              className={`px-2.5 py-1 rounded-lg font-medium border transition-colors truncate max-w-[140px] ${
+              className={`px-2.5 py-1 rounded-lg font-medium border transition-colors truncate max-w-[120px] ${
                 categoryScope.toLowerCase() === activeNoteCategory.toLowerCase()
                   ? 'bg-amber-500/15 border-amber-500/40 text-amber-700 dark:text-amber-300'
                   : 'bg-stone-100 dark:bg-stone-800/80 border-transparent text-stone-600 dark:text-stone-300 hover:bg-stone-200/70 dark:hover:bg-stone-700/70'
@@ -203,9 +291,10 @@ export const LinkNoteModal: React.FC<LinkNoteModalProps> = ({
               value={categoryScope}
               onChange={(e) => setCategoryScope(e.target.value)}
               aria-label="Filter linkable notes by category"
-              className="px-2 py-1 rounded-lg bg-stone-100 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 text-xs text-stone-700 dark:text-stone-200 outline-none focus:ring-2 focus:ring-amber-500 max-w-[145px]"
+              className="px-2 py-1 rounded-lg bg-stone-100 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 text-xs text-stone-700 dark:text-stone-200 outline-none focus:ring-2 focus:ring-amber-500 max-w-[130px]"
             >
               <option value="__all__">All Categories</option>
+              <option value="__hubs__">🏠 Hubs Only</option>
               <option value="__uncategorized__">Uncategorized</option>
               {categories.map((cat) => (
                 <option key={cat.id} value={cat.name}>
@@ -218,7 +307,7 @@ export const LinkNoteModal: React.FC<LinkNoteModalProps> = ({
         </div>
 
         {/* Note list */}
-        <div className="flex-1 overflow-y-auto max-h-72 space-y-1.5 pr-1">
+        <div className="flex-1 overflow-y-auto max-h-68 space-y-1.5 pr-1">
           {candidates.length > 0 ? (
             candidates.map((n) => {
               const catColor = n.category ? categoryColorMap.get(n.category.toLowerCase()) : undefined;
@@ -231,7 +320,7 @@ export const LinkNoteModal: React.FC<LinkNoteModalProps> = ({
                   key={n.id}
                   onClick={(e) => {
                     e.stopPropagation();
-                    onSelectNote(n);
+                    onSelectNote(n, selectedRole);
                     onClose();
                   }}
                   className="flex items-start gap-3 p-2.5 rounded-xl hover:bg-amber-500/10 dark:hover:bg-amber-500/15 border border-transparent hover:border-amber-500/20 cursor-pointer transition-colors group"
@@ -239,6 +328,8 @@ export const LinkNoteModal: React.FC<LinkNoteModalProps> = ({
                   <div className="mt-0.5 text-stone-400 group-hover:text-amber-600 shrink-0">
                     {locked ? (
                       <Lock className="w-4 h-4 text-amber-500" />
+                    ) : n.isHub ? (
+                      <span className="text-sm leading-none">🏠</span>
                     ) : n.isList ? (
                       <CheckSquare className="w-4 h-4" />
                     ) : (
@@ -251,6 +342,11 @@ export const LinkNoteModal: React.FC<LinkNoteModalProps> = ({
                         {n.title || 'Untitled Note'}
                       </h4>
                       <div className="flex items-center gap-1 shrink-0">
+                        {n.isHub && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-amber-500/15 text-amber-700 dark:text-amber-300 font-semibold">
+                            Hub
+                          </span>
+                        )}
                         {n.isArchived && (
                           <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-stone-200/70 dark:bg-stone-700/70 text-stone-500 dark:text-stone-400">
                             Archived
@@ -287,11 +383,28 @@ export const LinkNoteModal: React.FC<LinkNoteModalProps> = ({
               );
             })
           ) : (
-            <div className="py-8 text-center text-xs text-stone-400">
+            <div className="py-6 text-center text-xs text-stone-400">
               No matching notes found.
             </div>
           )}
         </div>
+
+        {/* Create & Link on the fly */}
+        {query.trim() && (
+          <button
+            type="button"
+            disabled={isCreating}
+            onClick={handleCreateAndLink}
+            className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-stone-950 font-semibold text-xs transition-colors shadow-xs cursor-pointer disabled:opacity-60"
+          >
+            <Plus className="w-4 h-4" />
+            <span>
+              {isCreating
+                ? 'Creating...'
+                : `Create ${selectedRole === 'part_of' ? 'Hub' : 'Note'} "${query.trim()}" & Connect`}
+            </span>
+          </button>
+        )}
       </div>
     </div>
   );

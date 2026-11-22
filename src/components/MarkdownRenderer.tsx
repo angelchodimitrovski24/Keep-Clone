@@ -116,12 +116,18 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(
     }, [renderedHtml]);
 
     const handleContainerClick = (e: React.MouseEvent<HTMLDivElement>) => {
-      // Handle note link clicks ([[Wiki Links]])
-      const linkTarget = (e.target as HTMLElement).closest('[data-note-link-title]') as HTMLElement | null;
+      // Handle note link clicks ([[Wiki Links]] & live noteMention chips)
+      const linkTarget = (e.target as HTMLElement).closest(
+        '[data-note-id], [data-note-link-id], [data-note-link-title], [data-note-title]'
+      ) as HTMLElement | null;
       if (linkTarget && onOpenLinkedNote) {
         e.stopPropagation();
-        const title = linkTarget.getAttribute('data-note-link-title');
-        if (title) onOpenLinkedNote(title);
+        const idOrTitle =
+          linkTarget.getAttribute('data-note-id') ||
+          linkTarget.getAttribute('data-note-link-id') ||
+          linkTarget.getAttribute('data-note-link-title') ||
+          linkTarget.getAttribute('data-note-title');
+        if (idOrTitle) onOpenLinkedNote(idOrTitle);
         return;
       }
 

@@ -1,6 +1,7 @@
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
-import { Note, Label, Category, ReadingSession, CalendarItem, NoteColor } from '@/types/note';
-import { extractNoteLinksFromContent, NoteLinkTarget, BidirectionalLinksResult } from './noteLinks';
+import { Note, NoteConnectionRole, Label, Category, ReadingSession, CalendarItem, NoteColor } from '@/types/note';
+import { extractNoteLinksFromContent, extractNoteLinkTargetsFromContent, NoteLinkTarget, BidirectionalLinksResult } from './noteLinks';
+import { buildConnectedNoteIdsSet } from './noteGraph';
 
 export interface SearchTokenRecord {
   id: string; // `${token}_${noteId}`
@@ -298,7 +299,8 @@ function matchesFilterConditions(
   note: Note,
   filter: string,
   category?: string | null,
-  label?: string | null
+  label?: string | null,
+  hideSubnotes?: boolean
 ): boolean {
   if (filter === 'trash') {
     return !!note.isTrash;
@@ -311,6 +313,10 @@ function matchesFilterConditions(
     return !!note.isArchived;
   }
   if (note.isArchived) {
+    return false;
+  }
+
+  if (hideSubnotes && (filter === 'notes' || filter === 'category') && note.parentNoteId) {
     return false;
   }
 
@@ -331,6 +337,69 @@ function matchesFilterConditions(
   return true;
 }
 
+export async function getAllActiveNotesForStructureFromDB(limit = 2000): Promise<Note[]> {
+  const db = await getKeepDB();
+  if (!db) return [];
+  const results: Note[] = [];
+  const tx = db.transaction('notes', 'readonly');
+  const index = tx.store.index('by-updated');
+  let cursor = await index.openCursor(null, 'prev');
+  while (cursor && results.length < limit) {
+    const note = cursor.value;
+    if (!note.isTrash && !note.isArchived) {
+      results.push(note);
+    }
+    cursor = await cursor.continue();
+  }
+  return results;
+}
+
+export async function getUnconnectedNotesFromDB(limit = 5000): Promise<Note[]> {
+  const activeNotes = await getAllActiveNotesForStructureFromDB(limit);
+  const connected = buildConnectedNoteIdsSet(activeNotes);
+  return activeNotes.filter((n) => !n.isHub && !connected.has(n.id));
+}
+
+export async function getUnconnectedCountFromDB(): Promise<number> {
+  const unconnected = await getUnconnectedNotesFromDB(5000);
+  return unconnected.length;
+}
+
+export interface HubTreeRecord {
+  hub: Note;
+  children: Note[];
+}
+
+export async function getHubTreesFromDB(): Promise<HubTreeRecord[]> {
+  const activeNotes = await getAllActiveNotesForStructureFromDB(3000);
+  const byId = new Map(activeNotes.map((n) => [n.id, n]));
+  const hubs = activeNotes
+    .filter((n) => Boolean(n.isHub))
+    .sort((a, b) => {
+      if (Boolean(a.isPinned) !== Boolean(b.isPinned)) return a.isPinned ? -1 : 1;
+      return (b.updatedAt || 0) - (a.updatedAt || 0);
+    });
+
+  return hubs.map((hub) => {
+    const childMap = new Map<string, Note>();
+    for (const cid of hub.childNoteIds || []) {
+      const child = byId.get(cid);
+      if (child && !child.isTrash && !child.isArchived && !childMap.has(child.id)) {
+        childMap.set(child.id, child);
+      }
+    }
+    for (const n of activeNotes) {
+      if (n.parentNoteId === hub.id && !childMap.has(n.id)) {
+        childMap.set(n.id, n);
+      }
+    }
+    return {
+      hub,
+      children: Array.from(childMap.values()),
+    };
+  });
+}
+
 export async function getNotesPagedFromDB(params: {
   filter?: string;
   category?: string | null;
@@ -338,6 +407,7 @@ export async function getNotesPagedFromDB(params: {
   searchQuery?: string;
   page?: number;
   pageSize?: number;
+  hideSubnotes?: boolean;
 }): Promise<PagedNotesResult> {
   const db = await getKeepDB();
   const page = Math.max(1, params.page || 1);
@@ -347,7 +417,7 @@ export async function getNotesPagedFromDB(params: {
     return { notes: [], totalCount: 0, page: 1, pageSize, totalPages: 1 };
   }
 
-  const { filter = 'notes', category, label, searchQuery } = params;
+  const { filter = 'notes', category, label, searchQuery, hideSubnotes = false } = params;
   const q = (searchQuery || '').trim().toLowerCase();
 
   // 1. FAST & COMPREHENSIVE SEARCH PATH (Title, Content, Category, Labels, Todos)
@@ -447,10 +517,51 @@ export async function getNotesPagedFromDB(params: {
     return { notes, totalCount, page: effectivePage, pageSize, totalPages };
   }
 
+  // 1.5. UNCONNECTED INBOX VIEW (Orphan notes with no Hub, parent, child, or link)
+  if (filter === 'unconnected' && q.length === 0) {
+    const unconnectedNotes = await getUnconnectedNotesFromDB(5000);
+    const totalCount = unconnectedNotes.length;
+    const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+    const effectivePage = Math.min(page, totalPages);
+    const startIndex = (effectivePage - 1) * pageSize;
+    return {
+      notes: unconnectedNotes.slice(startIndex, startIndex + pageSize),
+      totalCount,
+      page: effectivePage,
+      pageSize,
+      totalPages,
+    };
+  }
+
   // 2. CURSOR PAGINATION FOR GENERAL BROWSING
   const tx = db.transaction('notes', 'readonly');
   const store = tx.store;
   const index = store.index('by-updated');
+
+  if (hideSubnotes && (filter === 'notes' || filter === 'category')) {
+    const matchedNotes: Note[] = [];
+    let cursor = await index.openCursor(null, 'prev');
+    let scanned = 0;
+    while (cursor && scanned < 100000) {
+      scanned++;
+      const note = cursor.value;
+      if (matchesFilterConditions(note, filter, category, label, true)) {
+        matchedNotes.push(note);
+      }
+      cursor = await cursor.continue();
+    }
+    const totalCount = matchedNotes.length;
+    const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+    const effectivePage = Math.min(page, totalPages);
+    const startIndex = (effectivePage - 1) * pageSize;
+    return {
+      notes: matchedNotes.slice(startIndex, startIndex + pageSize),
+      totalCount,
+      page: effectivePage,
+      pageSize,
+      totalPages,
+    };
+  }
 
   let totalCount = 0;
   try {
@@ -745,22 +856,55 @@ export async function findNoteByTitleOrIdFromDB(titleOrId: string): Promise<Note
 
 export async function getBidirectionalLinksFromDB(currentNote: Note): Promise<BidirectionalLinksResult> {
   const db = await getKeepDB();
-  if (!db || !currentNote) return { outgoing: [], backlinks: [] };
+  if (!db || !currentNote) {
+    return { outgoing: [], backlinks: [], prevNotes: [], nextNotes: [], sources: [] };
+  }
 
   const outgoingMap = new Map<string, NoteLinkTarget>();
   const backlinksMap = new Map<string, NoteLinkTarget>();
+  const prevMap = new Map<string, NoteLinkTarget>();
+  const nextMap = new Map<string, NoteLinkTarget>();
+  const sourcesMap = new Map<string, NoteLinkTarget>();
 
-  const linkedIds = currentNote.linkedNoteIds || [];
-  for (const id of linkedIds) {
+  const currentTokens = extractNoteLinkTargetsFromContent(currentNote.content || '');
+  const currentConnMap = new Map<string, { role: NoteConnectionRole; label?: string }>();
+  for (const conn of currentNote.connections || []) {
+    if (conn.targetId) {
+      currentConnMap.set(conn.targetId, { role: conn.role, label: conn.label });
+    }
+  }
+  for (const tok of currentTokens) {
+    if (tok.id && tok.role && !currentConnMap.has(tok.id)) {
+      currentConnMap.set(tok.id, { role: tok.role });
+    }
+  }
+
+  const directTargetIds = Array.from(
+    new Set([
+      ...(currentNote.linkedNoteIds || []),
+      ...(currentNote.connections || []).map((c) => c.targetId),
+      ...currentTokens.map((t) => t.id || '').filter(Boolean),
+    ])
+  );
+
+  for (const id of directTargetIds) {
     if (!id || id === currentNote.id) continue;
     try {
       const target = await db.get('notes', id);
       if (target && !target.isTrash) {
-        outgoingMap.set(target.id, {
+        const meta = currentConnMap.get(target.id);
+        const role: NoteConnectionRole = meta?.role || 'related';
+        const linkObj: NoteLinkTarget = {
           id: target.id,
           title: target.title || 'Untitled Note',
           category: target.category || null,
-        });
+          role,
+          isHub: Boolean(target.isHub),
+          label: meta?.label,
+        };
+        outgoingMap.set(target.id, linkObj);
+        if (role === 'next') nextMap.set(target.id, linkObj);
+        if (role === 'source') sourcesMap.set(target.id, linkObj);
       }
     } catch {}
   }
@@ -786,14 +930,25 @@ export async function getBidirectionalLinksFromDB(currentNote: Note): Promise<Bi
         !outgoingMap.has(other.id) &&
         (currentExtractedSet.has(otherIdLower) || (otherTitleLower && currentExtractedSet.has(otherTitleLower)))
       ) {
-        outgoingMap.set(other.id, {
+        const meta = currentConnMap.get(other.id);
+        const role: NoteConnectionRole = meta?.role || 'related';
+        const linkObj: NoteLinkTarget = {
           id: other.id,
           title: other.title || 'Untitled Note',
           category: other.category || null,
-        });
+          role,
+          isHub: Boolean(other.isHub),
+          label: meta?.label,
+        };
+        outgoingMap.set(other.id, linkObj);
+        if (role === 'next') nextMap.set(other.id, linkObj);
+        if (role === 'source') sourcesMap.set(other.id, linkObj);
       }
 
-      const directBacklink = Boolean(other.linkedNoteIds && other.linkedNoteIds.includes(currentNote.id));
+      const otherConn = (other.connections || []).find((c) => c.targetId === currentNote.id);
+      const directBacklink =
+        Boolean(other.linkedNoteIds && other.linkedNoteIds.includes(currentNote.id)) ||
+        Boolean(otherConn);
       let contentBacklink = false;
       if (!directBacklink && other.content && (other.content.includes('[[') || other.content.includes('data-note-'))) {
         const contentLower = other.content.toLowerCase();
@@ -807,11 +962,19 @@ export async function getBidirectionalLinksFromDB(currentNote: Note): Promise<Bi
       }
 
       if (directBacklink || contentBacklink) {
-        backlinksMap.set(other.id, {
+        const role: NoteConnectionRole = otherConn?.role || 'related';
+        const backObj: NoteLinkTarget = {
           id: other.id,
           title: other.title || 'Untitled Note',
           category: other.category || null,
-        });
+          role,
+          isHub: Boolean(other.isHub),
+          label: otherConn?.label,
+        };
+        backlinksMap.set(other.id, backObj);
+        if (role === 'next') {
+          prevMap.set(other.id, backObj);
+        }
       }
     }
     cursor = await cursor.continue();
@@ -820,6 +983,9 @@ export async function getBidirectionalLinksFromDB(currentNote: Note): Promise<Bi
   return {
     outgoing: Array.from(outgoingMap.values()),
     backlinks: Array.from(backlinksMap.values()),
+    prevNotes: Array.from(prevMap.values()),
+    nextNotes: Array.from(nextMap.values()),
+    sources: Array.from(sourcesMap.values()),
   };
 }
 

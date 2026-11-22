@@ -17,12 +17,13 @@ import {
   DownloadCloud,
   Folder,
   Tag,
+  Home,
 } from 'lucide-react';
 import { useKeep } from '@/context/KeepContext';
 import { NoteActions, NoteActionsHandle } from './NoteActions';
 import { KeepFormattingBar } from './KeepFormattingBar';
 import { KeepWysiwygEditor, KeepWysiwygEditorHandle } from './KeepWysiwygEditor';
-import { NoteColor, NoteBackgroundTheme, TodoItem, NoteDrawing, Note } from '@/types/note';
+import { NoteColor, NoteBackgroundTheme, TodoItem, NoteDrawing, Note, NoteConnection, NoteConnectionRole } from '@/types/note';
 import { getNoteColorClasses } from '@/lib/constants';
 import { GoogleKeepFormatCommand, resolveLocalMediaUrl } from '@/lib/formatUtils';
 import { extractClipboardPayload, copyFilesToLocalFolder } from '@/lib/localPaste';
@@ -63,6 +64,7 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
     setIsSupportbenchModalOpen,
     setIsExtractUrlModalOpen,
     importDataSmart,
+    connectNotes,
   } = useKeep();
   const [isExpanded, setIsExpanded] = useState(false);
   const [title, setTitle] = useState('');
@@ -79,6 +81,9 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
   const [images, setImages] = useState<string[]>([]);
   const [drawings, setDrawings] = useState<NoteDrawing[]>([]);
   const [linkedNoteIds, setLinkedNoteIds] = useState<string[]>([]);
+  const [connections, setConnections] = useState<NoteConnection[]>([]);
+  const [parentHubId, setParentHubId] = useState<string | null>(null);
+  const [isHub, setIsHub] = useState(false);
   const [childNoteIds, setChildNoteIds] = useState<string[]>([]);
   const [isNotionMode, setIsNotionMode] = useState(false);
   const [tempNoteId, setTempNoteId] = useState<string>(() => 'note-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6));
@@ -203,6 +208,9 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
     setImages([]);
     setDrawings([]);
     setLinkedNoteIds([]);
+    setConnections([]);
+    setParentHubId(null);
+    setIsHub(false);
     setChildNoteIds([]);
     setIsNotionMode(false);
     setTempNoteId('note-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6));
@@ -267,11 +275,17 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
             images: [],
             drawings,
             linkedNoteIds,
+            connections,
+            isHub,
+            parentNoteId: parentHubId,
             childNoteIds,
-            noteType: isNotionMode || childNoteIds.length > 0 ? 'notion' : 'default',
+            noteType: isHub || isNotionMode || childNoteIds.length > 0 ? 'notion' : 'default',
             isEncrypted: true,
             encryptedData: bundle,
           });
+          if (parentHubId && created) {
+            await connectNotes(created.id, parentHubId, 'part_of');
+          }
 
           // Cache in session so user sees their new note unlocked immediately
           setUnlockedNote(created.id, {
@@ -285,7 +299,7 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
           console.error('Failed to encrypt note on create:', err);
         }
       } else {
-        await addNote({
+        const created = await addNote({
           id: tempNoteId,
           title: title.trim(),
           content: latestContent.trim(),
@@ -300,9 +314,15 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
           images,
           drawings,
           linkedNoteIds,
+          connections,
+          isHub,
+          parentNoteId: parentHubId,
           childNoteIds,
-          noteType: isNotionMode || childNoteIds.length > 0 ? 'notion' : 'default',
+          noteType: isHub || isNotionMode || childNoteIds.length > 0 ? 'notion' : 'default',
         });
+        if (parentHubId && created) {
+          await connectNotes(created.id, parentHubId, 'part_of');
+        }
       }
     }
     resetForm();
@@ -813,10 +833,25 @@ const handleImportMhtml = async (file: File) => {
                 ref={editorRef}
                 content={content}
                 onChange={setContent}
-                placeholder="Take a note, add thoughts, markdown, or text…"
+                placeholder="Take a note, add thoughts, or type [[ to link another note…"
                 minHeightClass={(isNotionMode || childNoteIds.length > 0) ? 'min-h-[80px]' : 'min-h-[100px]'}
                 autoFocus={!isNotionMode && !isList}
                 listenWindowPaste={!editingNote}
+                currentNoteId={tempNoteId}
+                defaultCategoryForNewLink={category}
+                onNoteMentionSelected={(target, role) => {
+                  if (role === 'part_of') {
+                    setParentHubId(target.id);
+                    return;
+                  }
+                  setLinkedNoteIds((prev) => Array.from(new Set([...prev, target.id])));
+                  setConnections((prev) => {
+                    const filtered = prev.filter(
+                      (c) => !(c.targetId === target.id && c.role === role)
+                    );
+                    return [...filtered, { targetId: target.id, role, createdAt: Date.now() }];
+                  });
+                }}
               />
             </div>
           )}
@@ -886,6 +921,24 @@ const handleImportMhtml = async (file: File) => {
             >
               <Tag className="w-3.5 h-3.5 text-stone-500 dark:text-stone-400" />
               <span>+ Label</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                const next = !isHub;
+                setIsHub(next);
+                if (next) setIsNotionMode(true);
+              }}
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors cursor-pointer ${
+                isHub
+                  ? 'bg-amber-500/15 border-amber-500/40 text-amber-800 dark:text-amber-300'
+                  : 'bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-600 dark:text-stone-300 border-stone-200 dark:border-stone-700'
+              }`}
+              title="Make this new note a Knowledge Hub"
+            >
+              <Home className={`w-3.5 h-3.5 ${isHub ? 'text-amber-500' : 'text-stone-400'}`} />
+              <span>{isHub ? 'Hub ✓' : 'Make Hub'}</span>
             </button>
 
             {reminder && (
@@ -1016,20 +1069,33 @@ const handleImportMhtml = async (file: File) => {
       </div>
 
       <LinkNoteModal
-        currentNoteId=""
+        currentNoteId={tempNoteId}
         currentCategory={category}
         notes={notes}
         isOpen={showLinkModal}
         onClose={() => setShowLinkModal(false)}
-        onSelectNote={(target) => {
-          const linkSyntax = `[[${target.title || 'Untitled Note'}]]`;
-          if (!isList) {
-            editorRef.current?.insertContent(` ${linkSyntax} `);
-            setContent((prev) => `${prev} ${linkSyntax}`);
+        onSelectNote={(target, role: NoteConnectionRole) => {
+          if (role === 'part_of') {
+            setParentHubId(target.id);
+            return;
+          }
+          const linkSyntax = `[[${target.id}|${target.title || 'Untitled Note'}]]`;
+          if (!isList && editorRef.current) {
+            editorRef.current.insertNoteMention({
+              id: target.id,
+              title: target.title || 'Untitled Note',
+              role,
+            });
           } else {
             setContent((prev) => `${prev}\n${linkSyntax}`);
           }
           setLinkedNoteIds((prev) => Array.from(new Set([...prev, target.id])));
+          setConnections((prev) => {
+            const filtered = prev.filter(
+              (c) => !(c.targetId === target.id && c.role === role)
+            );
+            return [...filtered, { targetId: target.id, role, createdAt: Date.now() }];
+          });
         }}
       />
 

@@ -4,8 +4,9 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { useKeep } from '@/context/KeepContext';
 import { NoteCard } from './NoteCard';
 import { NotionNotesList } from './NotionNotesList';
+import { KnowledgeMapView } from './KnowledgeMapView';
 import { Note } from '@/types/note';
-import { Trash2, Lock, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Tag } from 'lucide-react';
+import { Trash2, Lock, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Tag, Inbox } from 'lucide-react';
 import { DeleteNotesConfirmModal } from './DeleteNotesConfirmModal';
 
 const pageSize = 20;
@@ -159,6 +160,22 @@ export const NotesGrid: React.FC<NotesGridProps> = ({
   }
 
   const renderBanner = (maxWClass: string = 'w-full') => {
+    if (currentFilter === 'unconnected') {
+      return (
+        <div className={`${maxWClass} flex flex-wrap items-center justify-between gap-2 p-3 mb-5 bg-amber-500/10 dark:bg-amber-500/10 rounded-xl text-stone-700 dark:text-stone-300 text-xs sm:text-sm border border-amber-500/25 shadow-2xs`}>
+          <div className="flex items-center gap-2">
+            <Inbox className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+            <span>
+              <strong className="text-stone-900 dark:text-stone-100">Unconnected Inbox</strong> — notes without a Hub, parent, or link yet. Click <em>File in Hub</em> or <em>Connect</em> on any card to structure it.
+            </span>
+          </div>
+          <span className="text-xs font-mono text-amber-800 dark:text-amber-300 shrink-0">
+            {totalNotesCount} {totalNotesCount === 1 ? 'note' : 'notes'}
+          </span>
+        </div>
+      );
+    }
+
     if (currentFilter === 'trash') {
       return (
         <div className={`${maxWClass} flex items-center justify-between p-3 mb-5 bg-stone-100 dark:bg-stone-800/60 rounded-xl text-stone-600 dark:text-stone-300 text-sm italic`}>
@@ -242,6 +259,17 @@ export const NotesGrid: React.FC<NotesGridProps> = ({
       }}
     />
   ) : null;
+
+  // Knowledge Map View mode
+  if (layoutMode === 'map' && currentFilter !== 'trash' && currentFilter !== 'archive') {
+    return (
+      <div className="w-full">
+        {renderBanner()}
+        <KnowledgeMapView onSelectNote={onSelectNote} />
+        {confirmModal}
+      </div>
+    );
+  }
 
   // Notion-style List View mode
   if (layoutMode === 'notion') {
@@ -340,6 +368,8 @@ export const NotesGrid: React.FC<NotesGridProps> = ({
           <div className="text-6xl mb-4">
             {searchQuery.trim()
               ? '🔍'
+              : currentFilter === 'unconnected'
+              ? '🎉'
               : currentFilter === 'notes'
               ? '💡'
               : currentFilter === 'reminders'
@@ -353,6 +383,8 @@ export const NotesGrid: React.FC<NotesGridProps> = ({
           <p className="text-lg font-medium text-stone-600 dark:text-stone-300">
             {searchQuery.trim()
               ? `No notes matching "${searchQuery.trim()}"`
+              : currentFilter === 'unconnected'
+              ? 'Every active note is connected!'
               : currentFilter === 'notes'
               ? 'No notes yet. Add one above!'
               : currentFilter === 'reminders'
@@ -365,6 +397,11 @@ export const NotesGrid: React.FC<NotesGridProps> = ({
               ? `No notes tagged with "${selectedLabel}"`
               : 'No notes found'}
           </p>
+          {currentFilter === 'unconnected' && !searchQuery.trim() && (
+            <p className="text-xs text-stone-400 dark:text-stone-500 mt-2">
+              Your structured system has zero unfiled notes right now.
+            </p>
+          )}
           {searchQuery.trim() && (
             <p className="text-xs text-stone-400 dark:text-stone-500 mt-2">
               Tip: Search matches Note Title, Content body, Category name, and Labels

@@ -36,6 +36,7 @@ import {
   ChevronRight,
   Copy,
   Check,
+  Compass,
 } from 'lucide-react';
 import { useKeep, getFontSizeInPx } from '@/context/KeepContext';
 import { FontSizeOption, AppThemeMode } from '@/types/note';
@@ -463,7 +464,7 @@ export const SettingsModal: React.FC = () => {
                 <p className="text-xs text-stone-500 dark:text-stone-400 mb-3">
                   Switch between card grid, compact list, or Notion-style document table view.
                 </p>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   <button
                     type="button"
                     onClick={() => setLayoutMode('grid')}
@@ -499,6 +500,18 @@ export const SettingsModal: React.FC = () => {
                   >
                     <FileText className="w-4 h-4" />
                     <span>Notion List</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLayoutMode('map')}
+                    className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border text-xs sm:text-sm transition-all ${
+                      layoutMode === 'map'
+                        ? 'border-stone-900 bg-stone-100 text-stone-900 dark:border-stone-400 dark:bg-stone-800 dark:text-stone-100 font-semibold ring-1 ring-stone-900 dark:ring-stone-400'
+                        : 'border-stone-200 dark:border-stone-700 text-stone-700 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-800'
+                    }`}
+                  >
+                    <Compass className="w-4 h-4 text-amber-500" />
+                    <span>Knowledge Map</span>
                   </button>
                 </div>
               </div>

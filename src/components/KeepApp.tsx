@@ -63,6 +63,7 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
     updateNote,
     addNote,
     currentFilter,
+    layoutMode,
     selectedCategory,
     defaultCategory,
     selectedLabel,
@@ -390,8 +391,8 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
                 {/* Category Filter Pills */}
                 <CategoryPillsBar />
 
-                {/* Note Composer (visible in Notes and Category views) */}
-                {(currentFilter === 'notes' || currentFilter === 'category') && (
+                {/* Note Composer (visible in Notes and Category views when not in Map mode) */}
+                {(currentFilter === 'notes' || currentFilter === 'category') && layoutMode !== 'map' && (
                   <CreateNoteBar
                     onOpenDrawingModal={() => setIsDrawingModalOpen(true, null)}
                   />

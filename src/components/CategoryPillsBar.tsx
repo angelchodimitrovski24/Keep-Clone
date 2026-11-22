@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Plus, Folder, Lock, Unlock } from 'lucide-react';
+import { Plus, Lock, Unlock, Inbox, FolderTree } from 'lucide-react';
 import { useKeep } from '@/context/KeepContext';
 
 export const CategoryPillsBar: React.FC = () => {
@@ -13,8 +13,10 @@ export const CategoryPillsBar: React.FC = () => {
 
   const {
     categories,
-    notes,
     totalActiveNotesCount,
+    unconnectedCount,
+    hideSubnotesFromFeed,
+    setHideSubnotesFromFeed,
     categoryCounts,
     currentFilter,
     selectedCategory,
@@ -25,12 +27,18 @@ export const CategoryPillsBar: React.FC = () => {
     setUnlockCategoryModalTarget,
   } = useKeep();
 
-  // Only show the category pills after client mount and when on notes or category filter view
-  if (!isMounted || (currentFilter !== 'notes' && currentFilter !== 'category')) {
+  // Only show the category pills after client mount and when on notes, unconnected, or category filter view
+  if (
+    !isMounted ||
+    (currentFilter !== 'notes' &&
+      currentFilter !== 'category' &&
+      currentFilter !== 'unconnected')
+  ) {
     return null;
   }
 
   const isAllActive = currentFilter === 'notes';
+  const isUnconnectedActive = currentFilter === 'unconnected';
 
   return (
     <div className="flex items-center gap-1.5 overflow-x-auto pb-2.5 mb-3 sm:mb-4 no-scrollbar select-none -mx-2.5 px-2.5 sm:mx-0 sm:px-0">
@@ -38,7 +46,7 @@ export const CategoryPillsBar: React.FC = () => {
       <button
         type="button"
         onClick={() => setCurrentFilter('notes')}
-        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all shadow-2xs ${
+        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all shadow-2xs cursor-pointer ${
           isAllActive
             ? 'bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 shadow-xs'
             : 'bg-white dark:bg-stone-800/80 text-stone-600 dark:text-stone-300 border border-stone-200 dark:border-stone-700 hover:bg-stone-100 dark:hover:bg-stone-700/60'
@@ -53,6 +61,30 @@ export const CategoryPillsBar: React.FC = () => {
           }`}
         >
           {totalActiveNotesCount.toLocaleString()}
+        </span>
+      </button>
+
+      {/* "Unconnected Inbox" Pill */}
+      <button
+        type="button"
+        onClick={() => setCurrentFilter('unconnected')}
+        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all shadow-2xs cursor-pointer ${
+          isUnconnectedActive
+            ? 'bg-amber-500 text-stone-950 shadow-xs'
+            : 'bg-white dark:bg-stone-800/80 text-stone-600 dark:text-stone-300 border border-stone-200 dark:border-stone-700 hover:bg-amber-500/10 dark:hover:bg-amber-500/15'
+        }`}
+        title="View notes not yet connected to a Hub or another note"
+      >
+        <Inbox className="w-3.5 h-3.5" />
+        <span>Unconnected</span>
+        <span
+          className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+            isUnconnectedActive
+              ? 'bg-black/15 text-stone-950'
+              : 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
+          }`}
+        >
+          {unconnectedCount.toLocaleString()}
         </span>
       </button>
 
@@ -129,12 +161,29 @@ export const CategoryPillsBar: React.FC = () => {
       <button
         type="button"
         onClick={() => setIsCategoryModalOpen(true)}
-        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-medium text-stone-500 hover:text-stone-800 dark:text-stone-400 dark:hover:text-stone-200 border border-dashed border-stone-300 dark:border-stone-700 hover:border-stone-400 dark:hover:border-stone-500 whitespace-nowrap transition-colors"
+        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-medium text-stone-500 hover:text-stone-800 dark:text-stone-400 dark:hover:text-stone-200 border border-dashed border-stone-300 dark:border-stone-700 hover:border-stone-400 dark:hover:border-stone-500 whitespace-nowrap transition-colors cursor-pointer"
         title="Manage Categories"
       >
         <Plus className="w-3.5 h-3.5" />
         <span>Categories</span>
       </button>
+
+      {/* Hide Nested Sub-notes Toggle */}
+      {(currentFilter === 'notes' || currentFilter === 'category') && (
+        <button
+          type="button"
+          onClick={() => setHideSubnotesFromFeed(!hideSubnotesFromFeed)}
+          className={`ml-auto inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all border cursor-pointer shrink-0 ${
+            hideSubnotesFromFeed
+              ? 'bg-amber-500/15 border-amber-500/40 text-amber-800 dark:text-amber-300 font-semibold'
+              : 'bg-white dark:bg-stone-800/80 text-stone-500 dark:text-stone-400 border-stone-200 dark:border-stone-700 hover:text-stone-800 dark:hover:text-stone-200'
+          }`}
+          title="Hide notes that are already nested inside a Hub/parent from the main feed"
+        >
+          <FolderTree className="w-3.5 h-3.5" />
+          <span>{hideSubnotesFromFeed ? 'Nested hidden' : 'Hide nested'}</span>
+        </button>
+      )}
     </div>
   );
 };

@@ -564,3 +564,34 @@ body {
   background: rgba(140, 140, 140, 0.7);
 }
 
+/* Live inline note mention chips (both in editor & rendered preview) */
+.keep-note-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.08rem 0.42rem;
+  margin: 0.05rem 0.08rem;
+  border-radius: 0.45rem;
+  font-size: 0.84em;
+  font-weight: 500;
+  line-height: 1.35;
+  background-color: rgba(245, 158, 11, 0.12);
+  color: #92400e;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+  user-select: none;
+}
+.keep-note-chip:hover {
+  background-color: rgba(245, 158, 11, 0.22);
+  border-color: rgba(245, 158, 11, 0.5);
+}
+.dark .keep-note-chip {
+  background-color: rgba(245, 158, 11, 0.18);
+  color: #fcd34d;
+  border-color: rgba(245, 158, 11, 0.35);
+}
+.dark .keep-note-chip:hover {
+  background-color: rgba(245, 158, 11, 0.28);
+}
+

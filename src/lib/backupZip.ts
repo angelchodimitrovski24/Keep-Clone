@@ -766,6 +766,10 @@ export async function importBackupSmart(file: File): Promise<ImportResult> {
           JSON.stringify(local.images || []) === JSON.stringify(importedNote.images || []) &&
           JSON.stringify(local.drawings || []) === JSON.stringify(importedNote.drawings || []) &&
           JSON.stringify(local.linkedNoteIds || []) === JSON.stringify(importedNote.linkedNoteIds || []) &&
+          JSON.stringify(local.connections || []) === JSON.stringify(importedNote.connections || []) &&
+          Boolean(local.isHub) === Boolean(importedNote.isHub) &&
+          (local.parentNoteId || null) === (importedNote.parentNoteId || null) &&
+          JSON.stringify(local.childNoteIds || []) === JSON.stringify(importedNote.childNoteIds || []) &&
           local.isEncrypted === importedNote.isEncrypted;
 
         if (isIdentical) {

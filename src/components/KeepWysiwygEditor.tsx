@@ -7,7 +7,9 @@ import React, {
   useState,
   useCallback,
   useRef,
+  useMemo,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { useEditor, EditorContent, Editor } from '@tiptap/react';
 import { textblockTypeInputRule } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
@@ -21,12 +23,17 @@ import { KeepFormattingBar } from './KeepFormattingBar';
 import { GoogleKeepFormatCommand, convertMarkdownToHtml, convertHtmlToMarkdown } from '@/lib/formatUtils';
 import { KeepMediaExtension } from '@/lib/keepMediaExtension';
 import { DataviewExtension } from '@/lib/dataviewExtension';
+import { NoteMentionExtension } from '@/lib/noteMentionExtension';
+import { Note, NoteConnectionRole } from '@/types/note';
+import { CONNECTION_ROLE_META, CONNECTION_ROLES_ORDER } from '@/lib/noteGraph';
+import { searchLinkableNotesFromDB } from '@/lib/db';
+import { useKeep } from '@/context/KeepContext';
 import { importMhtmlIntoNote } from '@/lib/mhtmlParser';
 import {
   extractClipboardPayload,
   copyFilesToLocalFolder,
 } from '@/lib/localPaste';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Link2, Plus, FileText, CheckSquare } from 'lucide-react';
 
 export interface KeepWysiwygEditorHandle {
   handleFormat: (cmd: GoogleKeepFormatCommand) => void;
@@ -34,6 +41,7 @@ export interface KeepWysiwygEditorHandle {
   getHTML: () => string;
   insertLocalFiles: (files: File[], imageUrls?: string[]) => Promise<void>;
   insertContent: (text: string) => void;
+  insertNoteMention: (target: { id: string; title: string; role?: NoteConnectionRole }) => void;
 }
 
 export interface KeepWysiwygEditorProps {
@@ -45,6 +53,17 @@ export interface KeepWysiwygEditorProps {
   minHeightClass?: string;
   autoFocus?: boolean;
   listenWindowPaste?: boolean;
+  currentNoteId?: string;
+  defaultCategoryForNewLink?: string | null;
+  onOpenMentionedNote?: (noteIdOrTitle: string) => void;
+  onNoteMentionSelected?: (targetNote: Note, role: NoteConnectionRole) => void;
+}
+
+interface MentionPopupState {
+  isOpen: boolean;
+  query: string;
+  range: { from: number; to: number };
+  coords: { top: number; left: number; placeAbove: boolean };
 }
 
 export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwygEditorProps>(
@@ -58,16 +77,215 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
       minHeightClass = 'min-h-[180px]',
       autoFocus = false,
       listenWindowPaste = true,
+      currentNoteId,
+      defaultCategoryForNewLink,
+      onOpenMentionedNote,
+      onNoteMentionSelected,
     },
     ref
   ) => {
+    const {
+      notes,
+      addNote,
+      resolveNoteByTitleOrId,
+      setEditingNote,
+    } = useKeep();
+
     const [isCopyingFiles, setIsCopyingFiles] = useState(false);
     const editorInstanceRef = useRef<Editor | null>(null);
     const onChangeRef = useRef(onChange);
+    const onOpenMentionedNoteRef = useRef(onOpenMentionedNote);
+    const onNoteMentionSelectedRef = useRef(onNoteMentionSelected);
 
     useEffect(() => {
       onChangeRef.current = onChange;
     }, [onChange]);
+
+    useEffect(() => {
+      onOpenMentionedNoteRef.current = onOpenMentionedNote;
+    }, [onOpenMentionedNote]);
+
+    useEffect(() => {
+      onNoteMentionSelectedRef.current = onNoteMentionSelected;
+    }, [onNoteMentionSelected]);
+
+    // [[ Wiki-Link Live Autocomplete Popup State
+    const [mentionPopup, setMentionPopup] = useState<MentionPopupState | null>(null);
+    const [mentionRole, setMentionRole] = useState<NoteConnectionRole>('related');
+    const [mentionSelectedIndex, setMentionSelectedIndex] = useState<number>(0);
+    const [dbMentionMatches, setDbMentionMatches] = useState<Note[] | null>(null);
+
+    const mentionPopupRef = useRef<MentionPopupState | null>(null);
+    const mentionRoleRef = useRef<NoteConnectionRole>('related');
+    const mentionSelectedIndexRef = useRef<number>(0);
+    const mentionCandidatesRef = useRef<Note[]>([]);
+
+    useEffect(() => {
+      mentionPopupRef.current = mentionPopup;
+    }, [mentionPopup]);
+
+    useEffect(() => {
+      mentionRoleRef.current = mentionRole;
+    }, [mentionRole]);
+
+    useEffect(() => {
+      mentionSelectedIndexRef.current = mentionSelectedIndex;
+    }, [mentionSelectedIndex]);
+
+    // Fetch live DB matches when [[ popup is open
+    useEffect(() => {
+      if (!mentionPopup?.isOpen) {
+        setDbMentionMatches(null);
+        return;
+      }
+      let cancelled = false;
+      const q = mentionPopup.query;
+      const timer = setTimeout(() => {
+        searchLinkableNotesFromDB({
+          query: q,
+          excludeNoteIds: currentNoteId ? [currentNoteId] : [],
+          limit: 12,
+        })
+          .then((res) => {
+            if (!cancelled) setDbMentionMatches(res);
+          })
+          .catch(() => {});
+      }, q ? 60 : 0);
+
+      return () => {
+        cancelled = true;
+        clearTimeout(timer);
+      };
+    }, [mentionPopup?.isOpen, mentionPopup?.query, currentNoteId]);
+
+    const mentionCandidates = useMemo(() => {
+      if (!mentionPopup?.isOpen) return [];
+      const q = mentionPopup.query.trim().toLowerCase();
+      const map = new Map<string, Note>();
+      const source = dbMentionMatches ? [...dbMentionMatches, ...notes] : notes;
+      for (const n of source) {
+        if (n.isTrash || n.id === currentNoteId || map.has(n.id)) continue;
+        if (q) {
+          const titleOk = Boolean(n.title && n.title.toLowerCase().includes(q));
+          const catOk = Boolean(n.category && n.category.toLowerCase().includes(q));
+          const labelOk = Boolean(n.labels && n.labels.some((l) => l.toLowerCase().includes(q)));
+          const contentOk = Boolean(n.content && n.content.toLowerCase().includes(q));
+          if (!titleOk && !catOk && !labelOk && !contentOk) continue;
+        }
+        map.set(n.id, n);
+        if (map.size >= 10) break;
+      }
+      return Array.from(map.values());
+    }, [mentionPopup?.isOpen, mentionPopup?.query, dbMentionMatches, notes, currentNoteId]);
+
+    useEffect(() => {
+      mentionCandidatesRef.current = mentionCandidates;
+      setMentionSelectedIndex(0);
+    }, [mentionCandidates]);
+
+    const insertMentionFromPopup = useCallback(
+      (target: Note, roleOverride?: NoteConnectionRole) => {
+        const activeEditor = editorInstanceRef.current;
+        const popup = mentionPopupRef.current;
+        const chosenRole = roleOverride || mentionRoleRef.current;
+        if (!activeEditor || !popup) return;
+
+        activeEditor
+          .chain()
+          .focus()
+          .deleteRange(popup.range)
+          .insertContent([
+            {
+              type: 'noteMention',
+              attrs: {
+                noteId: target.id,
+                noteTitle: target.title || 'Untitled Note',
+                role: chosenRole,
+              },
+            },
+            { type: 'text', text: ' ' },
+          ])
+          .run();
+
+        setMentionPopup(null);
+        onChangeRef.current(activeEditor.getHTML());
+        onNoteMentionSelectedRef.current?.(target, chosenRole);
+      },
+      []
+    );
+
+    const createAndLinkFromPopup = useCallback(
+      async (rawTitle: string, roleOverride?: NoteConnectionRole) => {
+        const trimmed = rawTitle.trim();
+        if (!trimmed) return;
+        const chosenRole = roleOverride || mentionRoleRef.current;
+        const created = await addNote({
+          title: trimmed,
+          content: '',
+          category: defaultCategoryForNewLink !== undefined ? defaultCategoryForNewLink : undefined,
+          linkedNoteIds: currentNoteId ? [currentNoteId] : [],
+        });
+        if (created) {
+          insertMentionFromPopup(created, chosenRole);
+        }
+      },
+      [addNote, defaultCategoryForNewLink, currentNoteId, insertMentionFromPopup]
+    );
+
+    const insertMentionRef = useRef(insertMentionFromPopup);
+    const createAndLinkRef = useRef(createAndLinkFromPopup);
+    useEffect(() => {
+      insertMentionRef.current = insertMentionFromPopup;
+    }, [insertMentionFromPopup]);
+    useEffect(() => {
+      createAndLinkRef.current = createAndLinkFromPopup;
+    }, [createAndLinkFromPopup]);
+
+    const evaluateMentionTrigger = useCallback((activeEditor: Editor) => {
+      if (!activeEditor.isFocused) {
+        return;
+      }
+      const { selection } = activeEditor.state;
+      if (!selection.empty) {
+        setMentionPopup(null);
+        return;
+      }
+      const { $from } = selection;
+      if ($from.parent.type.name === 'codeBlock') {
+        setMentionPopup(null);
+        return;
+      }
+      const textBefore = $from.parent.textBetween(0, $from.parentOffset, '\n', '\uFFFC');
+      const match = textBefore.match(/\[\[([^\]\n\uFFFC]{0,60})$/);
+      if (!match) {
+        if (mentionPopupRef.current) setMentionPopup(null);
+        return;
+      }
+
+      const query = match[1];
+      const rangeFrom = $from.pos - match[0].length;
+      const rangeTo = $from.pos;
+
+      let top = 120;
+      let left = 40;
+      let placeAbove = false;
+      try {
+        const coords = activeEditor.view.coordsAtPos($from.pos);
+        const spaceBelow = window.innerHeight - coords.bottom;
+        placeAbove = spaceBelow < 280 && coords.top > 280;
+        top = placeAbove ? Math.max(12, coords.top - 8) : Math.min(window.innerHeight - 280, coords.bottom + 6);
+        left = Math.max(12, Math.min(window.innerWidth - 340, coords.left));
+      } catch {
+        // ignore coords errors
+      }
+
+      setMentionPopup({
+        isOpen: true,
+        query,
+        range: { from: rangeFrom, to: rangeTo },
+        coords: { top, left, placeAbove },
+      });
+    }, []);
 
     // Convert any raw markdown to proper HTML for initial Tiptap load
     const initialHtml = convertMarkdownToHtml(content);
@@ -111,7 +329,6 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
 
             for (const file of savedFiles) {
               if (file.isImage) {
-                // Rendered image directly
                 nodesToInsert.push({
                   type: 'image',
                   attrs: {
@@ -120,12 +337,10 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
                     title: file.savedPath,
                   },
                 });
-                // Empty paragraph to allow continuing to write
                 nodesToInsert.push({
                   type: 'paragraph',
                 });
               } else {
-                // Non-image file attachment: insert rich media block + markdown link
                 nodesToInsert.push({
                   type: 'keepMedia',
                   attrs: {
@@ -160,7 +375,6 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
         clipboardData: DataTransfer | null,
         rawEvent: Event | React.SyntheticEvent
       ): boolean => {
-        // Prevent double handling of the same event
         const nativeEvt = ('nativeEvent' in rawEvent ? rawEvent.nativeEvent : rawEvent) as Event & {
           __keepPasteHandled?: boolean;
         };
@@ -180,8 +394,6 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
         const activeEditor = editorInstanceRef.current;
         const plainText = clipboardData?.getData('text/plain');
 
-        // If currently focused inside a code block, insert raw text directly into the code block
-        // to prevent ProseMirror from splitting the code block or inserting separate paragraphs
         if (activeEditor && activeEditor.isFocused && plainText) {
           const isInsideCodeBlock =
             activeEditor.isActive('codeBlock') ||
@@ -202,7 +414,6 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
 
         const htmlText = clipboardData?.getData('text/html');
 
-        // 1. Check if pasted content contains HTML markup (explicit text/html or plain text with HTML tags)
         const isHtmlPayload = Boolean(
           (plainText && /<(?:p|h[1-6]|ul|ol|li|table|div|blockquote|b|strong|i|em|a|code|pre|hr|span)[^>]*>/i.test(plainText)) ||
           (htmlText && !/<meta/i.test(htmlText) && /<(?:p|h[1-6]|ul|ol|li|table|div|blockquote|b|strong|i|em|a|code|pre|hr)[^>]*>/i.test(htmlText))
@@ -227,7 +438,6 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
           }
         }
 
-        // 2. Intercept pasted markdown code blocks, tables, headings, task lists, bullet lists or markdown content
         if (
           plainText &&
           (/(?:^|\n)\s*```/.test(plainText) ||
@@ -249,7 +459,6 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
           }
         }
 
-        // Paste standard plain text or rich text directly into active editor
         if (plainText) {
           if (activeEditor) {
             nativeEvt.__keepPasteHandled = true;
@@ -320,6 +529,16 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
         }),
         KeepMediaExtension,
         DataviewExtension,
+        NoteMentionExtension.configure({
+          onOpenNote: async (noteIdOrTitle) => {
+            if (onOpenMentionedNoteRef.current) {
+              onOpenMentionedNoteRef.current(noteIdOrTitle);
+              return;
+            }
+            const found = await resolveNoteByTitleOrId(noteIdOrTitle);
+            if (found) setEditingNote(found);
+          },
+        }),
         Placeholder.configure({
           placeholder,
         }),
@@ -329,19 +548,62 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
       immediatelyRender: false,
       onUpdate: ({ editor }) => {
         onChangeRef.current(editor.getHTML());
+        evaluateMentionTrigger(editor);
+      },
+      onSelectionUpdate: ({ editor }) => {
+        evaluateMentionTrigger(editor);
       },
       editorProps: {
         attributes: {
           class: `w-full ${minHeightClass} outline-none text-stone-800 dark:text-stone-200 leading-relaxed`,
         },
         handleKeyDown: (view, event) => {
+          const activePopup = mentionPopupRef.current;
+          if (activePopup?.isOpen) {
+            const cands = mentionCandidatesRef.current;
+            const hasCreateOption = Boolean(activePopup.query.trim());
+            const totalItems = cands.length + (hasCreateOption ? 1 : 0);
+
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              setMentionPopup(null);
+              return true;
+            }
+            if (event.key === 'ArrowDown') {
+              if (totalItems > 0) {
+                event.preventDefault();
+                setMentionSelectedIndex((prev) => (prev + 1) % totalItems);
+              }
+              return true;
+            }
+            if (event.key === 'ArrowUp') {
+              if (totalItems > 0) {
+                event.preventDefault();
+                setMentionSelectedIndex((prev) => (prev - 1 + totalItems) % totalItems);
+              }
+              return true;
+            }
+            if (event.key === 'Enter' || event.key === 'Tab') {
+              const idx = mentionSelectedIndexRef.current;
+              if (idx >= 0 && idx < cands.length) {
+                event.preventDefault();
+                insertMentionRef.current(cands[idx]);
+                return true;
+              }
+              if (hasCreateOption && idx === cands.length) {
+                event.preventDefault();
+                createAndLinkRef.current(activePopup.query);
+                return true;
+              }
+            }
+          }
+
           if (event.key === 'Tab' && view.state.selection.$from.parent.type.name === 'codeBlock') {
             event.preventDefault();
             view.dispatch(view.state.tr.insertText('  '));
             return true;
           }
 
-          // Convert ``` or ```lang + Enter into a code block immediately
           if (event.key === 'Enter') {
             const { selection } = view.state;
             const { $from } = selection;
@@ -407,12 +669,10 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
     }, [editor]);
 
     // Global window paste listener when this editor is active
-    // Catches Ctrl+V even when the user hasn't clicked inside the paragraph yet!
     useEffect(() => {
       if (!listenWindowPaste) return;
 
       const onWindowPaste = (e: ClipboardEvent) => {
-        // If typing inside an input, textarea, or another editable element, let it handle natively
         const target = e.target as HTMLElement | null;
         if (
           target &&
@@ -512,6 +772,25 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
         getHTML: () => editor?.getHTML() || '',
         insertLocalFiles: processAndInsertFiles,
         insertContent: (text: string) => editor?.commands.insertContent(text),
+        insertNoteMention: (target) => {
+          if (!editor) return;
+          editor
+            .chain()
+            .focus()
+            .insertContent([
+              {
+                type: 'noteMention',
+                attrs: {
+                  noteId: target.id,
+                  noteTitle: target.title || 'Untitled Note',
+                  role: target.role || 'related',
+                },
+              },
+              { type: 'text', text: ' ' },
+            ])
+            .run();
+          onChangeRef.current(editor.getHTML());
+        },
       }),
       // eslint-disable-next-line react-hooks/exhaustive-deps
       [editor, processAndInsertFiles]
@@ -548,6 +827,139 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
             <KeepFormattingBar onFormat={handleFormat} />
           </div>
         )}
+
+        {/* [[ Wiki-Link Live Autocomplete Portal */}
+        {typeof document !== 'undefined' &&
+          mentionPopup?.isOpen &&
+          createPortal(
+            <div
+              onMouseDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                position: 'fixed',
+                left: `${mentionPopup.coords.left}px`,
+                top: mentionPopup.coords.placeAbove ? undefined : `${mentionPopup.coords.top}px`,
+                bottom: mentionPopup.coords.placeAbove
+                  ? `${window.innerHeight - mentionPopup.coords.top}px`
+                  : undefined,
+                zIndex: 130,
+              }}
+              className="w-[320px] max-w-[92vw] rounded-2xl bg-white dark:bg-[#202124] border border-stone-200 dark:border-stone-700 shadow-2xl overflow-hidden text-stone-800 dark:text-stone-200 animate-in fade-in duration-100"
+            >
+              {/* Header + Quick Role Selector */}
+              <div className="px-3 py-2 bg-stone-50 dark:bg-stone-900/60 border-b border-black/[0.06] dark:border-white/[0.08] space-y-1.5">
+                <div className="flex items-center justify-between text-[11px] font-semibold text-stone-500 dark:text-stone-400">
+                  <span className="flex items-center gap-1.5">
+                    <Link2 className="w-3.5 h-3.5 text-amber-500" />
+                    <span>Link note {mentionPopup.query ? `matching "${mentionPopup.query}"` : ''}</span>
+                  </span>
+                  <span className="text-[10px] font-normal text-stone-400">↑↓ Enter • Esc</span>
+                </div>
+                <div className="flex items-center gap-1 flex-wrap">
+                  {CONNECTION_ROLES_ORDER.map((r) => {
+                    const meta = CONNECTION_ROLE_META[r];
+                    const active = mentionRole === r;
+                    return (
+                      <button
+                        key={r}
+                        type="button"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setMentionRole(r);
+                        }}
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border transition-colors cursor-pointer ${
+                          active
+                            ? meta.badgeClass + ' font-semibold shadow-2xs'
+                            : 'bg-white dark:bg-stone-800 border-stone-200 dark:border-stone-700 text-stone-500 hover:text-stone-800 dark:hover:text-stone-200'
+                        }`}
+                      >
+                        <span>{meta.emoji}</span>
+                        <span>{meta.shortLabel}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Candidate Notes List */}
+              <div className="max-h-56 overflow-y-auto divide-y divide-black/[0.04] dark:divide-white/[0.05]">
+                {mentionCandidates.map((cand, idx) => {
+                  const active = mentionSelectedIndex === idx;
+                  return (
+                    <button
+                      key={cand.id}
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        insertMentionFromPopup(cand);
+                      }}
+                      onMouseEnter={() => setMentionSelectedIndex(idx)}
+                      className={`w-full text-left flex items-center gap-2.5 px-3 py-2 transition-colors cursor-pointer ${
+                        active
+                          ? 'bg-amber-500/15 dark:bg-amber-500/20 text-amber-950 dark:text-amber-100'
+                          : 'hover:bg-black/[0.03] dark:hover:bg-white/[0.04]'
+                      }`}
+                    >
+                      <span className="text-stone-400 shrink-0">
+                        {cand.isHub ? (
+                          <span className="text-xs">🏠</span>
+                        ) : cand.isList ? (
+                          <CheckSquare className="w-3.5 h-3.5" />
+                        ) : (
+                          <FileText className="w-3.5 h-3.5" />
+                        )}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-medium truncate">
+                          {cand.title || 'Untitled Note'}
+                        </div>
+                        {cand.category && (
+                          <div className="text-[10px] text-stone-400 truncate">{cand.category}</div>
+                        )}
+                      </div>
+                      <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 shrink-0">
+                        ↵
+                      </span>
+                    </button>
+                  );
+                })}
+
+                {mentionCandidates.length === 0 && !mentionPopup.query.trim() && (
+                  <div className="px-3 py-4 text-center text-xs text-stone-400">
+                    Type a note title to search or create…
+                  </div>
+                )}
+
+                {mentionPopup.query.trim() && (
+                  <button
+                    type="button"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      createAndLinkFromPopup(mentionPopup.query);
+                    }}
+                    onMouseEnter={() => setMentionSelectedIndex(mentionCandidates.length)}
+                    className={`w-full text-left flex items-center gap-2 px-3 py-2 text-xs transition-colors cursor-pointer ${
+                      mentionSelectedIndex === mentionCandidates.length
+                        ? 'bg-amber-500/15 dark:bg-amber-500/20 text-amber-800 dark:text-amber-200 font-semibold'
+                        : 'bg-stone-50/70 dark:bg-stone-900/40 text-stone-600 dark:text-stone-300 hover:bg-black/[0.04] dark:hover:bg-white/[0.06]'
+                    }`}
+                  >
+                    <Plus className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                    <span className="truncate">
+                      Create &amp; link &ldquo;{mentionPopup.query.trim()}&rdquo;
+                    </span>
+                  </button>
+                )}
+              </div>
+            </div>,
+            document.body
+          )}
       </div>
     );
   }

@@ -16,6 +16,7 @@ import {
   LayoutGrid,
   Rows,
   Sparkles,
+  Compass,
 } from 'lucide-react';
 import { Note } from '@/types/note';
 import { useKeep } from '@/context/KeepContext';
@@ -74,6 +75,13 @@ export const NotionNotesList: React.FC<NotionNotesListProps> = ({
         icon: '🏷️',
         title: selectedLabel,
         breadcrumb: `Labels / #${selectedLabel}`,
+      };
+    }
+    if (currentFilter === 'unconnected') {
+      return {
+        icon: '📥',
+        title: 'Unconnected Inbox',
+        breadcrumb: 'Workspace / Unconnected',
       };
     }
     if (currentFilter === 'archive') {
@@ -186,6 +194,15 @@ export const NotionNotesList: React.FC<NotionNotesListProps> = ({
             >
               <Rows className="w-3.5 h-3.5" />
               <span>Cards</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setLayoutMode('map')}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md hover:text-stone-900 dark:hover:text-stone-100 transition-colors"
+              title="Knowledge Map View"
+            >
+              <Compass className="w-3.5 h-3.5 text-amber-500" />
+              <span>Map</span>
             </button>
           </div>
 

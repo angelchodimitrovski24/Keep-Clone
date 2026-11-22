@@ -43,6 +43,15 @@ export interface EncryptedNoteBundle {
   timestamp: number;
 }
 
+export type NoteConnectionRole = 'part_of' | 'next' | 'source' | 'related';
+
+export interface NoteConnection {
+  targetId: string;
+  role: NoteConnectionRole;
+  label?: string;
+  createdAt?: number;
+}
+
 export interface Note {
   id: string;
   title: string;
@@ -64,6 +73,8 @@ export interface Note {
   isEncrypted?: boolean;
   encryptedData?: EncryptedNoteBundle | null;
   linkedNoteIds?: string[]; // IDs of linked notes
+  connections?: NoteConnection[]; // Typed directional/semantic connections
+  isHub?: boolean; // Designates note as a Knowledge Hub / Index note
   category?: string | null; // Note category name
   childNoteIds?: string[]; // IDs of sub-notes / Notion child pages
   parentNoteId?: string | null; // ID of parent note if this is a sub-page
@@ -129,6 +140,7 @@ export interface Category {
 
 export type ViewFilter =
   | 'notes'
+  | 'unconnected'
   | 'reminders'
   | 'calendar'
   | 'label'
@@ -142,7 +154,7 @@ export type ViewFilter =
 
 export * from './calendar';
 
-export type LayoutViewMode = 'grid' | 'list' | 'notion';
+export type LayoutViewMode = 'grid' | 'list' | 'notion' | 'map';
 
 export type FontSizeOption = 'small' | 'medium' | 'large' | 'xlarge' | 'huge' | 'max' | string;
 export type AppThemeMode = 'system' | 'light' | 'dark';

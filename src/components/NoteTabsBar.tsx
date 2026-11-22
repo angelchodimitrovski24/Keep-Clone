@@ -14,6 +14,7 @@ import {
   Folder,
   LayoutDashboard,
   Users,
+  Inbox,
 } from 'lucide-react';
 import { Note } from '@/types/note';
 import { ViewFilter } from '@/types/note';
@@ -45,6 +46,7 @@ export const NoteTabsBar: React.FC<NoteTabsBarProps> = ({
   onNewNoteTab,
 }) => {
   const getMainViewLabel = () => {
+    if (currentFilter === 'unconnected') return 'Unconnected';
     if (currentFilter === 'calendar') return 'Calendar';
     if (currentFilter === 'stats') return 'Reading Stats';
     if (currentFilter === 'psi') return 'PSI Dashboard';
@@ -57,6 +59,7 @@ export const NoteTabsBar: React.FC<NoteTabsBarProps> = ({
   };
 
   const getMainViewIcon = () => {
+    if (currentFilter === 'unconnected') return <Inbox className="w-3.5 h-3.5 text-amber-500" />;
     if (currentFilter === 'calendar') return <Calendar className="w-3.5 h-3.5 text-blue-500" />;
     if (currentFilter === 'stats') return <BarChart2 className="w-3.5 h-3.5 text-purple-500" />;
     if (currentFilter === 'psi') return <LayoutDashboard className="w-3.5 h-3.5 text-blue-600" />;

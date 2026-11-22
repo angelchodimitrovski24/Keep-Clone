@@ -425,6 +425,21 @@ export function convertMarkdownToHtml(content: string): string {
     return `___KEEP_PRE_BLOCK_${idx}___`;
   };
 
+  const protectedMentions: string[] = [];
+  const buildNoteMentionHtml = (id: string, title: string, role: string = 'related') => {
+    const safeTitle = escapeHtml(title.trim() || 'Untitled Note');
+    const safeId = escapeHtml(id.trim());
+    const safeRole = escapeHtml(role.trim() || 'related');
+    const roleIcon =
+      safeRole === 'next' ? '➡️' : safeRole === 'source' ? '📌' : safeRole === 'part_of' ? '🏠' : '🔗';
+    return `<span data-note-mention="true" data-note-id="${safeId}" data-note-title="${safeTitle}" data-note-role="${safeRole}" data-note-link-title="${safeTitle}" class="keep-note-chip">${roleIcon} ${safeTitle}</span>`;
+  };
+  const addProtectedMention = (html: string) => {
+    const idx = protectedMentions.length;
+    protectedMentions.push(html);
+    return `___KEEP_MENTION_${idx}___`;
+  };
+
   let text = healMojibake(content);
 
   // 1. Browser DOMParser pre-pass: flawlessly extracts Notion code blocks, pre tags, and syntax blocks without regex nesting bugs
@@ -522,6 +537,21 @@ export function convertMarkdownToHtml(content: string): string {
     return `\n\n${addProtected(`<pre><code>${clean.trim()}</code></pre>`)}\n\n`;
   });
 
+  // 3.5. Protect existing note-mention chips so HTML list normalization never strips their attributes
+  text = text.replace(
+    /<span\b([^>]*(?:data-note-mention=["']true["']|keep-note-link)[^>]*)>([\s\S]*?)<\/span>/gi,
+    (_m, attrs, inner) => {
+      const idMatch = attrs.match(/data-note-(?:id|link-id)=["']([^"']*)["']/i);
+      const titleMatch = attrs.match(/data-note-(?:title|link-title)=["']([^"']*)["']/i);
+      const roleMatch = attrs.match(/data-note-role=["']([^"']*)["']/i);
+      const id = idMatch ? idMatch[1] : '';
+      const rawInner = inner.replace(/<[^>]+>/g, '').replace(/^[🔗➡️📌🏠]\s*/u, '').trim();
+      const title = titleMatch ? titleMatch[1] : rawInner;
+      const role = roleMatch ? roleMatch[1] : 'related';
+      return addProtectedMention(buildNoteMentionHtml(id, title, role));
+    }
+  );
+
   // 4. Convert any HTML list markup to Markdown before line splitting so tags are never broken
   // Strip <p> inside <li> so list item contents stay compact
   text = text.replace(/<li\b[^>]*>([\s\S]*?)<\/li>/gi, (_match, inner) => {
@@ -602,7 +632,16 @@ export function convertMarkdownToHtml(content: string): string {
   };
 
   const formatInline = (str: string) => {
-    return str
+    const withMentionPlaceholders = str.replace(
+      /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g,
+      (_m, raw1, raw2) => {
+        const hasId = Boolean(raw2);
+        const id = hasId ? raw1.trim() : '';
+        const title = (hasId ? raw2 : raw1).trim();
+        return addProtectedMention(buildNoteMentionHtml(id, title, 'related'));
+      }
+    );
+    return withMentionPlaceholders
       .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
       .replace(/__([^_]+)__/g, '<strong>$1</strong>')
       .replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, '<em>$1</em>')
@@ -856,9 +895,12 @@ export function convertMarkdownToHtml(content: string): string {
 
   closeOpenLists();
 
-  // Restore protected blocks (pre code blocks and notion code blocks)
+  // Restore protected blocks (pre code blocks, notion code blocks, and note mention chips)
   for (let idx = 0; idx < protectedBlocks.length; idx++) {
     result = result.replace(new RegExp(`___KEEP_PRE_BLOCK_${idx}___`, 'g'), () => protectedBlocks[idx]);
+  }
+  for (let idx = 0; idx < protectedMentions.length; idx++) {
+    result = result.replace(new RegExp(`___KEEP_MENTION_${idx}___`, 'g'), () => protectedMentions[idx]);
   }
 
   return renderMarkdownTablesInHtml(renderMarkdownImagesInString(result));
@@ -1329,6 +1371,19 @@ export function convertHtmlToMarkdown(html: string): string {
     if (!trimmed) return '';
     return `\`${trimmed}\``;
   });
+
+  // 14.5. Preserve note-mention chips as [[id|Title]] or [[Title]]
+  md = md.replace(
+    /<span\b([^>]*(?:data-note-mention=["']true["']|keep-note-link)[^>]*)>([\s\S]*?)<\/span>/gi,
+    (_m, attrs, inner) => {
+      const idMatch = attrs.match(/data-note-(?:id|link-id)=["']([^"']*)["']/i);
+      const titleMatch = attrs.match(/data-note-(?:title|link-title)=["']([^"']*)["']/i);
+      const id = idMatch ? idMatch[1].trim() : '';
+      const rawInner = inner.replace(/<[^>]+>/g, '').replace(/^[🔗➡️📌🏠]\s*/u, '').trim();
+      const title = (titleMatch ? titleMatch[1] : rawInner).trim() || 'Untitled Note';
+      return id ? `[[${id}|${title}]]` : `[[${title}]]`;
+    }
+  );
 
   // 15. Strip any leftover HTML tags
   md = md.replace(/<[^>]+>/g, '');

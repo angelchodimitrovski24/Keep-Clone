@@ -14,8 +14,9 @@ import {
   Paperclip,
   X,
   FileText,
+  Home,
 } from 'lucide-react';
-import { Note } from '@/types/note';
+import { Note, NoteConnectionRole } from '@/types/note';
 import { getNoteColorClasses } from '@/lib/constants';
 import { NoteActions } from './NoteActions';
 import { useKeep } from '@/context/KeepContext';
@@ -62,12 +63,45 @@ const NoteCardComponent: React.FC<NoteCardProps> = ({
     setSharingNote,
     openAiChatForNote,
     getChildNotes,
+    getNoteById,
     resolveNoteByTitleOrId,
+    connectNotes,
+    currentFilter,
   } = useKeep();
 
   const [showUnlockModal, setShowUnlockModal] = useState(false);
   const [showEncryptModal, setShowEncryptModal] = useState(false);
   const [showLinkModal, setShowLinkModal] = useState(false);
+  const [linkModalRole, setLinkModalRole] = useState<NoteConnectionRole>('related');
+  const memParentNote = useMemo(
+    () => (note.parentNoteId ? notes.find((n) => n.id === note.parentNoteId && !n.isTrash) || null : null),
+    [note.parentNoteId, notes]
+  );
+  const [dbParentState, setDbParentState] = useState<{ parentId: string; parent: Note | null } | null>(null);
+
+  React.useEffect(() => {
+    if (!note.parentNoteId || memParentNote) return;
+    let active = true;
+    const targetParentId = note.parentNoteId;
+    getNoteById(targetParentId)
+      .then((found) => {
+        if (active) {
+          setDbParentState({
+            parentId: targetParentId,
+            parent: found && !found.isTrash ? found : null,
+          });
+        }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [note.parentNoteId, memParentNote, getNoteById]);
+
+  const dbParentNote = useMemo(
+    () => memParentNote || (note.parentNoteId && dbParentState?.parentId === note.parentNoteId ? dbParentState.parent : null),
+    [memParentNote, note.parentNoteId, dbParentState]
+  );
 
   const categoryObj = useMemo(
     () => (note.category ? categories.find((c) => c.name === note.category) : null),
@@ -409,16 +443,39 @@ const NoteCardComponent: React.FC<NoteCardProps> = ({
 
               {activeNote.title && (
                 <h3
-                  className="font-semibold text-stone-900 dark:text-stone-100 mb-1.5 tracking-tight break-words whitespace-pre-wrap pr-7"
+                  className="font-semibold text-stone-900 dark:text-stone-100 mb-1.5 tracking-tight break-words whitespace-pre-wrap pr-7 flex items-start gap-1.5"
                   style={{ fontSize: 'calc(var(--note-font-size, 15px) * 1.15)' }}
                 >
-                  {activeNote.title}
+                  {note.isHub && (
+                    <span className="shrink-0 text-sm mt-0.5" title="Knowledge Hub">🏠</span>
+                  )}
+                  <span className="min-w-0">{activeNote.title}</span>
                 </h3>
               )}
 
-              {/* Beautiful Category & Labels directly under the Title */}
-              {((note.category) || (note.labels && note.labels.length > 0)) && (
+              {/* Hub / Parent Hierarchy / Category & Labels */}
+              {((note.isHub) || dbParentNote || (note.category) || (note.labels && note.labels.length > 0)) && (
                 <div className="flex flex-wrap items-center gap-1.5 mb-2.5 mt-0.5">
+                  {note.isHub && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/30">
+                      <Home className="w-2.5 h-2.5" />
+                      <span>Hub</span>
+                    </span>
+                  )}
+                  {dbParentNote && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingNote(dbParentNote);
+                      }}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-500/25 max-w-[160px] transition-colors cursor-pointer"
+                      title={`Inside parent: ${dbParentNote.title || 'Parent Note'}`}
+                    >
+                      <span>↳</span>
+                      <span className="truncate">{dbParentNote.title || 'Parent'}</span>
+                    </button>
+                  )}
                   {note.category && (
                     <span
                       className="group/cat inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-stone-100 dark:bg-stone-800 text-stone-800 dark:text-stone-200 border border-stone-200 dark:border-stone-700 shadow-2xs transition-all hover:opacity-90"
@@ -556,8 +613,8 @@ const NoteCardComponent: React.FC<NoteCardProps> = ({
                 </div>
               )}
 
-              {/* Bi-directional connected notes badge */}
-              {(outgoing.length > 0 || backlinks.length > 0) && (
+              {/* Bi-directional connected notes badge or Quick Connect in Unconnected Inbox */}
+              {(outgoing.length > 0 || backlinks.length > 0) ? (
                 <div className="flex flex-wrap items-center gap-1.5 mt-2.5 pt-2 border-t border-black/5 dark:border-white/5">
                   {outgoing.length > 0 && (
                     <span
@@ -576,7 +633,34 @@ const NoteCardComponent: React.FC<NoteCardProps> = ({
                     </span>
                   )}
                 </div>
-              )}
+              ) : currentFilter === 'unconnected' && !note.isHub ? (
+                <div className="flex items-center gap-1.5 mt-2.5 pt-2 border-t border-black/5 dark:border-white/5">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setLinkModalRole('part_of');
+                      setShowLinkModal(true);
+                    }}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-amber-500/15 hover:bg-amber-500/25 text-amber-800 dark:text-amber-300 border border-amber-500/30 transition-colors cursor-pointer"
+                  >
+                    <Home className="w-3 h-3" />
+                    <span>File in Hub</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setLinkModalRole('related');
+                      setShowLinkModal(true);
+                    }}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 transition-colors cursor-pointer"
+                  >
+                    <Link2 className="w-3 h-3" />
+                    <span>Connect</span>
+                  </button>
+                </div>
+              ) : null}
 
               {/* Bottom Metadata Badges (Reminders, files, reading stopwatch) */}
               {(note.reminder || attachedFileCount > 0 || (note.totalReadingTime && note.totalReadingTime > 0) || activeStopwatch?.noteId === note.id) && (
@@ -674,7 +758,10 @@ const NoteCardComponent: React.FC<NoteCardProps> = ({
               onPrint={() => printNote(activeNote, categories)}
               onAddImage={handleAddImage}
               onEncrypt={() => setShowEncryptModal(true)}
-              onLinkNote={() => setShowLinkModal(true)}
+              onLinkNote={() => {
+                setLinkModalRole('related');
+                setShowLinkModal(true);
+              }}
               onSelectCategory={(category) => updateNote(note.id, { category })}
               onToggleChecklist={() => {
                 if (note.isList) {
@@ -760,14 +847,21 @@ const NoteCardComponent: React.FC<NoteCardProps> = ({
         currentCategory={activeNote.category}
         notes={notes}
         isOpen={showLinkModal}
+        initialRole={linkModalRole}
         onClose={() => setShowLinkModal(false)}
-        onSelectNote={(target) => {
+        onSelectNote={async (target, role) => {
+          if (role === 'part_of') {
+            await connectNotes(note.id, target.id, 'part_of');
+            return;
+          }
+          const linkStr = `[[${target.id}|${target.title || 'Untitled Note'}]]`;
           const newContent = activeNote.content
-            ? `${activeNote.content}\n\n[[${target.title || 'Untitled Note'}]]`
-            : `[[${target.title || 'Untitled Note'}]]`;
+            ? `${activeNote.content}\n\n${linkStr}`
+            : linkStr;
           const currentLinks = activeNote.linkedNoteIds || [];
           const updatedLinks = Array.from(new Set([...currentLinks, target.id]));
-          updateNote(note.id, { content: newContent, linkedNoteIds: updatedLinks });
+          await updateNote(note.id, { content: newContent, linkedNoteIds: updatedLinks });
+          await connectNotes(note.id, target.id, role);
         }}
       />
     </>

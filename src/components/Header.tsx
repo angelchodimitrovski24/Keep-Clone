@@ -24,6 +24,7 @@ import {
   FileSpreadsheet,
   LayoutDashboard,
   Users,
+  Compass,
 } from 'lucide-react';
 import { useKeep } from '@/context/KeepContext';
 import { NOTE_COLORS } from '@/lib/constants';
@@ -430,30 +431,43 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
           <span className="hidden md:inline">Team</span>
         </button>
 
-        {/* Layout Toggle (Grid / List / Notion) */}
+        {/* Layout Toggle (Grid / List / Notion / Map) */}
         <button
           type="button"
           onClick={() => {
-            const nextMode = layoutMode === 'grid' ? 'list' : layoutMode === 'list' ? 'notion' : 'grid';
+            const nextMode =
+              layoutMode === 'grid'
+                ? 'list'
+                : layoutMode === 'list'
+                ? 'notion'
+                : layoutMode === 'notion'
+                ? 'map'
+                : 'grid';
             setLayoutMode(nextMode);
           }}
           className={`hidden sm:flex p-1.5 sm:p-2.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors shrink-0 cursor-pointer ${
-            layoutMode === 'notion' ? 'text-stone-900 dark:text-stone-100 font-semibold' : ''
+            layoutMode === 'notion' || layoutMode === 'map'
+              ? 'text-stone-900 dark:text-stone-100 font-semibold'
+              : ''
           }`}
           title={
             layoutMode === 'grid'
               ? 'Grid view (click for List)'
               : layoutMode === 'list'
               ? 'List view (click for Notion Page List)'
-              : 'Notion List view (click for Grid)'
+              : layoutMode === 'notion'
+              ? 'Notion List view (click for Knowledge Map)'
+              : 'Knowledge Map view (click for Grid)'
           }
         >
           {layoutMode === 'grid' ? (
             <LayoutGrid className="w-5 h-5" />
           ) : layoutMode === 'list' ? (
             <Rows className="w-5 h-5" />
-          ) : (
+          ) : layoutMode === 'notion' ? (
             <FileText className="w-5 h-5" />
+          ) : (
+            <Compass className="w-5 h-5 text-amber-500" />
           )}
         </button>
 

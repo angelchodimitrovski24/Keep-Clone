@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import { Note, NoteVersion, Label, Category, ViewFilter, LayoutViewMode, FontSizeOption, AppThemeMode, ReadingSession, ActiveStopwatch, CalendarItem, CalendarEvent, CalendarTask, CalendarReminderNotice } from '@/types/note';
+import { Note, NoteConnection, NoteConnectionRole, NoteVersion, Label, Category, ViewFilter, LayoutViewMode, FontSizeOption, AppThemeMode, ReadingSession, ActiveStopwatch, CalendarItem, CalendarEvent, CalendarTask, CalendarReminderNotice } from '@/types/note';
 import {
   getAllNotesFromDB,
   getNoteByIdFromDB,
@@ -9,6 +9,9 @@ import {
   getChildNotesForParentFromDB,
   getNotesPagedFromDB,
   getNotesCountsSummaryFromDB,
+  getHubTreesFromDB,
+  getUnconnectedCountFromDB,
+  HubTreeRecord,
   bulkInsertBenchmarkNotes,
   clearBenchmarkNotesFromDB,
   getBenchmarkNotesCountFromDB,
@@ -116,6 +119,26 @@ interface KeepContextType {
   totalPages: number;
   totalNotesCount: number;
   totalActiveNotesCount: number;
+  unconnectedCount: number;
+  hubTrees: HubTreeRecord[];
+  hideSubnotesFromFeed: boolean;
+  setHideSubnotesFromFeed: (hide: boolean) => void;
+  mapFocusNoteId: string | null;
+  setMapFocusNoteId: (id: string | null) => void;
+  openInKnowledgeMap: (noteId?: string | null) => void;
+  toggleHubNote: (id: string) => Promise<void>;
+  connectNotes: (
+    sourceId: string,
+    targetId: string,
+    role: NoteConnectionRole,
+    options?: { label?: string }
+  ) => Promise<void>;
+  disconnectNotes: (
+    sourceId: string,
+    targetId: string,
+    role?: NoteConnectionRole | 'all'
+  ) => Promise<void>;
+  refreshStructureData: () => Promise<void>;
   categoryCounts: Record<string, number>;
   setCurrentPage: (page: number) => void;
   setPageSize: (size: number) => void;
@@ -268,6 +291,10 @@ export function KeepProvider({
   const [totalPages, setTotalPages] = useState<number>(1);
   const [totalNotesCount, setTotalNotesCount] = useState<number>(0);
   const [totalActiveNotesCount, setTotalActiveNotesCount] = useState<number>(0);
+  const [unconnectedCount, setUnconnectedCount] = useState<number>(0);
+  const [hubTrees, setHubTrees] = useState<HubTreeRecord[]>([]);
+  const [hideSubnotesFromFeed, setHideSubnotesFromFeedState] = useState<boolean>(false);
+  const [mapFocusNoteId, setMapFocusNoteId] = useState<string | null>(null);
   const [categoryCounts, setCategoryCounts] = useState<Record<string, number>>({});
   const [databaseStats, setDatabaseStats] = useState<{
     totalNotes: number;
@@ -424,6 +451,12 @@ export function KeepProvider({
     try {
       setIsLoading(true);
       const [
+        storedHideSubnotes,
+      ] = await Promise.all([
+        getSettingFromDB<boolean>('hideSubnotesFromFeed', false),
+      ]);
+
+      const [
         pagedResult,
         storedLabels,
         storedCategories,
@@ -436,7 +469,7 @@ export function KeepProvider({
         storedReadingSessions,
         storedCalendarItems,
       ] = await Promise.all([
-        getNotesPagedFromDB({ filter: 'notes', page: 1, pageSize: 30 }),
+        getNotesPagedFromDB({ filter: 'notes', page: 1, pageSize: 30, hideSubnotes: Boolean(storedHideSubnotes) }),
         getAllLabelsFromDB(),
         getAllCategoriesFromDB(),
         getSettingFromDB<LayoutViewMode>('layoutMode', 'grid'),
@@ -449,6 +482,8 @@ export function KeepProvider({
         getAllCalendarItemsFromDB(),
       ]);
 
+      setHideSubnotesFromFeedState(Boolean(storedHideSubnotes));
+
       const storedNotes = pagedResult.notes;
       setTotalNotesCount(pagedResult.totalCount);
       setTotalPages(pagedResult.totalPages);
@@ -458,6 +493,13 @@ export function KeepProvider({
         setTotalActiveNotesCount(counts.totalActive);
         setCategoryCounts(counts.byCategory);
       }).catch(() => {});
+
+      Promise.all([getHubTreesFromDB(), getUnconnectedCountFromDB()])
+        .then(([trees, uCount]) => {
+          setHubTrees(trees);
+          setUnconnectedCount(uCount);
+        })
+        .catch(() => {});
 
       getDatabaseStatsFromDB().then((stats) => setDatabaseStats(stats)).catch(() => {});
 
@@ -754,6 +796,19 @@ export function KeepProvider({
     []
   );
 
+  const refreshStructureData = useCallback(async () => {
+    try {
+      const [trees, uCount] = await Promise.all([
+        getHubTreesFromDB(),
+        getUnconnectedCountFromDB(),
+      ]);
+      setHubTrees(trees);
+      setUnconnectedCount(uCount);
+    } catch (err) {
+      console.warn('refreshStructureData error:', err);
+    }
+  }, []);
+
   // Refresh current visible page slice and metadata
   const refreshNotesList = useCallback(async () => {
     try {
@@ -764,6 +819,7 @@ export function KeepProvider({
         searchQuery,
         page: currentPage,
         pageSize,
+        hideSubnotes: hideSubnotesFromFeed,
       });
       setNotes(res.notes);
       setTotalNotesCount(res.totalCount);
@@ -777,12 +833,14 @@ export function KeepProvider({
       setTotalActiveNotesCount(summary.totalActive);
       setCategoryCounts(summary.byCategory);
 
+      refreshStructureData().catch(() => {});
+
       const stats = await getDatabaseStatsFromDB();
       setDatabaseStats(stats);
     } catch (err) {
       console.warn('refreshNotesList error:', err);
     }
-  }, [currentFilter, selectedCategory, selectedLabel, searchQuery, currentPage, pageSize, categories]);
+  }, [currentFilter, selectedCategory, selectedLabel, searchQuery, currentPage, pageSize, hideSubnotesFromFeed, categories, refreshStructureData]);
 
   // Auto-fetch paged notes slice whenever navigation, search, or pagination changes
   useEffect(() => {
@@ -795,6 +853,7 @@ export function KeepProvider({
         searchQuery,
         page: currentPage,
         pageSize,
+        hideSubnotes: hideSubnotesFromFeed,
       })
         .then((res) => {
           setNotes(res.notes);
@@ -805,7 +864,7 @@ export function KeepProvider({
     }, searchQuery ? 120 : 0);
 
     return () => clearTimeout(timer);
-  }, [currentFilter, selectedCategory, selectedLabel, searchQuery, currentPage, pageSize, isLoading]);
+  }, [currentFilter, selectedCategory, selectedLabel, searchQuery, currentPage, pageSize, hideSubnotesFromFeed, isLoading]);
 
   // Database stats and benchmark runner
   const refreshDatabaseStats = useCallback(async () => {
@@ -932,6 +991,23 @@ export function KeepProvider({
     saveSettingToDB('layoutMode', mode);
   }, []);
 
+  const setHideSubnotesFromFeed = useCallback((hide: boolean) => {
+    setHideSubnotesFromFeedState(hide);
+    setCurrentPage(1);
+    saveSettingToDB('hideSubnotesFromFeed', hide);
+  }, []);
+
+  const openInKnowledgeMap = useCallback(
+    (noteId?: string | null) => {
+      setMapFocusNoteId(noteId || null);
+      setEditingNote(null);
+      setCurrentFilterState('notes');
+      setLayoutModeState('map');
+      saveSettingToDB('layoutMode', 'map');
+    },
+    []
+  );
+
   // Drawing modal setter
   const setIsDrawingModalOpen = useCallback((open: boolean, noteId?: string | null) => {
     setIsDrawingModalOpenState(open);
@@ -998,6 +1074,8 @@ export function KeepProvider({
         images: noteData.images || [],
         drawings: noteData.drawings || [],
         linkedNoteIds: noteData.linkedNoteIds || [],
+        connections: noteData.connections || [],
+        isHub: Boolean(noteData.isHub),
         childNoteIds: noteData.childNoteIds || [],
         parentNoteId: noteData.parentNoteId || null,
         noteType: noteData.noteType || 'default',
@@ -1022,12 +1100,15 @@ export function KeepProvider({
       if (currentFilter === 'trash') return Boolean(n.isTrash);
       if (currentFilter === 'archive') return !n.isTrash && Boolean(n.isArchived);
       if (n.isTrash || n.isArchived) return false;
+      if (hideSubnotesFromFeed && (currentFilter === 'notes' || currentFilter === 'category') && n.parentNoteId) {
+        return false;
+      }
       if (currentFilter === 'reminders') return Boolean(n.reminder);
       if (currentFilter === 'category') return (n.category || null) === selectedCategory;
       if (currentFilter === 'label') return Boolean(selectedLabel && (n.labels || []).includes(selectedLabel));
       return true;
     },
-    [currentFilter, selectedCategory, selectedLabel]
+    [currentFilter, selectedCategory, selectedLabel, hideSubnotesFromFeed]
   );
 
   const updateNote = useCallback(
@@ -1113,13 +1194,207 @@ export function KeepProvider({
         updates.category !== undefined ||
         updates.labels !== undefined ||
         updates.reminder !== undefined ||
-        updates.isPinned !== undefined;
+        updates.isPinned !== undefined ||
+        (hideSubnotesFromFeed && updates.parentNoteId !== undefined) ||
+        (currentFilter === 'unconnected' &&
+          (updates.isHub !== undefined ||
+            updates.parentNoteId !== undefined ||
+            updates.childNoteIds !== undefined ||
+            updates.linkedNoteIds !== undefined ||
+            updates.connections !== undefined ||
+            updates.content !== undefined));
+
+      const structureChanged =
+        updates.isHub !== undefined ||
+        updates.parentNoteId !== undefined ||
+        updates.childNoteIds !== undefined ||
+        updates.linkedNoteIds !== undefined ||
+        updates.connections !== undefined ||
+        (Boolean(target.isHub || target.parentNoteId) && updates.title !== undefined);
 
       if (membershipChanged) {
         refreshNotesList().catch(() => {});
+      } else if (structureChanged) {
+        refreshStructureData().catch(() => {});
       }
     },
-    [notes, editingNote, noteMatchesCurrentView, refreshNotesList]
+    [notes, editingNote, noteMatchesCurrentView, refreshNotesList, refreshStructureData, hideSubnotesFromFeed, currentFilter]
+  );
+
+  const toggleHubNote = useCallback(
+    async (id: string) => {
+      const target =
+        notes.find((n) => n.id === id) ||
+        (editingNote && editingNote.id === id ? editingNote : undefined) ||
+        (await getNoteByIdFromDB(id));
+      if (!target) return;
+      const nextIsHub = !target.isHub;
+      await updateNote(id, {
+        isHub: nextIsHub,
+        noteType: nextIsHub ? 'notion' : (target.noteType || 'default'),
+      });
+    },
+    [notes, editingNote, updateNote]
+  );
+
+  const connectNotes = useCallback(
+    async (
+      sourceId: string,
+      targetId: string,
+      role: NoteConnectionRole,
+      options?: { label?: string }
+    ) => {
+      if (!sourceId || !targetId || sourceId === targetId) return;
+      const [source, target] = await Promise.all([
+        getNoteById(sourceId),
+        getNoteById(targetId),
+      ]);
+      if (!source || !target) return;
+
+      if (role === 'part_of') {
+        // Place source as a child of target (target becomes parent Hub/page)
+        if (source.parentNoteId && source.parentNoteId !== targetId) {
+          const oldParent = await getNoteById(source.parentNoteId);
+          if (oldParent) {
+            await updateNote(oldParent.id, {
+              childNoteIds: (oldParent.childNoteIds || []).filter((cid) => cid !== sourceId),
+            });
+          }
+        }
+        const nextChildIds = Array.from(new Set([...(target.childNoteIds || []), sourceId]));
+        await updateNote(target.id, {
+          childNoteIds: nextChildIds,
+          noteType: 'notion',
+        });
+        await updateNote(source.id, {
+          parentNoteId: target.id,
+        });
+        return;
+      }
+
+      const existingConnections: NoteConnection[] = [...(source.connections || [])];
+      const existingIdx = existingConnections.findIndex(
+        (c) => c.targetId === targetId && c.role === role
+      );
+      const nextConn: NoteConnection = {
+        targetId,
+        role,
+        label: options?.label,
+        createdAt: Date.now(),
+      };
+      if (existingIdx >= 0) {
+        existingConnections[existingIdx] = { ...existingConnections[existingIdx], ...nextConn };
+      } else {
+        existingConnections.push(nextConn);
+      }
+      const nextLinkedIds = Array.from(new Set([...(source.linkedNoteIds || []), targetId]));
+      await updateNote(source.id, {
+        connections: existingConnections,
+        linkedNoteIds: nextLinkedIds,
+      });
+    },
+    [getNoteById, updateNote]
+  );
+
+  const disconnectNotes = useCallback(
+    async (
+      sourceId: string,
+      targetId: string,
+      role: NoteConnectionRole | 'all' = 'all'
+    ) => {
+      if (!sourceId || !targetId) return;
+      const [source, target] = await Promise.all([
+        getNoteById(sourceId),
+        getNoteById(targetId),
+      ]);
+
+      const escapeRx = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+      const cleanContentMentions = (html: string, idToRemove: string, titleToRemove?: string): string => {
+        if (!html) return html;
+        let next = html;
+        if (idToRemove) {
+          const escapedId = escapeRx(idToRemove);
+          next = next.replace(
+            new RegExp(`<span\\b[^>]*data-note-(?:id|link-id)=["']${escapedId}["'][^>]*>[\\s\\S]*?<\\/span>`, 'gi'),
+            ''
+          );
+          next = next.replace(
+            new RegExp(`\\[\\[${escapedId}\\|[^\\]]+\\]\\]`, 'g'),
+            ''
+          );
+        }
+        if (titleToRemove && titleToRemove.trim()) {
+          const escapedTitle = escapeRx(titleToRemove.trim());
+          next = next.replace(
+            new RegExp(`<span\\b[^>]*data-note-(?:title|link-title)=["']${escapedTitle}["'][^>]*>[\\s\\S]*?<\\/span>`, 'gi'),
+            ''
+          );
+          next = next.replace(new RegExp(`\\[\\[${escapedTitle}\\]\\]`, 'gi'), '');
+        }
+        return next;
+      };
+
+      if (source) {
+        const updates: Partial<Note> = {};
+        if (role === 'part_of' || role === 'all') {
+          if (source.parentNoteId === targetId) {
+            updates.parentNoteId = null;
+          }
+          if ((source.childNoteIds || []).includes(targetId)) {
+            updates.childNoteIds = (source.childNoteIds || []).filter((id) => id !== targetId);
+          }
+        }
+        const nextConns = (source.connections || []).filter(
+          (c) => c.targetId !== targetId || (role !== 'all' && c.role !== role)
+        );
+        if (nextConns.length !== (source.connections || []).length) {
+          updates.connections = nextConns;
+        }
+        const stillHasRoleConn = nextConns.some((c) => c.targetId === targetId);
+        if (!stillHasRoleConn && (role === 'all' || role !== 'part_of')) {
+          if ((source.linkedNoteIds || []).includes(targetId)) {
+            updates.linkedNoteIds = (source.linkedNoteIds || []).filter((id) => id !== targetId);
+          }
+          const cleaned = cleanContentMentions(source.content || '', targetId, target?.title);
+          if (cleaned !== (source.content || '')) {
+            updates.content = cleaned;
+          }
+        }
+        if (Object.keys(updates).length > 0) {
+          await updateNote(source.id, updates);
+        }
+      }
+
+      if (target) {
+        const updates: Partial<Note> = {};
+        if (role === 'part_of' || role === 'all') {
+          if (target.parentNoteId === sourceId) {
+            updates.parentNoteId = null;
+          }
+          if ((target.childNoteIds || []).includes(sourceId)) {
+            updates.childNoteIds = (target.childNoteIds || []).filter((id) => id !== sourceId);
+          }
+        }
+        if (role === 'all') {
+          const nextConns = (target.connections || []).filter((c) => c.targetId !== sourceId);
+          if (nextConns.length !== (target.connections || []).length) {
+            updates.connections = nextConns;
+          }
+          if ((target.linkedNoteIds || []).includes(sourceId)) {
+            updates.linkedNoteIds = (target.linkedNoteIds || []).filter((id) => id !== sourceId);
+          }
+          const cleaned = cleanContentMentions(target.content || '', sourceId, source?.title);
+          if (cleaned !== (target.content || '')) {
+            updates.content = cleaned;
+          }
+        }
+        if (Object.keys(updates).length > 0) {
+          await updateNote(target.id, updates);
+        }
+      }
+    },
+    [getNoteById, updateNote]
   );
 
   const restoreNoteVersion = useCallback(
@@ -2187,6 +2462,17 @@ export function KeepProvider({
       totalPages,
       totalNotesCount,
       totalActiveNotesCount,
+      unconnectedCount,
+      hubTrees,
+      hideSubnotesFromFeed,
+      setHideSubnotesFromFeed,
+      mapFocusNoteId,
+      setMapFocusNoteId,
+      openInKnowledgeMap,
+      toggleHubNote,
+      connectNotes,
+      disconnectNotes,
+      refreshStructureData,
       categoryCounts,
       setCurrentPage,
       setPageSize,
@@ -2337,7 +2623,20 @@ export function KeepProvider({
       promptInstallPwa,
       sharingNote,
       setSharingNote,
+      unconnectedCount,
+      hubTrees,
+      hideSubnotesFromFeed,
+      setHideSubnotesFromFeed,
+      mapFocusNoteId,
+      openInKnowledgeMap,
+      toggleHubNote,
+      connectNotes,
+      disconnectNotes,
+      refreshStructureData,
+      getNoteById,
       resolveNoteByTitleOrId,
+      getChildNotes,
+      refreshNotesList,
       setCurrentFilter,
       setSearchQuery,
       setLayoutMode,

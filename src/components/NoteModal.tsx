@@ -31,8 +31,9 @@ import {
   ClipboardCopy,
   Tag,
   Folder,
+  Home,
 } from 'lucide-react';
-import { Note, NoteColor, NoteBackgroundTheme, TodoItem, NoteDrawing, NoteVersion } from '@/types/note';
+import { Note, NoteColor, NoteBackgroundTheme, TodoItem, NoteDrawing, NoteVersion, NoteConnection, NoteConnectionRole } from '@/types/note';
 import { getNoteColorClasses } from '@/lib/constants';
 import { NoteActions, NoteActionsHandle } from './NoteActions';
 import { KeepFormattingBar } from './KeepFormattingBar';
@@ -44,6 +45,7 @@ import { GoogleKeepFormatCommand, resolveLocalMediaUrl, copyNoteToClipboard } fr
 import { extractClipboardPayload, copyFilesToLocalFolder } from '@/lib/localPaste';
 import { EncryptNoteModal } from './EncryptNoteModal';
 import { LinkNoteModal } from './LinkNoteModal';
+import { NoteConnectionsPanel } from './NoteConnectionsPanel';
 import { getBidirectionalLinks, NoteLinkTarget } from '@/lib/noteLinks';
 import { getBidirectionalLinksFromDB } from '@/lib/db';
 import { encryptNote } from '@/lib/crypto';
@@ -124,6 +126,9 @@ export const NoteModal: React.FC<NoteModalProps> = ({
     openAiChatForNote,
     getNoteById,
     resolveNoteByTitleOrId,
+    connectNotes,
+    disconnectNotes,
+    openInKnowledgeMap,
   } = useKeep();
 
   const [title, setTitle] = useState('');
@@ -140,6 +145,8 @@ export const NoteModal: React.FC<NoteModalProps> = ({
   const [images, setImages] = useState<string[]>([]);
   const [drawings, setDrawings] = useState<NoteDrawing[]>([]);
   const [linkedNoteIds, setLinkedNoteIds] = useState<string[]>([]);
+  const [connections, setConnections] = useState<NoteConnection[]>([]);
+  const [isHub, setIsHub] = useState(false);
   const [childNoteIds, setChildNoteIds] = useState<string[]>([]);
   const [showSubpages, setShowSubpages] = useState(false);
   const [showCompletedTodos, setShowCompletedTodos] = useState(true);
@@ -148,6 +155,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
   const [isPreviewMode, setIsPreviewMode] = useState(false);
   const [showEncryptModal, setShowEncryptModal] = useState(false);
   const [showLinkModal, setShowLinkModal] = useState(false);
+  const [linkModalRole, setLinkModalRole] = useState<NoteConnectionRole>('related');
   const [isEditingReadingTime, setIsEditingReadingTime] = useState(false);
   const [stopwatchToast, setStopwatchToast] = useState<string | null>(null);
   const [copiedUrlToast, setCopiedUrlToast] = useState(false);
@@ -302,10 +310,48 @@ export const NoteModal: React.FC<NoteModalProps> = ({
     return !unlockedCategoryNames.includes(categoryObj.name.toLowerCase());
   }, [categoryObj, unlockedCategoryNames]);
 
-  const parentNote = useMemo(() => {
-    if (!note?.parentNoteId) return null;
-    return notes.find((n) => n.id === note.parentNoteId && !n.isTrash) || null;
-  }, [note?.parentNoteId, notes]);
+  const ancestorsKey = note?.parentNoteId ? `${note.id}:${note.parentNoteId}` : '';
+  const [ancestorsState, setAncestorsState] = useState<{ noteKey: string; items: Note[] }>({
+    noteKey: '',
+    items: [],
+  });
+
+  useEffect(() => {
+    if (!ancestorsKey || !note?.parentNoteId) return;
+    let cancelled = false;
+
+    const resolveChain = async () => {
+      const chain: Note[] = [];
+      const visited = new Set<string>([note.id]);
+      let currParentId: string | null | undefined = note.parentNoteId;
+      let depth = 0;
+
+      while (currParentId && !visited.has(currParentId) && depth < 8) {
+        visited.add(currParentId);
+        const found =
+          notes.find((n) => n.id === currParentId && !n.isTrash) ||
+          (await getNoteById(currParentId));
+        if (!found || found.isTrash) break;
+        chain.unshift(found);
+        currParentId = found.parentNoteId;
+        depth++;
+      }
+
+      if (!cancelled) {
+        setAncestorsState({ noteKey: ancestorsKey, items: chain });
+      }
+    };
+
+    resolveChain().catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [ancestorsKey, note?.id, note?.parentNoteId, notes, getNoteById]);
+
+  const ancestors = useMemo(
+    () => (ancestorsKey && ancestorsState.noteKey === ancestorsKey ? ancestorsState.items : []),
+    [ancestorsKey, ancestorsState]
+  );
 
   // Only display images in the header gallery if they are NOT already embedded in the note's content
   const headerImages = useMemo(() => {
@@ -384,8 +430,14 @@ export const NoteModal: React.FC<NoteModalProps> = ({
         setImages(unlocked?.images || note.images || []);
         setDrawings(note.drawings || []);
         setLinkedNoteIds(note.linkedNoteIds || []);
+        setConnections(note.connections || []);
+        setIsHub(Boolean(note.isHub));
         setChildNoteIds(note.childNoteIds || []);
-        setShowSubpages(!!(note.childNoteIds && note.childNoteIds.length > 0) || note.noteType === 'notion');
+        setShowSubpages(
+          Boolean(note.isHub) ||
+          !!(note.childNoteIds && note.childNoteIds.length > 0) ||
+          note.noteType === 'notion'
+        );
         setIsFormattingOpen(false);
         setIsPreviewMode(false);
         setAutoSnapshotStatus('idle');
@@ -405,6 +457,10 @@ export const NoteModal: React.FC<NoteModalProps> = ({
           timestamp: note.updatedAt || Date.now(),
         };
       } else {
+        setLinkedNoteIds(note.linkedNoteIds || []);
+        setConnections(note.connections || []);
+        setIsHub(Boolean(note.isHub));
+        setChildNoteIds(note.childNoteIds || []);
         // Same note: check if a historical version was just restored
         const latestVer = note.versions?.[0];
         if (
@@ -440,27 +496,39 @@ export const NoteModal: React.FC<NoteModalProps> = ({
       title,
       content,
       linkedNoteIds,
+      connections,
+      isHub,
     }),
-    [note, title, content, linkedNoteIds]
+    [note, title, content, linkedNoteIds, connections, isHub]
   );
 
   const memLinks = useMemo(
-    () => (note ? getBidirectionalLinks(currentNoteForLinks, notes) : { outgoing: [], backlinks: [] }),
+    () =>
+      note
+        ? getBidirectionalLinks(currentNoteForLinks, notes)
+        : { outgoing: [], backlinks: [], prevNotes: [], nextNotes: [], sources: [] },
     [currentNoteForLinks, notes, note]
   );
 
-  const [dbLinks, setDbLinks] = useState<{ outgoing: NoteLinkTarget[]; backlinks: NoteLinkTarget[] } | null>(null);
+  const [dbLinksState, setDbLinksState] = useState<{
+    noteId: string;
+    data: {
+      outgoing: NoteLinkTarget[];
+      backlinks: NoteLinkTarget[];
+      prevNotes: NoteLinkTarget[];
+      nextNotes: NoteLinkTarget[];
+      sources: NoteLinkTarget[];
+    };
+  } | null>(null);
 
   useEffect(() => {
-    if (!isOpen || !note) {
-      setDbLinks(null);
-      return;
-    }
+    if (!isOpen || !currentNoteForLinks.id) return;
     let cancelled = false;
+    const targetId = currentNoteForLinks.id;
     const timer = setTimeout(() => {
       getBidirectionalLinksFromDB(currentNoteForLinks)
         .then((res) => {
-          if (!cancelled) setDbLinks(res);
+          if (!cancelled) setDbLinksState({ noteId: targetId, data: res });
         })
         .catch(() => {});
     }, 150);
@@ -468,9 +536,11 @@ export const NoteModal: React.FC<NoteModalProps> = ({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [isOpen, note?.id, title, content, linkedNoteIds]);
+  }, [isOpen, currentNoteForLinks]);
 
-  const { outgoing, backlinks } = useMemo(() => {
+  const dbLinks = isOpen && note && dbLinksState?.noteId === note.id ? dbLinksState.data : null;
+
+  const { outgoing, backlinks, prevNotes, nextNotes, sources } = useMemo(() => {
     if (!dbLinks) return memLinks;
 
     const mergeList = (dbList: NoteLinkTarget[], memList: NoteLinkTarget[]) => {
@@ -487,6 +557,9 @@ export const NoteModal: React.FC<NoteModalProps> = ({
     return {
       outgoing: mergeList(dbLinks.outgoing, memLinks.outgoing),
       backlinks: mergeList(dbLinks.backlinks, memLinks.backlinks),
+      prevNotes: mergeList(dbLinks.prevNotes, memLinks.prevNotes),
+      nextNotes: mergeList(dbLinks.nextNotes, memLinks.nextNotes),
+      sources: mergeList(dbLinks.sources, memLinks.sources),
     };
   }, [dbLinks, memLinks]);
 
@@ -607,6 +680,8 @@ export const NoteModal: React.FC<NoteModalProps> = ({
               isPinned,
               reminder,
               linkedNoteIds,
+              connections,
+              isHub,
               versions: updatedVersions,
             });
           } catch (err) {
@@ -628,6 +703,8 @@ export const NoteModal: React.FC<NoteModalProps> = ({
           images,
           drawings,
           linkedNoteIds,
+          connections,
+          isHub,
           versions: updatedVersions,
         });
       }
@@ -655,6 +732,8 @@ export const NoteModal: React.FC<NoteModalProps> = ({
       images,
       drawings,
       linkedNoteIds,
+      connections,
+      isHub,
       updateNote,
     ]
   );
@@ -796,8 +875,10 @@ export const NoteModal: React.FC<NoteModalProps> = ({
             reminder,
             drawings,
             linkedNoteIds,
+            connections,
+            isHub,
             childNoteIds,
-            noteType: showSubpages || childNoteIds.length > 0 ? 'notion' : (note.noteType || 'default'),
+            noteType: isHub || showSubpages || childNoteIds.length > 0 ? 'notion' : (note.noteType || 'default'),
           });
         } catch (err) {
           console.error('Failed saving encrypted note:', err);
@@ -818,8 +899,10 @@ export const NoteModal: React.FC<NoteModalProps> = ({
         images,
         drawings,
         linkedNoteIds,
+        connections,
+        isHub,
         childNoteIds,
-        noteType: showSubpages || childNoteIds.length > 0 ? 'notion' : (note.noteType || 'default'),
+        noteType: isHub || showSubpages || childNoteIds.length > 0 ? 'notion' : (note.noteType || 'default'),
       });
     }
 
@@ -1230,9 +1313,9 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
           </div>
         )}
 
-        {/* Notion-style Parent Breadcrumb */}
-        {isNotionPage ? (
-          <div className="px-3.5 sm:px-6 pt-3 pb-0 select-none flex items-center gap-1.5 text-xs text-stone-400 dark:text-stone-400">
+        {/* Multi-Level Knowledge Breadcrumb */}
+        {(isNotionPage || ancestors.length > 0) && (
+          <div className="px-3.5 sm:px-6 pt-3 pb-0 select-none flex items-center flex-wrap gap-1.5 text-xs text-stone-400 dark:text-stone-400">
             <span>Workspace</span>
             <span>/</span>
             {category && (
@@ -1241,47 +1324,31 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
                 <span>/</span>
               </>
             )}
-            {parentNote && (
-              <>
+            {ancestors.map((anc) => (
+              <React.Fragment key={anc.id}>
                 <button
                   type="button"
                   onClick={async () => {
                     await saveCurrentNote('Auto snapshot before returning to parent');
-                    setEditingNote(parentNote);
+                    setEditingNote(anc);
                   }}
-                  className="hover:underline flex items-center gap-1 text-stone-500 hover:text-amber-600 dark:hover:text-amber-400"
+                  className="hover:underline flex items-center gap-1 text-stone-500 hover:text-amber-600 dark:hover:text-amber-400 cursor-pointer"
                 >
-                  <FileText className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                  <span className="truncate max-w-[150px]">{parentNote.title || 'Parent note'}</span>
+                  {anc.isHub ? (
+                    <span className="text-xs">🏠</span>
+                  ) : (
+                    <FileText className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                  )}
+                  <span className="truncate max-w-[150px]">{anc.title || 'Parent note'}</span>
                 </button>
                 <span>/</span>
-              </>
-            )}
+              </React.Fragment>
+            ))}
             <span className="text-stone-700 dark:text-stone-200 font-medium truncate max-w-[200px]">
-              {categoryObj?.icon || '📚'} {title || 'Untitled'}
+              {isHub ? '🏠' : categoryObj?.icon || '📚'} {title || 'Untitled'}
             </span>
           </div>
-        ) : parentNote ? (
-          <div className="px-3.5 sm:px-6 pt-3 pb-0 select-none">
-            <button
-              type="button"
-              onClick={async () => {
-                await saveCurrentNote('Auto snapshot before returning to parent');
-                setEditingNote(parentNote);
-              }}
-              className="inline-flex items-center gap-1.5 text-xs font-medium text-stone-500 hover:text-amber-600 dark:hover:text-amber-400 transition-colors py-0.5 px-1.5 -ml-1.5 rounded-md hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
-              title={`Back to parent note: ${parentNote.title || 'Untitled'}`}
-            >
-              <span>←</span>
-              <FileText className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-              <span className="truncate max-w-[200px]">{parentNote.title || 'Parent note'}</span>
-              <span className="text-stone-400">/</span>
-              <span className="text-stone-700 dark:text-stone-300 font-semibold truncate max-w-[150px]">
-                {title || 'Current note'}
-              </span>
-            </button>
-          </div>
-        ) : null}
+        )}
 
         {/* Header: Note Title */}
         <div className="px-3.5 sm:px-6 pt-3 sm:pt-4 pb-1.5 shrink-0">
@@ -1399,6 +1466,33 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
             >
               <Tag className="w-3.5 h-3.5 text-stone-500 dark:text-stone-400" />
               <span>+ Label</span>
+            </button>
+
+            {/* Knowledge Hub Pin Toggle */}
+            <button
+              type="button"
+              onClick={async () => {
+                const nextHub = !isHub;
+                setIsHub(nextHub);
+                if (nextHub) setShowSubpages(true);
+                await updateNote(note.id, {
+                  isHub: nextHub,
+                  noteType: nextHub ? 'notion' : (note.noteType || 'default'),
+                });
+              }}
+              className={`inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-full text-xs font-semibold border transition-colors cursor-pointer ${
+                isHub
+                  ? 'bg-amber-500/15 border-amber-500/40 text-amber-800 dark:text-amber-300 shadow-2xs'
+                  : 'bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-600 dark:text-stone-300 border-stone-200 dark:border-stone-700'
+              }`}
+              title={
+                isHub
+                  ? 'Pinned as a Knowledge Hub in your Sidebar Tree (click to unpin)'
+                  : 'Pin as a Knowledge Hub (top-level index page in your Sidebar Tree)'
+              }
+            >
+              <Home className={`w-3.5 h-3.5 ${isHub ? 'text-amber-500' : 'text-stone-400'}`} />
+              <span>{isHub ? 'Hub ✓' : 'Make Hub'}</span>
             </button>
           </div>
         </div>
@@ -1890,82 +1984,99 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
                       ref={editorRef}
                       content={content}
                       onChange={setContent}
-                      placeholder="Take a note, add thoughts, markdown, or text…"
+                      placeholder="Take a note, add thoughts, or type [[ to link another note…"
                       minHeightClass={fullPage ? 'min-h-[340px]' : (isNotionPage ? 'min-h-[140px]' : 'min-h-[240px]')}
                       autoFocus={!isNotionPage && !isList}
                       listenWindowPaste={true}
+                      currentNoteId={note.id}
+                      defaultCategoryForNewLink={category}
+                      onOpenMentionedNote={async (titleOrId) => {
+                        const found = await resolveNoteByTitleOrId(titleOrId);
+                        if (found) {
+                          await saveCurrentNote('Auto snapshot before following link');
+                          setEditingNote(found);
+                        }
+                      }}
+                      onNoteMentionSelected={async (target, role) => {
+                        if (role === 'part_of') {
+                          await connectNotes(note.id, target.id, 'part_of');
+                          return;
+                        }
+                        setLinkedNoteIds((prev) => Array.from(new Set([...prev, target.id])));
+                        setConnections((prev) => {
+                          const filtered = prev.filter(
+                            (c) => !(c.targetId === target.id && c.role === role)
+                          );
+                          return [...filtered, { targetId: target.id, role, createdAt: Date.now() }];
+                        });
+                        await connectNotes(note.id, target.id, role);
+                      }}
                     />
                   )}
                 </div>
               )}
             </div>
 
-          {/* Bidirectional Linked Notes & Backlinks */}
-          {(outgoing.length > 0 || backlinks.length > 0) && (
-            <div className="pt-3 pb-1 border-t border-black/5 dark:border-white/5 space-y-2.5">
-              {outgoing.length > 0 && (
-                <div>
-                  <div className="text-[11px] font-semibold text-stone-500 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
-                    <Link2 className="w-3 h-3 text-blue-500" />
-                    Outgoing Links ({outgoing.length})
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {outgoing.map((target) => (
-                      <button
-                        key={target.id}
-                        type="button"
-                        onClick={async () => {
-                          await saveCurrentNote('Auto snapshot before following link');
-                          const targetNote = await getNoteById(target.id);
-                          if (targetNote) setEditingNote(targetNote);
-                        }}
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors border border-blue-200/50 dark:border-blue-800/40"
-                      >
-                        <Link2 className="w-3 h-3 text-blue-500" />
-                        <span>{target.title || 'Untitled note'}</span>
-                        {target.category && target.category !== category && (
-                          <span className="text-[10px] px-1.5 py-0.2 rounded bg-blue-100/80 dark:bg-blue-900/60 text-blue-600 dark:text-blue-300">
-                            {target.category}
-                          </span>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {backlinks.length > 0 && (
-                <div>
-                  <div className="text-[11px] font-semibold text-stone-500 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
-                    <span className="text-purple-500 font-bold">↩</span>
-                    Backlinks / Referenced In ({backlinks.length})
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {backlinks.map((source) => (
-                      <button
-                        key={source.id}
-                        type="button"
-                        onClick={async () => {
-                          await saveCurrentNote('Auto snapshot before following link');
-                          const sourceNote = await getNoteById(source.id);
-                          if (sourceNote) setEditingNote(sourceNote);
-                        }}
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900/50 transition-colors border border-purple-200/50 dark:border-purple-800/40"
-                      >
-                        <span className="text-purple-500 font-bold text-[10px]">↩</span>
-                        <span>{source.title || 'Untitled note'}</span>
-                        {source.category && source.category !== category && (
-                          <span className="text-[10px] px-1.5 py-0.2 rounded bg-purple-100/80 dark:bg-purple-900/60 text-purple-600 dark:text-purple-300">
-                            {source.category}
-                          </span>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+          {/* Structured Connections Neighborhood, Prev/Next Stepper & Suggestions */}
+          <NoteConnectionsPanel
+            note={{
+              ...note,
+              title,
+              content,
+              category,
+              labels,
+              linkedNoteIds,
+              connections,
+              isHub,
+              childNoteIds,
+            }}
+            ancestors={ancestors}
+            outgoing={outgoing}
+            backlinks={backlinks}
+            prevNotes={prevNotes}
+            nextNotes={nextNotes}
+            sources={sources}
+            onNavigateToNote={async (targetId) => {
+              await saveCurrentNote('Auto snapshot before following link');
+              const targetNote = await getNoteById(targetId);
+              if (targetNote) setEditingNote(targetNote);
+            }}
+            onOpenLinkModal={(defaultRole) => {
+              setLinkModalRole(defaultRole);
+              setShowLinkModal(true);
+            }}
+            onDisconnect={async (targetId, role) => {
+              await saveCurrentNote('Auto snapshot before unlinking');
+              await disconnectNotes(note.id, targetId, role || 'all');
+              const fresh = await getNoteById(note.id);
+              if (fresh) {
+                setContent(fresh.content || '');
+                setLinkedNoteIds(fresh.linkedNoteIds || []);
+                setConnections(fresh.connections || []);
+                setChildNoteIds(fresh.childNoteIds || []);
+                if (lastSnapshottedRef.current) {
+                  lastSnapshottedRef.current.content = (fresh.content || '').trim();
+                }
+              }
+            }}
+            onConnectSuggested={async (targetNote, role) => {
+              await saveCurrentNote('Auto snapshot before connecting note');
+              await connectNotes(note.id, targetNote.id, role);
+              if (role !== 'part_of') {
+                setLinkedNoteIds((prev) => Array.from(new Set([...prev, targetNote.id])));
+                setConnections((prev) => {
+                  const filtered = prev.filter(
+                    (c) => !(c.targetId === targetNote.id && c.role === role)
+                  );
+                  return [...filtered, { targetId: targetNote.id, role, createdAt: Date.now() }];
+                });
+              }
+            }}
+            onOpenInMap={async () => {
+              await saveCurrentNote('Auto snapshot before opening map');
+              openInKnowledgeMap(note.id);
+            }}
+          />
 
           {/* Chips & Timestamp */}
           <div className="pt-2">
@@ -2126,7 +2237,10 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
               onAddReminder={setReminder}
               onToggleLabel={handleToggleLabel}
               onEncrypt={() => setShowEncryptModal(true)}
-              onLinkNote={() => setShowLinkModal(true)}
+              onLinkNote={() => {
+                setLinkModalRole('related');
+                setShowLinkModal(true);
+              }}
               onOpenVersions={() => setVersionHistoryNote(note)}
               onStartReading={() => startReadingStopwatch(note.id, title, category)}
               showFormattingToggle={!isList}
@@ -2220,16 +2334,32 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
         currentCategory={category}
         notes={notes}
         isOpen={showLinkModal}
+        initialRole={linkModalRole}
         onClose={() => setShowLinkModal(false)}
-        onSelectNote={(target) => {
-          const linkSyntax = `[[${target.title || 'Untitled Note'}]]`;
-          if (!isList) {
-            editorRef.current?.insertContent(` ${linkSyntax} `);
-            setContent((prev) => `${prev} ${linkSyntax}`);
+        onSelectNote={async (target, role) => {
+          if (role === 'part_of') {
+            await saveCurrentNote('Auto snapshot before moving into Hub');
+            await connectNotes(note.id, target.id, 'part_of');
+            return;
+          }
+          const linkSyntax = `[[${target.id}|${target.title || 'Untitled Note'}]]`;
+          if (!isList && !isPreviewMode && editorRef.current) {
+            editorRef.current.insertNoteMention({
+              id: target.id,
+              title: target.title || 'Untitled Note',
+              role,
+            });
           } else {
             setContent((prev) => `${prev}\n${linkSyntax}`);
           }
           setLinkedNoteIds((prev) => Array.from(new Set([...prev, target.id])));
+          setConnections((prev) => {
+            const filtered = prev.filter(
+              (c) => !(c.targetId === target.id && c.role === role)
+            );
+            return [...filtered, { targetId: target.id, role, createdAt: Date.now() }];
+          });
+          await connectNotes(note.id, target.id, role);
         }}
       />
 

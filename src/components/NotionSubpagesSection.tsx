@@ -780,6 +780,9 @@ export const NotionSubpagesSection: React.FC<NotionSubpagesSectionProps> = ({
         currentNoteId={parentNoteId}
         currentCategory={category}
         excludeNoteIds={childNoteIds}
+        enableRoleSelector={false}
+        modalTitle="Attach Existing Note as Sub-Page"
+        modalSubtitle="Select any note across your workspace to nest here"
         notes={notes.filter((n) => !childNoteIds.includes(n.id))}
       />
     </div>
