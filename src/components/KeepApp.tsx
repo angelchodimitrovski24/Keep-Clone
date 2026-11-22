@@ -328,12 +328,12 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
   };
 
   return (
-    <div className="min-h-screen bg-stone-50 dark:bg-[#18191a] text-stone-900 dark:text-stone-100 flex flex-col transition-colors selection:bg-amber-200 dark:selection:bg-amber-900">
+    <div className="h-screen h-dvh overflow-hidden bg-stone-50 dark:bg-[#18191a] text-stone-900 dark:text-stone-100 flex flex-col transition-colors selection:bg-amber-200 dark:selection:bg-amber-900">
       {/* Top Header */}
       <Header onToggleSidebar={() => setSidebarOpen(!sidebarOpen)} />
 
       {/* Main View Area */}
-      <div className="flex-1 flex min-w-0 overflow-hidden">
+      <div className="flex-1 flex min-w-0 min-h-0 overflow-hidden">
         {/* Navigation Sidebar */}
         <Sidebar
           isOpen={sidebarOpen}
@@ -342,7 +342,7 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
         />
 
         {/* Center Workspace (Tabs Bar + Main Scrollable Area) */}
-        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
           {/* Internal Workspace Tabs Bar */}
           <NoteTabsBar
             openTabIds={openTabIds}
@@ -358,7 +358,8 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
           />
 
           {/* Notes Feed / Active Note Full Page View Container */}
-          <main className="flex-1 p-2.5 sm:p-4 md:p-8 overflow-y-auto max-w-[1600px] mx-auto w-full">
+          <main className="flex-1 min-h-0 overflow-y-auto overscroll-contain w-full">
+            <div className="p-2.5 sm:p-4 md:p-8 max-w-[1600px] mx-auto w-full">
             {pendingNoteIdRef.current && isLoading ? (
               <div className="w-full max-w-4xl mx-auto py-24 flex flex-col items-center justify-center text-stone-400">
                 <div className="w-8 h-8 border-3 border-amber-500 border-t-transparent rounded-full animate-spin mb-3" />
@@ -421,6 +422,7 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
                 />
               </>
             )}
+            </div>
           </main>
         </div>
       </div>

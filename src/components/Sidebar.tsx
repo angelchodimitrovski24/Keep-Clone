@@ -160,7 +160,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       )}
 
       <aside
-        className={`fixed lg:static top-16 left-0 bottom-0 z-40 transition-all duration-200 bg-white dark:bg-[#202124] overflow-y-auto select-none border-r border-stone-200 dark:border-stone-800 py-4 ${
+        className={`fixed lg:static top-16 left-0 bottom-0 z-40 lg:h-full lg:min-h-0 lg:shrink-0 transition-all duration-200 bg-white dark:bg-[#202124] overflow-y-auto overscroll-contain select-none border-r border-stone-200 dark:border-stone-800 py-4 ${
           isOpen
             ? 'w-72 sm:w-64 px-3 translate-x-0 shadow-2xl lg:shadow-none'
             : '-translate-x-full lg:translate-x-0 lg:w-18 px-2'
