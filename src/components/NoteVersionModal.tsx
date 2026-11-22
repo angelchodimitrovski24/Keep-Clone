@@ -360,14 +360,16 @@ export const NoteVersionModal: React.FC = () => {
                         {activeVersion.todos && activeVersion.todos.length > 0 ? (
                           activeVersion.todos.map((todo) => (
                             <div key={todo.id} className="flex items-start gap-2.5 min-w-0">
-                              <input
-                                type="checkbox"
-                                readOnly
-                                checked={todo.completed}
-                                className="w-4 h-4 mt-0.5 rounded text-blue-600 accent-blue-600 shrink-0 pointer-events-none"
-                              />
+                              <div className="keep-checklist-control">
+                                <input
+                                  type="checkbox"
+                                  readOnly
+                                  checked={todo.completed}
+                                  className="keep-checklist-checkbox rounded text-blue-600 pointer-events-none"
+                                />
+                              </div>
                               <span
-                                className={`flex-1 min-w-0 break-words whitespace-pre-wrap ${
+                                className={`flex-1 min-w-0 leading-[1.5] break-words whitespace-pre-wrap ${
                                   todo.completed
                                     ? 'line-through text-stone-400 dark:text-stone-500'
                                     : 'text-stone-800 dark:text-stone-200'

@@ -79,8 +79,8 @@ interface NoteActionsProps {
 }
 
 export interface NoteActionsHandle {
-  openCategoryPicker: () => void;
-  openLabelPicker: () => void;
+  openCategoryPicker: (anchorEl?: HTMLElement | null) => void;
+  openLabelPicker: (anchorEl?: HTMLElement | null) => void;
   openColorPicker: () => void;
   openReminderPicker: () => void;
   openMoreMenu: () => void;
@@ -135,27 +135,74 @@ export const NoteActions = React.forwardRef<NoteActionsHandle, NoteActionsProps>
   const [mounted, setMounted] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [copiedToast, setCopiedToast] = useState(false);
+  const [anchoredPickerBox, setAnchoredPickerBox] = useState<{
+    left: number;
+    top?: number;
+    bottom?: number;
+    maxHeight: number;
+  } | null>(null);
+
+  const anchorElRef = useRef<HTMLElement | null>(null);
+  const anchoredPickerRef = useRef<HTMLDivElement>(null);
+
+  const computePickerAnchorBox = (anchorEl: HTMLElement) => {
+    const rect = anchorEl.getBoundingClientRect();
+    const menuWidth = Math.min(256, window.innerWidth - 32);
+    const left = Math.max(16, Math.min(rect.left, window.innerWidth - menuWidth - 16));
+    const margin = 16;
+    const spaceBelow = window.innerHeight - rect.bottom - margin;
+    const spaceAbove = rect.top - margin;
+
+    if (spaceBelow >= 220 || spaceBelow >= spaceAbove) {
+      return {
+        left: Math.round(left),
+        top: Math.round(rect.bottom + 6),
+        maxHeight: Math.min(420, Math.max(180, Math.floor(spaceBelow))),
+      };
+    }
+
+    return {
+      left: Math.round(left),
+      bottom: Math.round(window.innerHeight - rect.top + 6),
+      maxHeight: Math.min(420, Math.max(180, Math.floor(spaceAbove))),
+    };
+  };
+
+  const clearPickerAnchor = () => {
+    anchorElRef.current = null;
+    setAnchoredPickerBox(null);
+  };
+
+  const openPicker = (kind: 'category' | 'label', anchorEl?: HTMLElement | null) => {
+    const isAlreadyOpen = kind === 'category' ? showCategoryPicker : showLabelPicker;
+    const setTargetOpen = kind === 'category' ? setShowCategoryPicker : setShowLabelPicker;
+    if (isAlreadyOpen && anchorEl && anchorElRef.current === anchorEl) {
+      setTargetOpen(false);
+      clearPickerAnchor();
+      return;
+    }
+    setShowMenu(false);
+    setShowColorPicker(false);
+    setShowReminderPicker(false);
+    setShowCategoryPicker(kind === 'category');
+    setShowLabelPicker(kind === 'label');
+    if (anchorEl) {
+      anchorElRef.current = anchorEl;
+      setAnchoredPickerBox(computePickerAnchorBox(anchorEl));
+    } else {
+      clearPickerAnchor();
+    }
+  };
 
   React.useImperativeHandle(ref, () => ({
-    openCategoryPicker: () => {
-      setShowMenu(false);
-      setShowColorPicker(false);
-      setShowReminderPicker(false);
-      setShowLabelPicker(false);
-      setShowCategoryPicker(true);
-    },
-    openLabelPicker: () => {
-      setShowMenu(false);
-      setShowColorPicker(false);
-      setShowReminderPicker(false);
-      setShowCategoryPicker(false);
-      setShowLabelPicker(true);
-    },
+    openCategoryPicker: (anchorEl?: HTMLElement | null) => openPicker('category', anchorEl),
+    openLabelPicker: (anchorEl?: HTMLElement | null) => openPicker('label', anchorEl),
     openColorPicker: () => {
       setShowMenu(false);
       setShowReminderPicker(false);
       setShowCategoryPicker(false);
       setShowLabelPicker(false);
+      clearPickerAnchor();
       setShowColorPicker(true);
     },
     openReminderPicker: () => {
@@ -163,6 +210,7 @@ export const NoteActions = React.forwardRef<NoteActionsHandle, NoteActionsProps>
       setShowColorPicker(false);
       setShowCategoryPicker(false);
       setShowLabelPicker(false);
+      clearPickerAnchor();
       setShowReminderPicker(true);
     },
     openMoreMenu: () => {
@@ -170,6 +218,7 @@ export const NoteActions = React.forwardRef<NoteActionsHandle, NoteActionsProps>
       setShowReminderPicker(false);
       setShowCategoryPicker(false);
       setShowLabelPicker(false);
+      clearPickerAnchor();
       setShowMenu(true);
     },
   }));
@@ -186,6 +235,7 @@ export const NoteActions = React.forwardRef<NoteActionsHandle, NoteActionsProps>
     }
     setNewCategoryName('');
     setShowCategoryPicker(false);
+    clearPickerAnchor();
   };
 
   const handleCopyTitleAndContent = async () => {
@@ -295,12 +345,50 @@ export const NoteActions = React.forwardRef<NoteActionsHandle, NoteActionsProps>
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mhtmlInputRef = useRef<HTMLInputElement>(null);
 
+  const hasAnchoredPicker = Boolean(anchoredPickerBox);
+
+  useEffect(() => {
+    if (!(showCategoryPicker || showLabelPicker) || !hasAnchoredPicker) return;
+
+    const handleReposition = () => {
+      const el = anchorElRef.current;
+      if (!el || !el.isConnected) {
+        setShowCategoryPicker(false);
+        setShowLabelPicker(false);
+        setAnchoredPickerBox(null);
+        return;
+      }
+      setAnchoredPickerBox(computePickerAnchorBox(el));
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setShowCategoryPicker(false);
+        setShowLabelPicker(false);
+        setAnchoredPickerBox(null);
+      }
+    };
+
+    window.addEventListener('resize', handleReposition);
+    window.addEventListener('scroll', handleReposition, true);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('resize', handleReposition);
+      window.removeEventListener('scroll', handleReposition, true);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [showCategoryPicker, showLabelPicker, hasAnchoredPicker]);
+
   // Close menus when clicking outside
   useEffect(() => {
     const handleOutsideClick = (e: MouseEvent | TouchEvent) => {
       const target = e.target as Node;
-      // If click/touch is inside the mobile bottom sheet portal, ignore
-      if (sheetRef.current && sheetRef.current.contains(target)) {
+      // If click/touch is inside the mobile bottom sheet portal, anchored picker, or its trigger pill, ignore
+      if (
+        (sheetRef.current && sheetRef.current.contains(target)) ||
+        (anchoredPickerRef.current && anchoredPickerRef.current.contains(target)) ||
+        (anchorElRef.current && anchorElRef.current.contains(target))
+      ) {
         return;
       }
       if (containerRef.current && !containerRef.current.contains(target)) {
@@ -309,6 +397,8 @@ export const NoteActions = React.forwardRef<NoteActionsHandle, NoteActionsProps>
         setShowReminderPicker(false);
         setShowLabelPicker(false);
         setShowCategoryPicker(false);
+        anchorElRef.current = null;
+        setAnchoredPickerBox(null);
       }
     };
     document.addEventListener('mousedown', handleOutsideClick);
@@ -771,6 +861,7 @@ export const NoteActions = React.forwardRef<NoteActionsHandle, NoteActionsProps>
               <button
                 type="button"
                 onClick={() => {
+                  clearPickerAnchor();
                   setShowMenu(false);
                   setShowCategoryPicker(true);
                 }}
@@ -785,6 +876,7 @@ export const NoteActions = React.forwardRef<NoteActionsHandle, NoteActionsProps>
               <button
                 type="button"
                 onClick={() => {
+                  clearPickerAnchor();
                   setShowMenu(false);
                   setShowLabelPicker(true);
                 }}
@@ -1063,217 +1155,220 @@ export const NoteActions = React.forwardRef<NoteActionsHandle, NoteActionsProps>
           </div>
         )}
 
-        {/* Category Picker submenu */}
-        {!isMobile && showCategoryPicker && (
-          <div
-            onClick={(e) => e.stopPropagation()}
-            onMouseDown={(e) => e.stopPropagation()}
-            onTouchStart={(e) => e.stopPropagation()}
-            style={{ maxHeight: dynamicMaxHeight ? `${dynamicMaxHeight}px` : undefined }}
-            className={`absolute ${alignClass} ${verticalPositionClass} w-64 max-w-[calc(100vw-2rem)] p-2.5 bg-white dark:bg-[#202124] rounded-xl keep-elevation-2 border border-black/[0.08] dark:border-stone-700/60 z-50 text-[13.5px] overflow-y-auto overscroll-contain shadow-xl`}
-          >
-            <div className="flex items-center justify-between pb-2 mb-2 border-b border-black/[0.06] dark:border-white/[0.08]">
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowCategoryPicker(false);
-                    setShowMenu(true);
-                  }}
-                  className="p-1 -ml-1 text-stone-500 hover:text-stone-800 dark:hover:text-stone-200 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
-                  title="Back to options"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-                <span className="text-xs font-medium text-stone-500 uppercase tracking-wider">Select Category</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowCategoryPicker(false)}
-                className="text-xs font-semibold text-stone-900 dark:text-stone-100 hover:underline"
-              >
-                Done
-              </button>
-            </div>
-
-            <div className="max-h-56 overflow-y-auto space-y-0.5 mb-2">
-              {/* None Option */}
-              <button
-                type="button"
-                onClick={() => {
-                  onSelectCategory?.(null);
-                  setShowCategoryPicker(false);
-                }}
-                className={`w-full text-left flex items-center justify-between px-2.5 py-2 rounded-lg text-xs transition-colors ${
-                  !note.category
-                    ? 'bg-stone-100 text-stone-900 dark:bg-stone-800 dark:text-stone-100 font-semibold'
-                    : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-600 dark:text-stone-400'
-                }`}
-              >
-                <span>None (No category)</span>
-                {!note.category && <span>✓</span>}
-              </button>
-
-              {categories.map((cat) => {
-                const isSelected = note.category === cat.name;
-                return (
-                  <button
-                    key={cat.id}
-                    type="button"
-                    onClick={() => {
-                      onSelectCategory?.(cat.name);
-                      setShowCategoryPicker(false);
-                    }}
-                    className={`w-full text-left flex items-center justify-between px-2.5 py-2 rounded-lg text-xs transition-colors ${
-                      isSelected
-                        ? 'bg-stone-100 text-stone-900 dark:bg-stone-800 dark:text-stone-100 font-semibold'
-                        : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span>{cat.icon || '📁'}</span>
-                      <div
-                        className="w-2 h-2 rounded-full"
-                        style={{ backgroundColor: cat.color || '#3b82f6' }}
-                      />
-                      <span>{cat.name}</span>
-                    </div>
-                    {isSelected && <span>✓</span>}
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className="pt-2 border-t border-black/[0.06] dark:border-white/[0.08]">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowCategoryPicker(false);
-                  setIsCategoryModalOpen(true);
-                }}
-                className="w-full text-center text-xs font-semibold py-1.5 text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 rounded-lg transition-colors"
-              >
-                + Manage Categories
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Labels Picker submenu */}
-        {!isMobile && showLabelPicker && (
-          <div
-            onClick={(e) => e.stopPropagation()}
-            onMouseDown={(e) => e.stopPropagation()}
-            onTouchStart={(e) => e.stopPropagation()}
-            style={{ maxHeight: dynamicMaxHeight ? `${dynamicMaxHeight}px` : undefined }}
-            className={`absolute ${alignClass} ${verticalPositionClass} w-64 max-w-[calc(100vw-2rem)] p-2.5 bg-white dark:bg-[#202124] rounded-xl keep-elevation-2 border border-black/[0.08] dark:border-stone-700/60 z-50 text-[13.5px] overflow-y-auto overscroll-contain shadow-xl`}
-          >
-            <div className="flex items-center justify-between pb-2 mb-2 border-b border-black/[0.06] dark:border-white/[0.08]">
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowLabelPicker(false);
-                    setShowMenu(true);
-                  }}
-                  className="p-1 -ml-1 text-stone-500 hover:text-stone-800 dark:hover:text-stone-200 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
-                  title="Back to options"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-                <span className="text-xs font-medium text-stone-500 uppercase tracking-wider">Label note</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowLabelPicker(false)}
-                className="text-xs font-semibold text-stone-900 dark:text-stone-100 hover:underline"
-              >
-                Done
-              </button>
-            </div>
-
-            <div className="max-h-48 overflow-y-auto space-y-0.5 mb-2">
-              {filteredLabels.length === 0 && labelQuery && (
-                <div className="text-center py-3 text-stone-400 dark:text-stone-500 text-xs">
-                  No matching labels
-                </div>
-              )}
-
-              {filteredLabels.map((lbl) => {
-                const isSelected = note.labels?.includes(lbl.name);
-                return (
-                  <label
-                    key={lbl.id}
-                    className="flex items-center gap-2.5 px-2.5 py-1.5 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] rounded-lg cursor-pointer transition-colors text-stone-800 dark:text-stone-200"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={isSelected}
-                      onChange={() => onToggleLabel?.(lbl.name)}
-                      className="w-4 h-4 rounded accent-stone-900 dark:accent-stone-300"
-                    />
-                    <span className="truncate">{lbl.name}</span>
-                  </label>
-                );
-              })}
-
-              {!exactMatchExists && labelQuery && (
-                <button
-                  type="button"
-                  onClick={async (e) => {
-                    e.stopPropagation();
-                    const trimmed = newLabelText.trim();
-                    await createLabel(trimmed);
-                    onToggleLabel?.(trimmed);
-                    setNewLabelText('');
-                  }}
-                  className="w-full text-left px-2.5 py-1.5 flex items-center gap-2 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-900 dark:text-stone-100 font-semibold text-xs rounded-lg transition-colors mt-1"
-                >
-                  <Plus className="w-3.5 h-3.5 shrink-0" />
-                  <span className="truncate">Create &quot;{newLabelText.trim()}&quot;</span>
-                </button>
-              )}
-            </div>
-
-            <div className="flex items-center gap-1.5 pt-2 border-t border-black/[0.06] dark:border-white/[0.08] relative">
-              <Search className="w-3.5 h-3.5 text-stone-400 absolute left-2.5 pointer-events-none" />
-              <input
-                type="text"
-                placeholder="Enter label name"
-                value={newLabelText}
-                onChange={(e) => setNewLabelText(e.target.value)}
-                onKeyDown={async (e) => {
-                  if (e.key === 'Enter' && newLabelText.trim()) {
-                    e.preventDefault();
-                    const trimmed = newLabelText.trim();
-                    const exact = labels.find((l) => l.name.toLowerCase() === trimmed.toLowerCase());
-                    if (exact) {
-                      onToggleLabel?.(exact.name);
-                    } else {
-                      await createLabel(trimmed);
-                      onToggleLabel?.(trimmed);
+        {/* Category & Label Picker submenus (anchored to clicked top pill or footer ... menu) */}
+        {!isMobile && (showCategoryPicker || showLabelPicker) && (() => {
+          const isCategory = showCategoryPicker;
+          const closeActivePicker = () => {
+            if (isCategory) setShowCategoryPicker(false);
+            else setShowLabelPicker(false);
+            clearPickerAnchor();
+          };
+          const submenuNode = (
+            <div
+              ref={anchoredPickerBox ? anchoredPickerRef : undefined}
+              data-portal={anchoredPickerBox ? 'true' : undefined}
+              onClick={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+              onTouchStart={(e) => e.stopPropagation()}
+              style={
+                anchoredPickerBox
+                  ? {
+                      position: 'fixed',
+                      left: `${anchoredPickerBox.left}px`,
+                      top: anchoredPickerBox.top !== undefined ? `${anchoredPickerBox.top}px` : undefined,
+                      bottom: anchoredPickerBox.bottom !== undefined ? `${anchoredPickerBox.bottom}px` : undefined,
+                      maxHeight: `${anchoredPickerBox.maxHeight}px`,
                     }
-                    setNewLabelText('');
-                  }
-                }}
-                className="w-full text-xs pl-7 pr-7 py-1.5 rounded-lg bg-stone-100 dark:bg-stone-800 text-stone-800 dark:text-stone-200 border-none outline-none focus:ring-1 focus:ring-stone-400 dark:focus:ring-stone-600"
-              />
-              {newLabelText && (
+                  : { maxHeight: dynamicMaxHeight ? `${dynamicMaxHeight}px` : undefined }
+              }
+              className={`${
+                anchoredPickerBox
+                  ? 'fixed z-[1000]'
+                  : `absolute ${alignClass} ${verticalPositionClass} z-50`
+              } w-64 max-w-[calc(100vw-2rem)] p-2.5 bg-white dark:bg-[#202124] rounded-xl keep-elevation-2 border border-black/[0.08] dark:border-stone-700/60 text-[13.5px] overflow-y-auto overscroll-contain shadow-xl`}
+            >
+              <div className="flex items-center justify-between pb-2 mb-2 border-b border-black/[0.06] dark:border-white/[0.08]">
+                <div className="flex items-center gap-1.5">
+                  {!anchoredPickerBox && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        closeActivePicker();
+                        setShowMenu(true);
+                      }}
+                      className="p-1 -ml-1 text-stone-500 hover:text-stone-800 dark:hover:text-stone-200 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+                      title="Back to options"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                  )}
+                  <span className="text-xs font-medium text-stone-500 uppercase tracking-wider">
+                    {isCategory ? 'Select Category' : 'Label note'}
+                  </span>
+                </div>
                 <button
                   type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setNewLabelText('');
-                  }}
-                  className="absolute right-2 p-0.5 text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 rounded-full"
-                  title="Clear search"
+                  onClick={closeActivePicker}
+                  className="text-xs font-semibold text-stone-900 dark:text-stone-100 hover:underline"
                 >
-                  <X className="w-3.5 h-3.5" />
+                  Done
                 </button>
+              </div>
+
+              {isCategory ? (
+                <>
+                  <div className="max-h-56 overflow-y-auto space-y-0.5 mb-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onSelectCategory?.(null);
+                        closeActivePicker();
+                      }}
+                      className={`w-full text-left flex items-center justify-between px-2.5 py-2 rounded-lg text-xs transition-colors ${
+                        !note.category
+                          ? 'bg-stone-100 text-stone-900 dark:bg-stone-800 dark:text-stone-100 font-semibold'
+                          : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-600 dark:text-stone-400'
+                      }`}
+                    >
+                      <span>None (No category)</span>
+                      {!note.category && <span>✓</span>}
+                    </button>
+
+                    {categories.map((cat) => {
+                      const isSelected = note.category === cat.name;
+                      return (
+                        <button
+                          key={cat.id}
+                          type="button"
+                          onClick={() => {
+                            onSelectCategory?.(cat.name);
+                            closeActivePicker();
+                          }}
+                          className={`w-full text-left flex items-center justify-between px-2.5 py-2 rounded-lg text-xs transition-colors ${
+                            isSelected
+                              ? 'bg-stone-100 text-stone-900 dark:bg-stone-800 dark:text-stone-100 font-semibold'
+                              : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span>{cat.icon || '📁'}</span>
+                            <div
+                              className="w-2 h-2 rounded-full"
+                              style={{ backgroundColor: cat.color || '#3b82f6' }}
+                            />
+                            <span>{cat.name}</span>
+                          </div>
+                          {isSelected && <span>✓</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="pt-2 border-t border-black/[0.06] dark:border-white/[0.08]">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        closeActivePicker();
+                        setIsCategoryModalOpen(true);
+                      }}
+                      className="w-full text-center text-xs font-semibold py-1.5 text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 rounded-lg transition-colors"
+                    >
+                      + Manage Categories
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="max-h-48 overflow-y-auto space-y-0.5 mb-2">
+                    {filteredLabels.length === 0 && labelQuery && (
+                      <div className="text-center py-3 text-stone-400 dark:text-stone-500 text-xs">
+                        No matching labels
+                      </div>
+                    )}
+
+                    {filteredLabels.map((lbl) => {
+                      const isSelected = note.labels?.includes(lbl.name);
+                      return (
+                        <label
+                          key={lbl.id}
+                          className="flex items-center gap-2.5 px-2.5 py-1.5 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] rounded-lg cursor-pointer transition-colors text-stone-800 dark:text-stone-200"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => onToggleLabel?.(lbl.name)}
+                            className="w-4 h-4 rounded accent-stone-900 dark:accent-stone-300"
+                          />
+                          <span className="truncate">{lbl.name}</span>
+                        </label>
+                      );
+                    })}
+
+                    {!exactMatchExists && labelQuery && (
+                      <button
+                        type="button"
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          const trimmed = newLabelText.trim();
+                          await createLabel(trimmed);
+                          onToggleLabel?.(trimmed);
+                          setNewLabelText('');
+                        }}
+                        className="w-full text-left px-2.5 py-1.5 flex items-center gap-2 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-900 dark:text-stone-100 font-semibold text-xs rounded-lg transition-colors mt-1"
+                      >
+                        <Plus className="w-3.5 h-3.5 shrink-0" />
+                        <span className="truncate">Create &quot;{newLabelText.trim()}&quot;</span>
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-1.5 pt-2 border-t border-black/[0.06] dark:border-white/[0.08] relative">
+                    <Search className="w-3.5 h-3.5 text-stone-400 absolute left-2.5 pointer-events-none" />
+                    <input
+                      type="text"
+                      placeholder="Enter label name"
+                      value={newLabelText}
+                      onChange={(e) => setNewLabelText(e.target.value)}
+                      onKeyDown={async (e) => {
+                        if (e.key === 'Enter' && newLabelText.trim()) {
+                          e.preventDefault();
+                          const trimmed = newLabelText.trim();
+                          const exact = labels.find((l) => l.name.toLowerCase() === trimmed.toLowerCase());
+                          if (exact) {
+                            onToggleLabel?.(exact.name);
+                          } else {
+                            await createLabel(trimmed);
+                            onToggleLabel?.(trimmed);
+                          }
+                          setNewLabelText('');
+                        }
+                      }}
+                      className="w-full text-xs pl-7 pr-7 py-1.5 rounded-lg bg-stone-100 dark:bg-stone-800 text-stone-800 dark:text-stone-200 border-none outline-none focus:ring-1 focus:ring-stone-400 dark:focus:ring-stone-600"
+                    />
+                    {newLabelText && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setNewLabelText('');
+                        }}
+                        className="absolute right-2 p-0.5 text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 rounded-full"
+                        title="Clear search"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </>
               )}
             </div>
-          </div>
-        )}
+          );
+
+          if (anchoredPickerBox && mounted && typeof document !== 'undefined') {
+            return createPortal(submenuNode, document.body);
+          }
+          return submenuNode;
+        })()}
       </div>
 
       {/* Native Mobile Bottom Sheet (For Android & Small Screens < 640px) */}

@@ -826,7 +826,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
     [note, updateNote]
   );
 
-  const saveCurrentNote = async (snapshotReason?: string) => {
+  const saveCurrentNote = useCallback(async (snapshotReason?: string) => {
     if (!note || activeNoteIdRef.current !== note.id) return;
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     if (maxWaitTimerRef.current) clearTimeout(maxWaitTimerRef.current);
@@ -885,38 +885,82 @@ export const NoteModal: React.FC<NoteModalProps> = ({
         }
       }
     } else {
-      await updateNote(note.id, {
-        title: trimmedTitle,
-        content: trimmedContent,
-        isList,
-        todos: finalTodos,
-        color,
-        theme,
-        category: category || null,
-        labels,
-        isPinned,
-        reminder,
-        images,
-        drawings,
-        linkedNoteIds,
-        connections,
-        isHub,
-        childNoteIds,
-        noteType: isHub || showSubpages || childNoteIds.length > 0 ? 'notion' : (note.noteType || 'default'),
-      });
+      await updateNote(
+        note.id,
+        {
+          title: trimmedTitle,
+          content: trimmedContent,
+          isList,
+          todos: finalTodos,
+          color,
+          theme,
+          category: category || null,
+          labels,
+          isPinned,
+          reminder,
+          images,
+          drawings,
+          linkedNoteIds,
+          connections,
+          isHub,
+          childNoteIds,
+          noteType: isHub || showSubpages || childNoteIds.length > 0 ? 'notion' : (note.noteType || 'default'),
+        },
+        snapshotReason || 'Auto snapshot on save'
+      );
     }
 
-    await performAutoSnapshot(snapshotReason || 'Auto snapshot on save');
-  };
+    lastSnapshottedRef.current = {
+      title: trimmedTitle,
+      content: trimmedContent,
+      todos: finalTodos ? JSON.parse(JSON.stringify(finalTodos)) : [],
+      isList,
+      color,
+      theme,
+      category: category || null,
+      labels: [...(labels || [])],
+      reminder: reminder || null,
+      isPinned: isPinned || false,
+      timestamp: Date.now(),
+    };
+    setAutoSnapshotStatus('saved');
+  }, [
+    note,
+    activeStopwatch,
+    stopAndSaveReadingStopwatch,
+    content,
+    title,
+    newTodoInput,
+    todos,
+    isList,
+    color,
+    theme,
+    category,
+    labels,
+    isPinned,
+    reminder,
+    images,
+    drawings,
+    linkedNoteIds,
+    connections,
+    isHub,
+    childNoteIds,
+    showSubpages,
+    setUnlockedNote,
+    updateNote,
+  ]);
 
   const handleSaveAndClose = useCallback(async () => {
-    if (!note) {
+    try {
+      if (note) {
+        await saveCurrentNote('Auto snapshot on close');
+      }
+    } catch (err) {
+      console.error('Failed saving note on close:', err);
+    } finally {
       onClose();
-      return;
     }
-    await saveCurrentNote('Auto snapshot on close');
-    onClose();
-  }, [note, notes, setEditingNote, onClose, saveCurrentNote]);
+  }, [note, onClose, saveCurrentNote]);
 
   useEffect(() => {
     if (!isOpen || !note) return;
@@ -1410,7 +1454,7 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
               >
                 <button
                   type="button"
-                  onClick={() => noteActionsRef.current?.openCategoryPicker()}
+                  onClick={(e) => noteActionsRef.current?.openCategoryPicker(e.currentTarget)}
                   className="flex items-center gap-1.5 hover:opacity-80 cursor-pointer"
                   title="Change category"
                 >
@@ -1429,7 +1473,7 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
             ) : (
               <button
                 type="button"
-                onClick={() => noteActionsRef.current?.openCategoryPicker()}
+                onClick={(e) => noteActionsRef.current?.openCategoryPicker(e.currentTarget)}
                 className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-full text-xs font-medium bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 border border-stone-200 dark:border-stone-700 transition-colors cursor-pointer"
                 title="Add category"
               >
@@ -1460,7 +1504,7 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
             {/* "+ Label" button - always accessible with 1 tap */}
             <button
               type="button"
-              onClick={() => noteActionsRef.current?.openLabelPicker()}
+              onClick={(e) => noteActionsRef.current?.openLabelPicker(e.currentTarget)}
               className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-full text-xs font-medium bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 border border-stone-200 dark:border-stone-700 transition-colors cursor-pointer"
               title="Add label"
             >
@@ -1822,12 +1866,14 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
                       key={todo.id}
                       className="flex items-start gap-2.5 sm:gap-3 group py-1 min-w-0 w-full rounded-lg transition-colors hover:bg-black/[0.02] dark:hover:bg-white/[0.02]"
                     >
-                      <input
-                        type="checkbox"
-                        checked={todo.completed}
-                        onChange={() => handleToggleTodo(todo.id)}
-                        className="w-4 h-4 mt-1 rounded text-blue-600 focus:ring-0 cursor-pointer accent-blue-600 shrink-0"
-                      />
+                      <div className="keep-checklist-control">
+                        <input
+                          type="checkbox"
+                          checked={todo.completed}
+                          onChange={() => handleToggleTodo(todo.id)}
+                          className="keep-checklist-checkbox rounded text-blue-600 focus:ring-0"
+                        />
+                      </div>
                       <ChecklistItemInput
                         id={`modal-todo-${todo.id}`}
                         value={todo.text}
@@ -1870,20 +1916,24 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
                           }
                         }}
                       />
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveTodo(todo.id)}
-                        className="opacity-40 sm:opacity-0 sm:group-hover:opacity-100 hover:opacity-100 text-stone-400 hover:text-red-500 dark:hover:text-red-400 p-1 sm:p-1.5 transition-all shrink-0 mt-0.5"
-                        title="Delete item"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      <div className="keep-checklist-control">
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveTodo(todo.id)}
+                          className="opacity-40 sm:opacity-0 sm:group-hover:opacity-100 hover:opacity-100 text-stone-400 hover:text-red-500 dark:hover:text-red-400 p-1 sm:p-1.5 transition-all"
+                          title="Delete item"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
                   ))}
 
                   {/* Add item row */}
                   <div className="flex items-start gap-2.5 sm:gap-3 pt-2 border-t border-black/5 dark:border-white/5 min-w-0 w-full">
-                    <Plus className="w-4 h-4 mt-1 text-stone-400 shrink-0" />
+                    <div className="keep-checklist-control">
+                      <Plus className="w-[0.95em] h-[0.95em] min-w-4 min-h-4 text-stone-400" />
+                    </div>
                     <ChecklistItemInput
                       id="modal-todo-new"
                       placeholder="List item"
@@ -1924,12 +1974,14 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
                               key={todo.id}
                               className="flex items-start gap-2.5 sm:gap-3 group py-1 min-w-0 w-full rounded-lg transition-colors hover:bg-black/[0.02] dark:hover:bg-white/[0.02]"
                             >
-                              <input
-                                type="checkbox"
-                                checked={todo.completed}
-                                onChange={() => handleToggleTodo(todo.id)}
-                                className="w-4 h-4 mt-1 rounded text-blue-600 focus:ring-0 cursor-pointer accent-blue-600 shrink-0"
-                              />
+                              <div className="keep-checklist-control">
+                                <input
+                                  type="checkbox"
+                                  checked={todo.completed}
+                                  onChange={() => handleToggleTodo(todo.id)}
+                                  className="keep-checklist-checkbox rounded text-blue-600 focus:ring-0"
+                                />
+                              </div>
                               <ChecklistItemInput
                                 id={`modal-todo-${todo.id}`}
                                 value={todo.text}
@@ -1946,14 +1998,16 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
                                   }
                                 }}
                               />
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveTodo(todo.id)}
-                                className="opacity-40 sm:opacity-0 sm:group-hover:opacity-100 hover:opacity-100 text-stone-400 hover:text-red-500 dark:hover:text-red-400 p-1 sm:p-1.5 transition-all shrink-0 mt-0.5"
-                                title="Delete item"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
+                              <div className="keep-checklist-control">
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveTodo(todo.id)}
+                                  className="opacity-40 sm:opacity-0 sm:group-hover:opacity-100 hover:opacity-100 text-stone-400 hover:text-red-500 dark:hover:text-red-400 p-1 sm:p-1.5 transition-all"
+                                  title="Delete item"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
                             </div>
                           ))}
                         </div>

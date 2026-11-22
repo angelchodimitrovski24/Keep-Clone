@@ -517,8 +517,10 @@ const NoteCardComponent: React.FC<NoteCardProps> = ({
                       onClick={(e) => handleToggleTodo(todo.id, e)}
                       className="flex items-start gap-2.5 text-stone-800 dark:text-stone-200 cursor-pointer group/todo min-w-0"
                     >
-                      <div className="w-4 h-4 mt-0.5 rounded border border-stone-400 dark:border-stone-500 flex items-center justify-center shrink-0 group-hover/todo:border-stone-600 dark:group-hover/todo:border-stone-300 transition-colors" />
-                      <span className="flex-1 min-w-0 break-words whitespace-pre-wrap leading-snug">{todo.text}</span>
+                      <div className="keep-checklist-control" style={{ width: 'auto' }}>
+                        <div className="w-[1em] h-[1em] min-w-4 min-h-4 max-w-5 max-h-5 rounded border border-stone-400 dark:border-stone-500 flex items-center justify-center shrink-0 group-hover/todo:border-stone-600 dark:group-hover/todo:border-stone-300 transition-colors" />
+                      </div>
+                      <span className="flex-1 min-w-0 break-words whitespace-pre-wrap leading-[1.5]">{todo.text}</span>
                     </div>
                   ))}
 

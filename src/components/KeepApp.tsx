@@ -62,6 +62,7 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
     setIsLocalFolderModalOpen,
     updateNote,
     addNote,
+    getNoteById,
     currentFilter,
     layoutMode,
     selectedCategory,
@@ -122,24 +123,35 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
     }
   }, []);
 
-  // When notes are loaded from IndexedDB, open the pending note if present
+  // When notes are loaded from IndexedDB, open the pending note if present (with IndexedDB fallback beyond page 1)
   useEffect(() => {
-    if (pendingNoteIdRef.current && !isLoading) {
-      const targetId = pendingNoteIdRef.current;
-      const found = notes.find((n) => n.id === targetId);
-      if (found) {
-        setOpenTabIds((prev) => (prev.includes(found.id) ? prev : [...prev, found.id]));
-        setActiveTabId(found.id);
-        setEditingNote(found);
-        pendingNoteIdRef.current = null;
-        setNoteNotFoundId(null);
-      } else {
-        console.warn(`Note with ID ${targetId} not found in notes.`);
-        setNoteNotFoundId(targetId);
-        pendingNoteIdRef.current = null;
-      }
+    if (!pendingNoteIdRef.current || isLoading) return;
+    const targetId = pendingNoteIdRef.current;
+    pendingNoteIdRef.current = null;
+    const found = notes.find((n) => n.id === targetId);
+    if (found) {
+      setOpenTabIds((prev) => (prev.includes(found.id) ? prev : [...prev, found.id]));
+      setActiveTabId(found.id);
+      setEditingNote(found);
+      setNoteNotFoundId(null);
+      return;
     }
-  }, [notes, isLoading, setEditingNote]);
+    getNoteById(targetId)
+      .then((dbFound) => {
+        if (dbFound && !dbFound.isTrash) {
+          setOpenTabIds((prev) => (prev.includes(dbFound.id) ? prev : [...prev, dbFound.id]));
+          setActiveTabId(dbFound.id);
+          setEditingNote(dbFound);
+          setNoteNotFoundId(null);
+        } else {
+          console.warn(`Note with ID ${targetId} not found in notes.`);
+          setNoteNotFoundId(targetId);
+        }
+      })
+      .catch(() => {
+        setNoteNotFoundId(targetId);
+      });
+  }, [notes, isLoading, setEditingNote, getNoteById]);
 
   // Whenever editingNote changes from outside (e.g. reminders, docks, nav switches), sync to tabs
   useEffect(() => {
@@ -163,7 +175,7 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
     // URL and title sync handled asynchronously in useEffect
   };
 
-  const closeNoteTab = (noteId: string) => {
+  const closeNoteTab = async (noteId: string) => {
     const next = openTabIds.filter((id) => id !== noteId);
     setOpenTabIds(next);
 
@@ -171,7 +183,8 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
       if (next.length > 0) {
         const nextActiveId = next[next.length - 1];
         setActiveTabId(nextActiveId);
-        const nextNote = notes.find((n) => n.id === nextActiveId) || null;
+        const nextNote =
+          notes.find((n) => n.id === nextActiveId) || (await getNoteById(nextActiveId)) || null;
         setEditingNote(nextNote);
       } else {
         setActiveTabId(null);

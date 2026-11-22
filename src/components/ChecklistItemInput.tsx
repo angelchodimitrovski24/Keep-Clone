@@ -62,7 +62,7 @@ export const ChecklistItemInput: React.FC<ChecklistItemInputProps> = ({
         adjustHeight();
       }}
       onKeyDown={onKeyDown}
-      className={`flex-1 min-w-0 w-full bg-transparent outline-none resize-none overflow-hidden break-words whitespace-pre-wrap leading-relaxed py-0.5 ${
+      className={`flex-1 min-w-0 w-full bg-transparent outline-none resize-none overflow-hidden break-words whitespace-pre-wrap leading-[1.5] py-0 ${
         completed ? 'line-through text-stone-400 dark:text-stone-500' : 'text-stone-800 dark:text-stone-200'
       } placeholder:text-stone-400 dark:placeholder:text-stone-500 ${className}`}
       style={{ fontSize: 'var(--note-font-size, 15px)' }}

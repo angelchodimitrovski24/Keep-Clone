@@ -384,7 +384,7 @@ export const SharedNoteView: React.FC<SharedNoteViewProps> = ({ note, shortId })
                   >
                     <button
                       type="button"
-                      className="mt-0.5 text-stone-500 group-hover:text-amber-600 transition-colors shrink-0"
+                      className="h-[26px] flex items-center justify-center text-stone-500 group-hover:text-amber-600 transition-colors shrink-0"
                       title={todo.completed ? 'Mark incomplete' : 'Mark completed'}
                     >
                       {todo.completed ? (

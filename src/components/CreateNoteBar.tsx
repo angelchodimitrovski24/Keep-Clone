@@ -183,6 +183,7 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
     content,
     isList,
     todos,
+    newTodoInput,
     images,
     drawings,
     isPinned,
@@ -191,6 +192,12 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
     labels,
     reminder,
     category,
+    linkedNoteIds,
+    connections,
+    isHub,
+    parentHubId,
+    childNoteIds,
+    isNotionMode,
   ]);
 
   const resetForm = () => {
@@ -231,48 +238,89 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
   }, [editingNote]);
 
   const handleSaveAndClose = async () => {
-    const rawContent = editorRef.current?.getHTML() || content;
-    const latestContent = renderMarkdownTablesInHtml(rawContent);
-    const hasTodos = todos.some((t) => t.text.trim().length > 0);
-    const hasText =
-      title.trim().length > 0 ||
-      (latestContent.trim().length > 0 && latestContent.trim() !== '<p></p>');
-    const hasMedia = images.length > 0 || drawings.length > 0;
-    const hasSubnotes = childNoteIds.length > 0;
+    try {
+      const rawContent = editorRef.current?.getHTML() || content;
+      const latestContent = renderMarkdownTablesInHtml(rawContent);
+      const hasTodos =
+        todos.some((t) => t.text.trim().length > 0) || newTodoInput.trim().length > 0;
+      const hasText =
+        title.trim().length > 0 ||
+        (latestContent.trim().length > 0 && latestContent.trim() !== '<p></p>');
+      const hasMedia = images.length > 0 || drawings.length > 0;
+      const hasSubnotes = childNoteIds.length > 0;
 
-    if (hasText || hasTodos || hasMedia || hasSubnotes) {
-      const finalTodos = newTodoInput.trim()
-        ? [...todos, { id: 'todo-' + Date.now(), text: newTodoInput.trim(), completed: false }]
-        : todos;
+      if (hasText || hasTodos || hasMedia || hasSubnotes) {
+        const finalTodos = newTodoInput.trim()
+          ? [...todos, { id: 'todo-' + Date.now(), text: newTodoInput.trim(), completed: false }]
+          : todos;
 
-      const noteLabels = labels.length > 0 ? labels : selectedLabel ? [selectedLabel] : [];
+        const noteLabels = labels.length > 0 ? labels : selectedLabel ? [selectedLabel] : [];
 
-      if (isEncrypted && encryptionPassword) {
-        try {
-          const bundle = await encryptNote(
-            {
+        if (isEncrypted && encryptionPassword) {
+          try {
+            const bundle = await encryptNote(
+              {
+                title: title.trim(),
+                content: latestContent.trim(),
+                todos: finalTodos,
+                images,
+              },
+              encryptionPassword,
+              encryptionHint
+            );
+
+            const created = await addNote({
+              id: tempNoteId,
+              title: title.trim() || 'Encrypted Note',
+              content: '',
+              isList,
+              todos: [],
+              color,
+              theme,
+              category: category || null,
+              labels: noteLabels,
+              isPinned,
+              reminder,
+              images: [],
+              drawings,
+              linkedNoteIds,
+              connections,
+              isHub,
+              parentNoteId: parentHubId,
+              childNoteIds,
+              noteType: isHub || isNotionMode || childNoteIds.length > 0 ? 'notion' : 'default',
+              isEncrypted: true,
+              encryptedData: bundle,
+            });
+            if (parentHubId && created) {
+              await connectNotes(created.id, parentHubId, 'part_of');
+            }
+
+            // Cache in session so user sees their new note unlocked immediately
+            setUnlockedNote(created.id, {
               title: title.trim(),
               content: latestContent.trim(),
               todos: finalTodos,
               images,
-            },
-            encryptionPassword,
-            encryptionHint
-          );
-
+            });
+            setSessionPassword(created.id, encryptionPassword);
+          } catch (err) {
+            console.error('Failed to encrypt note on create:', err);
+          }
+        } else {
           const created = await addNote({
             id: tempNoteId,
-            title: title.trim() || 'Encrypted Note',
-            content: '',
+            title: title.trim(),
+            content: latestContent.trim(),
             isList,
-            todos: [],
+            todos: finalTodos,
             color,
             theme,
             category: category || null,
             labels: noteLabels,
             isPinned,
             reminder,
-            images: [],
+            images,
             drawings,
             linkedNoteIds,
             connections,
@@ -280,52 +328,17 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
             parentNoteId: parentHubId,
             childNoteIds,
             noteType: isHub || isNotionMode || childNoteIds.length > 0 ? 'notion' : 'default',
-            isEncrypted: true,
-            encryptedData: bundle,
           });
           if (parentHubId && created) {
             await connectNotes(created.id, parentHubId, 'part_of');
           }
-
-          // Cache in session so user sees their new note unlocked immediately
-          setUnlockedNote(created.id, {
-            title: title.trim(),
-            content: latestContent.trim(),
-            todos: finalTodos,
-            images,
-          });
-          setSessionPassword(created.id, encryptionPassword);
-        } catch (err) {
-          console.error('Failed to encrypt note on create:', err);
-        }
-      } else {
-        const created = await addNote({
-          id: tempNoteId,
-          title: title.trim(),
-          content: latestContent.trim(),
-          isList,
-          todos: finalTodos,
-          color,
-          theme,
-          category: category || null,
-          labels: noteLabels,
-          isPinned,
-          reminder,
-          images,
-          drawings,
-          linkedNoteIds,
-          connections,
-          isHub,
-          parentNoteId: parentHubId,
-          childNoteIds,
-          noteType: isHub || isNotionMode || childNoteIds.length > 0 ? 'notion' : 'default',
-        });
-        if (parentHubId && created) {
-          await connectNotes(created.id, parentHubId, 'part_of');
         }
       }
+    } catch (err) {
+      console.error('Failed saving note on close:', err);
+    } finally {
+      resetForm();
     }
-    resetForm();
   };
 
   // Copy selected files & images to note content
@@ -747,12 +760,14 @@ const handleImportMhtml = async (file: File) => {
                   key={todo.id}
                   className="flex items-start gap-2.5 sm:gap-3 group py-1 min-w-0 w-full rounded-lg transition-colors hover:bg-black/[0.02] dark:hover:bg-white/[0.02]"
                 >
-                  <input
-                    type="checkbox"
-                    checked={todo.completed}
-                    onChange={() => handleToggleTodo(todo.id)}
-                    className="w-4 h-4 mt-1 rounded text-blue-600 focus:ring-0 cursor-pointer accent-blue-600 shrink-0"
-                  />
+                  <div className="keep-checklist-control">
+                    <input
+                      type="checkbox"
+                      checked={todo.completed}
+                      onChange={() => handleToggleTodo(todo.id)}
+                      className="keep-checklist-checkbox rounded text-blue-600 focus:ring-0"
+                    />
+                  </div>
                   <ChecklistItemInput
                     id={`create-todo-${todo.id}`}
                     value={todo.text}
@@ -794,19 +809,23 @@ const handleImportMhtml = async (file: File) => {
                       }
                     }}
                   />
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveTodo(todo.id)}
-                    className="opacity-40 sm:opacity-0 sm:group-hover:opacity-100 hover:opacity-100 text-stone-400 hover:text-red-500 dark:hover:text-red-400 p-1 sm:p-1.5 transition-all shrink-0 mt-0.5"
-                    title="Delete item"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                  <div className="keep-checklist-control">
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveTodo(todo.id)}
+                      className="opacity-40 sm:opacity-0 sm:group-hover:opacity-100 hover:opacity-100 text-stone-400 hover:text-red-500 dark:hover:text-red-400 p-1 sm:p-1.5 transition-all"
+                      title="Delete item"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
               ))}
 
               <div className="flex items-start gap-2.5 sm:gap-3 pt-2 border-t border-stone-200/50 dark:border-stone-700/50 min-w-0 w-full">
-                <Plus className="w-4 h-4 mt-1 text-stone-400 shrink-0" />
+                <div className="keep-checklist-control">
+                  <Plus className="w-[0.95em] h-[0.95em] min-w-4 min-h-4 text-stone-400" />
+                </div>
                 <ChecklistItemInput
                   id="create-todo-new"
                   placeholder="List item"
@@ -865,7 +884,7 @@ const handleImportMhtml = async (file: File) => {
               >
                 <button
                   type="button"
-                  onClick={() => noteActionsRef.current?.openCategoryPicker()}
+                  onClick={(e) => noteActionsRef.current?.openCategoryPicker(e.currentTarget)}
                   className="flex items-center gap-1 hover:opacity-80 cursor-pointer"
                   title="Change category"
                 >
@@ -884,7 +903,7 @@ const handleImportMhtml = async (file: File) => {
             ) : (
               <button
                 type="button"
-                onClick={() => noteActionsRef.current?.openCategoryPicker()}
+                onClick={(e) => noteActionsRef.current?.openCategoryPicker(e.currentTarget)}
                 className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 border border-stone-200 dark:border-stone-700 transition-colors cursor-pointer"
                 title="Add category"
               >
@@ -915,7 +934,7 @@ const handleImportMhtml = async (file: File) => {
             {/* "+ Label" button - always accessible with 1 tap */}
             <button
               type="button"
-              onClick={() => noteActionsRef.current?.openLabelPicker()}
+              onClick={(e) => noteActionsRef.current?.openLabelPicker(e.currentTarget)}
               className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 border border-stone-200 dark:border-stone-700 transition-colors cursor-pointer"
               title="Add label"
             >
