@@ -537,7 +537,22 @@ export function convertMarkdownToHtml(content: string): string {
     return `\n\n${addProtected(`<pre><code>${clean.trim()}</code></pre>`)}\n\n`;
   });
 
-  // 3.5. Protect existing note-mention chips so HTML list normalization never strips their attributes
+  // 3.5. Protect existing note-mention chips and inline subpage blocks so HTML list/paragraph normalization never strips their attributes
+  text = text.replace(
+    /<div\b([^>]*data-keep-subpage=["']true["'][^>]*)>([\s\S]*?)<\/div>/gi,
+    (_m, attrs, inner) => {
+      const idMatch = attrs.match(/data-note-id=["']([^"']*)["']/i);
+      const titleMatch = attrs.match(/data-note-title=["']([^"']*)["']/i);
+      const isListMatch = attrs.match(/data-is-list=["']([^"']*)["']/i);
+      const id = escapeHtml((idMatch ? idMatch[1] : '').trim());
+      const rawInner = inner.replace(/<[^>]+>/g, '').replace(/^📄\s*/u, '').trim();
+      const title = escapeHtml((titleMatch ? titleMatch[1] : rawInner || 'Untitled').trim() || 'Untitled');
+      const isListAttr = isListMatch && isListMatch[1] === 'true' ? 'true' : 'false';
+      const subpageHtml = `<div${id ? ` data-note-id="${id}"` : ''} data-note-title="${title}" data-is-list="${isListAttr}" data-keep-subpage="true" class="keep-subpage-row">📄 ${title}</div>`;
+      return `\n\n${addProtected(subpageHtml)}\n\n`;
+    }
+  );
+
   text = text.replace(
     /<span\b([^>]*(?:data-note-mention=["']true["']|keep-note-link)[^>]*)>([\s\S]*?)<\/span>/gi,
     (_m, attrs, inner) => {
@@ -895,15 +910,22 @@ export function convertMarkdownToHtml(content: string): string {
 
   closeOpenLists();
 
-  // Restore protected blocks (pre code blocks, notion code blocks, and note mention chips)
+  // Restore protected blocks (pre code blocks, notion code blocks, inline subpage blocks, and note mention chips)
   for (let idx = 0; idx < protectedBlocks.length; idx++) {
-    result = result.replace(new RegExp(`___KEEP_PRE_BLOCK_${idx}___`, 'g'), () => protectedBlocks[idx]);
+    result = result.replace(new RegExp(`(?:<p>)?___KEEP_PRE_BLOCK_${idx}___(?:</p>)?`, 'g'), () => protectedBlocks[idx]);
   }
   for (let idx = 0; idx < protectedMentions.length; idx++) {
     result = result.replace(new RegExp(`___KEEP_MENTION_${idx}___`, 'g'), () => protectedMentions[idx]);
   }
 
-  return renderMarkdownTablesInHtml(renderMarkdownImagesInString(result));
+  let finalHtml = renderMarkdownTablesInHtml(renderMarkdownImagesInString(result));
+  if (
+    finalHtml.includes('data-keep-subpage="true"') &&
+    /data-keep-subpage="true"[^>]*>[^<]*<\/div>\s*$/i.test(finalHtml)
+  ) {
+    finalHtml += '<p></p>';
+  }
+  return finalHtml;
 }
 
 /**

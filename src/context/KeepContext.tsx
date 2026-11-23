@@ -9,8 +9,7 @@ import {
   getChildNotesForParentFromDB,
   getNotesPagedFromDB,
   getNotesCountsSummaryFromDB,
-  getHubTreesFromDB,
-  getUnconnectedCountFromDB,
+  getStructureSummaryFromDB,
   HubTreeRecord,
   bulkInsertBenchmarkNotes,
   clearBenchmarkNotesFromDB,
@@ -328,6 +327,15 @@ export function KeepProvider({
   const [selectedNoteIds, setSelectedNoteIds] = useState<string[]>([]);
 
   const [editingNote, setEditingNote] = useState<Note | null>(null);
+  const notesRef = useRef<Note[]>(notes);
+  const editingNoteRef = useRef<Note | null>(editingNote);
+  useEffect(() => {
+    notesRef.current = notes;
+  }, [notes]);
+  useEffect(() => {
+    editingNoteRef.current = editingNote;
+  }, [editingNote]);
+  const skipInitialPagedFetchRef = useRef(false);
   const [versionHistoryNote, setVersionHistoryNote] = useState<Note | null>(null);
   const [isDrawingModalOpen, setIsDrawingModalOpenState] = useState(false);
   const [drawingNoteId, setDrawingNoteId] = useState<string | null>(null);
@@ -395,13 +403,23 @@ export function KeepProvider({
       setIsPwaInstalled(true);
     }
 
-    // Register service worker for offline support and Android installability
+    // Manage service worker for offline support and Android installability
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker
-        .register('/sw.js')
-        .catch((err) => {
-          console.warn('Service Worker registration note:', err);
-        });
+      if (process.env.NODE_ENV !== 'production') {
+        navigator.serviceWorker
+          .getRegistrations()
+          .then((regs) => {
+            regs.forEach((r) => r.unregister().catch(() => {}));
+          })
+          .catch(() => {});
+      } else {
+        navigator.serviceWorker
+          .register('/sw.js')
+          .then((reg) => reg.update().catch(() => {}))
+          .catch((err) => {
+            console.warn('Service Worker registration note:', err);
+          });
+      }
     }
 
     const handleBeforeInstall = (e: Event) => {
@@ -494,8 +512,8 @@ export function KeepProvider({
         setCategoryCounts(counts.byCategory);
       }).catch(() => {});
 
-      Promise.all([getHubTreesFromDB(), getUnconnectedCountFromDB()])
-        .then(([trees, uCount]) => {
+      getStructureSummaryFromDB()
+        .then(({ hubTrees: trees, unconnectedCount: uCount }) => {
           setHubTrees(trees);
           setUnconnectedCount(uCount);
         })
@@ -503,8 +521,8 @@ export function KeepProvider({
 
       getDatabaseStatsFromDB().then((stats) => setDatabaseStats(stats)).catch(() => {});
 
-      // Initialize in-memory blob URLs from offline IndexedDB media store
-      await initLocalMediaCache().catch(() => {});
+      // Hydrate offline media object URLs in the background without blocking first paint
+      initLocalMediaCache().catch(() => {});
 
       // Sync stored integration configurations (Jira, Supportbench, Ollama, Google Drive) from IndexedDB to localStorage if not yet set
       const syncSettingKeys = [
@@ -750,6 +768,7 @@ export function KeepProvider({
     } catch (err) {
       console.error('Failed to load DB initial data:', err);
     } finally {
+      skipInitialPagedFetchRef.current = true;
       setIsLoading(false);
     }
   }, []);
@@ -761,32 +780,34 @@ export function KeepProvider({
   // 1-Million Scalable Helper: lookup note from visible memory or O(1) IndexedDB read
   const getNoteById = useCallback(
     async (id: string): Promise<Note | undefined> => {
-      const fromMem = notes.find((n) => n.id === id);
+      const fromMem = notesRef.current.find((n) => n.id === id);
       if (fromMem) return fromMem;
-      if (editingNote && editingNote.id === id) return editingNote;
+      const curEditing = editingNoteRef.current;
+      if (curEditing && curEditing.id === id) return curEditing;
       return await getNoteByIdFromDB(id);
     },
-    [notes, editingNote]
+    []
   );
 
   const resolveNoteByTitleOrId = useCallback(
     async (titleOrId: string): Promise<Note | undefined> => {
       const q = (titleOrId || '').trim().toLowerCase();
       if (!q) return undefined;
-      const fromMem = notes.find(
+      const fromMem = notesRef.current.find(
         (n) => !n.isTrash && (n.id.toLowerCase() === q || (n.title && n.title.trim().toLowerCase() === q))
       );
       if (fromMem) return fromMem;
+      const curEditing = editingNoteRef.current;
       if (
-        editingNote &&
-        !editingNote.isTrash &&
-        (editingNote.id.toLowerCase() === q || (editingNote.title && editingNote.title.trim().toLowerCase() === q))
+        curEditing &&
+        !curEditing.isTrash &&
+        (curEditing.id.toLowerCase() === q || (curEditing.title && curEditing.title.trim().toLowerCase() === q))
       ) {
-        return editingNote;
+        return curEditing;
       }
       return await findNoteByTitleOrIdFromDB(titleOrId);
     },
-    [notes, editingNote]
+    []
   );
 
   const getChildNotes = useCallback(
@@ -796,18 +817,30 @@ export function KeepProvider({
     []
   );
 
+  const structureRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const refreshStructureData = useCallback(async () => {
+    if (structureRefreshTimerRef.current) {
+      clearTimeout(structureRefreshTimerRef.current);
+      structureRefreshTimerRef.current = null;
+    }
     try {
-      const [trees, uCount] = await Promise.all([
-        getHubTreesFromDB(),
-        getUnconnectedCountFromDB(),
-      ]);
+      const { hubTrees: trees, unconnectedCount: uCount } = await getStructureSummaryFromDB();
       setHubTrees(trees);
       setUnconnectedCount(uCount);
     } catch (err) {
       console.warn('refreshStructureData error:', err);
     }
   }, []);
+
+  const scheduleStructureRefresh = useCallback(() => {
+    if (structureRefreshTimerRef.current) {
+      clearTimeout(structureRefreshTimerRef.current);
+    }
+    structureRefreshTimerRef.current = setTimeout(() => {
+      structureRefreshTimerRef.current = null;
+      refreshStructureData().catch(() => {});
+    }, 350);
+  }, [refreshStructureData]);
 
   const mergePagedNotes = useCallback((prev: Note[], freshNotes: Note[]): Note[] => {
     const prevById = new Map(prev.map((n) => [n.id, n]));
@@ -821,7 +854,12 @@ export function KeepProvider({
   }, []);
 
   // Refresh current visible page slice and metadata
+  const notesListRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const refreshNotesList = useCallback(async () => {
+    if (notesListRefreshTimerRef.current) {
+      clearTimeout(notesListRefreshTimerRef.current);
+      notesListRefreshTimerRef.current = null;
+    }
     try {
       const res = await getNotesPagedFromDB({
         filter: currentFilter,
@@ -844,18 +882,41 @@ export function KeepProvider({
       setTotalActiveNotesCount(summary.totalActive);
       setCategoryCounts(summary.byCategory);
 
-      refreshStructureData().catch(() => {});
+      scheduleStructureRefresh();
 
       const stats = await getDatabaseStatsFromDB();
       setDatabaseStats(stats);
     } catch (err) {
       console.warn('refreshNotesList error:', err);
     }
-  }, [currentFilter, selectedCategory, selectedLabel, searchQuery, currentPage, pageSize, hideSubnotesFromFeed, categories, refreshStructureData, mergePagedNotes]);
+  }, [currentFilter, selectedCategory, selectedLabel, searchQuery, currentPage, pageSize, hideSubnotesFromFeed, categories, scheduleStructureRefresh, mergePagedNotes]);
+
+  const scheduleNotesListRefresh = useCallback(() => {
+    if (notesListRefreshTimerRef.current) {
+      clearTimeout(notesListRefreshTimerRef.current);
+    }
+    notesListRefreshTimerRef.current = setTimeout(() => {
+      notesListRefreshTimerRef.current = null;
+      refreshNotesList().catch(() => {});
+    }, 300);
+  }, [refreshNotesList]);
 
   // Auto-fetch paged notes slice whenever navigation, search, or pagination changes
   useEffect(() => {
     if (isLoading) return;
+    if (
+      skipInitialPagedFetchRef.current &&
+      currentFilter === 'notes' &&
+      !selectedCategory &&
+      !selectedLabel &&
+      !searchQuery &&
+      currentPage === 1 &&
+      pageSize === 30
+    ) {
+      skipInitialPagedFetchRef.current = false;
+      return;
+    }
+    skipInitialPagedFetchRef.current = false;
     const timer = setTimeout(() => {
       getNotesPagedFromDB({
         filter: currentFilter,
@@ -1098,12 +1159,13 @@ export function KeepProvider({
         order: now,
       };
 
+      notesRef.current = [newNote, ...notesRef.current.filter((n) => n.id !== newNote.id)];
+      setNotes((prev) => [newNote, ...prev.filter((n) => n.id !== newNote.id)]);
       await saveNoteToDB(newNote);
-      setNotes((prev) => [newNote, ...prev]);
-      refreshNotesList().catch(() => {});
+      scheduleNotesListRefresh();
       return newNote;
     },
-    [selectedLabel, selectedCategory, defaultCategory, refreshNotesList]
+    [selectedLabel, selectedCategory, defaultCategory, scheduleNotesListRefresh]
   );
 
   const noteMatchesCurrentView = useCallback(
@@ -1224,12 +1286,12 @@ export function KeepProvider({
         (Boolean(target.isHub || target.parentNoteId) && updates.title !== undefined);
 
       if (membershipChanged) {
-        refreshNotesList().catch(() => {});
+        scheduleNotesListRefresh();
       } else if (structureChanged) {
-        refreshStructureData().catch(() => {});
+        scheduleStructureRefresh();
       }
     },
-    [notes, editingNote, noteMatchesCurrentView, refreshNotesList, refreshStructureData, hideSubnotesFromFeed, currentFilter]
+    [notes, editingNote, noteMatchesCurrentView, scheduleNotesListRefresh, scheduleStructureRefresh, hideSubnotesFromFeed, currentFilter]
   );
 
   const toggleHubNote = useCallback(

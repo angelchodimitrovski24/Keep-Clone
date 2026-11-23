@@ -1,5 +1,5 @@
 // Service Worker for Google Keep Clone PWA
-const CACHE_NAME = 'keep-offline-cache-v1';
+const CACHE_NAME = 'keep-offline-cache-v2';
 const PRECACHE_ASSETS = [
   '/',
   '/manifest.json',
@@ -33,17 +33,27 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Let local-media, Google Drive API, and Next.js HMR bypass caching
+  if (event.request.cache === 'only-if-cached' && event.request.mode !== 'same-origin') {
+    return;
+  }
+  // Let API routes, Next.js HMR, RSC payloads, and non-GET requests bypass SW caching
   const url = new URL(event.request.url);
   if (
+    url.origin !== self.location.origin ||
     url.pathname.startsWith('/api/') ||
     url.pathname.startsWith('/_next/webpack-hmr') ||
+    url.searchParams.has('_rsc') ||
     event.request.method !== 'GET'
   ) {
     return;
   }
 
-  // Network first with cache fallback for pages and assets
+  // Never serve cached HTML fallback for hashed static scripts/styles
+  if (url.pathname.startsWith('/_next/static/')) {
+    return;
+  }
+
+  // Network first with cache fallback for pages and local assets
   event.respondWith(
     fetch(event.request)
       .then((networkResponse) => {
@@ -64,7 +74,6 @@ self.addEventListener('fetch', (event) => {
         if (cachedResponse) {
           return cachedResponse;
         }
-        // Fallback to home page for navigation requests
         if (event.request.mode === 'navigate') {
           const fallback = await caches.match('/');
           if (fallback) return fallback;

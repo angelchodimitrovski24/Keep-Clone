@@ -12,6 +12,7 @@ import React, {
 import { createPortal } from 'react-dom';
 import { useEditor, EditorContent, Editor } from '@tiptap/react';
 import { textblockTypeInputRule } from '@tiptap/core';
+import { TextSelection, NodeSelection } from '@tiptap/pm/state';
 import StarterKit from '@tiptap/starter-kit';
 import CodeBlock from '@tiptap/extension-code-block';
 import TaskList from '@tiptap/extension-task-list';
@@ -32,6 +33,8 @@ import { GoogleKeepFormatCommand, convertMarkdownToHtml, convertHtmlToMarkdown }
 import { KeepMediaExtension } from '@/lib/keepMediaExtension';
 import { DataviewExtension } from '@/lib/dataviewExtension';
 import { NoteMentionExtension } from '@/lib/noteMentionExtension';
+import { SubpageBlockExtension } from '@/lib/subpageBlockExtension';
+import { getMovableEditorBlocks, moveEditorBlock } from '@/lib/editorBlockDrag';
 import { Note, NoteConnectionRole } from '@/types/note';
 import { CONNECTION_ROLE_META, CONNECTION_ROLES_ORDER } from '@/lib/noteGraph';
 import { searchLinkableNotesFromDB } from '@/lib/db';
@@ -41,7 +44,7 @@ import {
   extractClipboardPayload,
   copyFilesToLocalFolder,
 } from '@/lib/localPaste';
-import { Loader2, Link2, Plus, FileText, CheckSquare } from 'lucide-react';
+import { Loader2, Link2, Plus, FileText, CheckSquare, GripVertical } from 'lucide-react';
 
 export interface KeepWysiwygEditorHandle {
   handleFormat: (cmd: GoogleKeepFormatCommand) => void;
@@ -69,6 +72,14 @@ export interface KeepWysiwygEditorProps {
   availableSlashActions?: SlashNoteActionId[];
   slashContextFlags?: SlashContextFlags;
   onSlashNoteAction?: (actionId: SlashNoteActionId, anchorRect: SlashAnchorRect) => void;
+  onCreateInlineSubpage?: (input: {
+    title?: string;
+    existingNote?: Note;
+  }) => Promise<{ id: string; title: string; isList?: boolean } | null>;
+  onAfterInsertInlineSubpage?: (
+    sub: { id: string; title: string },
+    updatedHtml: string
+  ) => void | Promise<void>;
 }
 
 interface MentionPopupState {
@@ -82,6 +93,12 @@ interface SlashPopupState {
   isOpen: boolean;
   query: string;
   range: { from: number; to: number };
+  coords: SlashAnchorRect;
+}
+
+interface SubpageCreatorState {
+  isOpen: boolean;
+  insertPos: number;
   coords: SlashAnchorRect;
 }
 
@@ -104,6 +121,8 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
       availableSlashActions,
       slashContextFlags,
       onSlashNoteAction,
+      onCreateInlineSubpage,
+      onAfterInsertInlineSubpage,
     },
     ref
   ) => {
@@ -120,6 +139,8 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
     const onOpenMentionedNoteRef = useRef(onOpenMentionedNote);
     const onNoteMentionSelectedRef = useRef(onNoteMentionSelected);
     const onSlashNoteActionRef = useRef(onSlashNoteAction);
+    const onCreateInlineSubpageRef = useRef(onCreateInlineSubpage);
+    const onAfterInsertInlineSubpageRef = useRef(onAfterInsertInlineSubpage);
 
     useEffect(() => {
       onChangeRef.current = onChange;
@@ -136,6 +157,385 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
     useEffect(() => {
       onSlashNoteActionRef.current = onSlashNoteAction;
     }, [onSlashNoteAction]);
+
+    useEffect(() => {
+      onCreateInlineSubpageRef.current = onCreateInlineSubpage;
+    }, [onCreateInlineSubpage]);
+
+    useEffect(() => {
+      onAfterInsertInlineSubpageRef.current = onAfterInsertInlineSubpage;
+    }, [onAfterInsertInlineSubpage]);
+
+    // Cursor-anchored Inline Sub-page Creator State
+    const [subpageCreator, setSubpageCreator] = useState<SubpageCreatorState | null>(null);
+    const subpageCreatorRef = useRef<SubpageCreatorState | null>(null);
+    const lastEmittedHtmlRef = useRef<string>(content);
+    const emitChange = useCallback((html: string) => {
+      lastEmittedHtmlRef.current = html;
+      onChangeRef.current(html);
+    }, []);
+    const [subpageTitleInput, setSubpageTitleInput] = useState('');
+    const [subpageSelectedIdx, setSubpageSelectedIdx] = useState(-1);
+    const [dbSubpageMatches, setDbSubpageMatches] = useState<Note[] | null>(null);
+    const subpageInputRef = useRef<HTMLInputElement>(null);
+    const isCreatingSubpageRef = useRef(false);
+
+    useEffect(() => {
+      if (!subpageCreator?.isOpen) {
+        setDbSubpageMatches(null);
+        return;
+      }
+      const q = subpageTitleInput.trim();
+      if (!q) {
+        setDbSubpageMatches(null);
+        return;
+      }
+      let cancelled = false;
+      const timer = setTimeout(() => {
+        searchLinkableNotesFromDB({
+          query: q,
+          excludeNoteIds: currentNoteId ? [currentNoteId] : [],
+          limit: 8,
+        })
+          .then((res) => {
+            if (!cancelled) setDbSubpageMatches(res);
+          })
+          .catch(() => {});
+      }, 120);
+
+      return () => {
+        cancelled = true;
+        clearTimeout(timer);
+      };
+    }, [subpageCreator?.isOpen, subpageTitleInput, currentNoteId]);
+
+    const subpageCandidates = useMemo(() => {
+      if (!subpageCreator?.isOpen) return [];
+      const q = subpageTitleInput.trim().toLowerCase();
+      if (!q) return [];
+      const map = new Map<string, Note>();
+      const source = dbSubpageMatches ? [...dbSubpageMatches, ...notes] : notes;
+      for (const n of source) {
+        if (n.isTrash || n.id === currentNoteId || map.has(n.id)) continue;
+        const titleOk = Boolean(n.title && n.title.toLowerCase().includes(q));
+        const catOk = Boolean(n.category && n.category.toLowerCase().includes(q));
+        if (!titleOk && !catOk) continue;
+        map.set(n.id, n);
+        if (map.size >= 6) break;
+      }
+      return Array.from(map.values());
+    }, [subpageCreator?.isOpen, subpageTitleInput, dbSubpageMatches, notes, currentNoteId]);
+
+    useEffect(() => {
+      if (!subpageCreator?.isOpen) return;
+      const handleOutsideMouseDown = (e: MouseEvent) => {
+        const target = e.target as HTMLElement | null;
+        if (target?.closest?.('[data-subpage-menu="true"]')) return;
+        subpageCreatorRef.current = null;
+        setSubpageCreator(null);
+        setSubpageTitleInput('');
+        setSubpageSelectedIdx(-1);
+      };
+      document.addEventListener('mousedown', handleOutsideMouseDown);
+      return () => document.removeEventListener('mousedown', handleOutsideMouseDown);
+    }, [subpageCreator?.isOpen]);
+
+    const commitInlineSubpage = useCallback(
+      async (options: { title?: string; existingNote?: Note }) => {
+        const activeEditor = editorInstanceRef.current;
+        const creator = subpageCreatorRef.current;
+        const createFn = onCreateInlineSubpageRef.current;
+        if (!activeEditor || !creator || !createFn || isCreatingSubpageRef.current) return;
+
+        isCreatingSubpageRef.current = true;
+        subpageCreatorRef.current = null;
+        setSubpageCreator(null);
+        setSubpageTitleInput('');
+        setSubpageSelectedIdx(-1);
+
+        try {
+          const created = await createFn(options);
+          if (!created) return;
+
+          const docSize = activeEditor.state.doc.content.size;
+          const clampedPos = Math.max(0, Math.min(creator.insertPos, docSize));
+          const $pos = activeEditor.state.doc.resolve(clampedPos);
+
+          const subpageAttrs = {
+            noteId: created.id,
+            noteTitle: created.title || 'Untitled',
+            isList: Boolean(created.isList),
+          };
+          const subpageNode = {
+            type: 'subpageBlock',
+            attrs: subpageAttrs,
+          };
+
+          // Check if cursor is inside a checklist/bullet/ordered list item
+          let itemDepth = -1;
+          for (let d = $pos.depth; d >= 1; d--) {
+            const typeName = $pos.node(d).type.name;
+            if (typeName === 'taskItem' || typeName === 'listItem') {
+              itemDepth = d;
+              break;
+            }
+          }
+
+          if (itemDepth >= 2) {
+            const listDepth = itemDepth - 1;
+            const listNode = $pos.node(listDepth);
+            const itemNode = $pos.node(itemDepth);
+            const itemIndex = $pos.index(listDepth);
+            const isItemEmpty = itemNode.textContent.trim().length === 0;
+            const listFrom = $pos.before(listDepth);
+            const listTo = $pos.after(listDepth);
+
+            const beforeItems: unknown[] = [];
+            for (let i = 0; i < (isItemEmpty ? itemIndex : itemIndex + 1); i++) {
+              beforeItems.push(listNode.child(i).toJSON());
+            }
+            const afterItems: unknown[] = [];
+            for (let i = itemIndex + 1; i < listNode.childCount; i++) {
+              afterItems.push(listNode.child(i).toJSON());
+            }
+
+            const replacement: Record<string, unknown>[] = [];
+            if (beforeItems.length > 0) {
+              replacement.push({
+                type: listNode.type.name,
+                attrs: listNode.attrs,
+                content: beforeItems,
+              });
+            }
+            replacement.push(subpageNode);
+            if (afterItems.length > 0) {
+              replacement.push({
+                type: listNode.type.name,
+                attrs: listNode.attrs,
+                content: afterItems,
+              });
+            } else {
+              replacement.push({ type: 'paragraph' });
+            }
+
+            activeEditor
+              .chain()
+              .insertContentAt({ from: listFrom, to: listTo }, replacement)
+              .run();
+          } else {
+            const schema = activeEditor.state.schema;
+            const subBlockType = schema.nodes.subpageBlock;
+            const paraType = schema.nodes.paragraph;
+            if (subBlockType && paraType) {
+              const subBlockNode = subBlockType.create(subpageAttrs);
+              const paraNode = paraType.create();
+              if ($pos.depth >= 1) {
+                const topBlock = $pos.node(1);
+                const fromBlock = $pos.before(1);
+                const toBlock = $pos.after(1);
+                const isBlockEmpty =
+                  topBlock.type.name === 'paragraph' &&
+                  topBlock.textContent.trim().length === 0 &&
+                  topBlock.childCount === 0;
+
+                if (isBlockEmpty) {
+                  const tr = activeEditor.state.tr.replaceWith(fromBlock, toBlock, [
+                    subBlockNode,
+                    paraNode,
+                  ]);
+                  const nextCursor = Math.min(
+                    fromBlock + subBlockNode.nodeSize + 1,
+                    tr.doc.content.size
+                  );
+                  tr.setSelection(TextSelection.near(tr.doc.resolve(nextCursor), 1));
+                  activeEditor.view.dispatch(tr.scrollIntoView());
+                } else {
+                  const tr = activeEditor.state.tr.insert(toBlock, [
+                    subBlockNode,
+                    paraNode,
+                  ]);
+                  const nextCursor = Math.min(
+                    toBlock + subBlockNode.nodeSize + 1,
+                    tr.doc.content.size
+                  );
+                  tr.setSelection(TextSelection.near(tr.doc.resolve(nextCursor), 1));
+                  activeEditor.view.dispatch(tr.scrollIntoView());
+                }
+              } else {
+                const tr = activeEditor.state.tr.insert(clampedPos, [
+                  subBlockNode,
+                  paraNode,
+                ]);
+                const nextCursor = Math.min(
+                  clampedPos + subBlockNode.nodeSize + 1,
+                  tr.doc.content.size
+                );
+                tr.setSelection(TextSelection.near(tr.doc.resolve(nextCursor), 1));
+                activeEditor.view.dispatch(tr.scrollIntoView());
+              }
+            }
+          }
+
+          requestAnimationFrame(() => {
+            if (!activeEditor.isDestroyed) {
+              activeEditor.view.focus();
+            }
+          });
+
+          const updatedHtml = activeEditor.getHTML();
+          emitChange(updatedHtml);
+          await onAfterInsertInlineSubpageRef.current?.(
+            { id: created.id, title: created.title },
+            updatedHtml
+          );
+        } finally {
+          isCreatingSubpageRef.current = false;
+        }
+      },
+      [emitChange]
+    );
+
+    // Block Drag & Drop (Notion-style left gutter handle)
+    const editorCanvasRef = useRef<HTMLDivElement>(null);
+    const [hoveredBlock, setHoveredBlock] = useState<{
+      index: number;
+      top: number;
+      label: string;
+    } | null>(null);
+    const [blockDragState, setBlockDragState] = useState<{
+      sourceIndex: number;
+      label: string;
+      dropBoundaryIndex: number;
+      indicatorTop: number;
+    } | null>(null);
+    const hideHoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const isDraggingBlockRef = useRef(false);
+
+    useEffect(() => {
+      return () => {
+        if (hideHoverTimerRef.current) clearTimeout(hideHoverTimerRef.current);
+      };
+    }, []);
+
+    const handleCanvasMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+      if (isDraggingBlockRef.current) return;
+      const activeEditor = editorInstanceRef.current;
+      const canvasEl = editorCanvasRef.current;
+      if (!activeEditor || !canvasEl) return;
+      if (hideHoverTimerRef.current) {
+        clearTimeout(hideHoverTimerRef.current);
+        hideHoverTimerRef.current = null;
+      }
+
+      const canvasRect = canvasEl.getBoundingClientRect();
+      const blocks = getMovableEditorBlocks(activeEditor);
+      if (blocks.length === 0) {
+        setHoveredBlock(null);
+        return;
+      }
+
+      let matched = blocks.find(
+        (b) => e.clientY >= b.rect.top - 4 && e.clientY <= b.rect.bottom + 4
+      );
+      if (!matched) {
+        let bestDist = 18;
+        for (const b of blocks) {
+          const dist = Math.min(
+            Math.abs(e.clientY - b.rect.top),
+            Math.abs(e.clientY - b.rect.bottom)
+          );
+          if (dist < bestDist) {
+            bestDist = dist;
+            matched = b;
+          }
+        }
+      }
+
+      if (!matched) {
+        setHoveredBlock(null);
+        return;
+      }
+
+      const top = matched.rect.top - canvasRect.top;
+      setHoveredBlock((prev) =>
+        prev && prev.index === matched.index && Math.abs(prev.top - top) < 2
+          ? prev
+          : { index: matched.index, top, label: matched.label }
+      );
+    }, []);
+
+    const startBlockDrag = useCallback(
+      (sourceIndex: number, label: string, e: React.PointerEvent<HTMLButtonElement>) => {
+        const activeEditor = editorInstanceRef.current;
+        const canvasEl = editorCanvasRef.current;
+        if (!activeEditor || !canvasEl) return;
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        isDraggingBlockRef.current = true;
+        setHoveredBlock(null);
+
+        const computeDrop = (clientY: number) => {
+          const canvasRect = canvasEl.getBoundingClientRect();
+          const blocks = getMovableEditorBlocks(activeEditor);
+          if (blocks.length === 0) {
+            return { boundary: 0, indicatorTop: 0 };
+          }
+          for (const b of blocks) {
+            const mid = b.rect.top + b.rect.height / 2;
+            if (clientY < mid) {
+              return { boundary: b.index, indicatorTop: b.rect.top - canvasRect.top };
+            }
+          }
+          const last = blocks[blocks.length - 1];
+          return {
+            boundary: blocks.length,
+            indicatorTop: last.rect.bottom - canvasRect.top,
+          };
+        };
+
+        let latestDrop = computeDrop(e.clientY);
+        setBlockDragState({
+          sourceIndex,
+          label,
+          dropBoundaryIndex: latestDrop.boundary,
+          indicatorTop: latestDrop.indicatorTop,
+        });
+
+        const handleMove = (moveEvent: PointerEvent) => {
+          latestDrop = computeDrop(moveEvent.clientY);
+          setBlockDragState({
+            sourceIndex,
+            label,
+            dropBoundaryIndex: latestDrop.boundary,
+            indicatorTop: latestDrop.indicatorTop,
+          });
+        };
+
+        const handleUp = () => {
+          window.removeEventListener('pointermove', handleMove);
+          window.removeEventListener('pointerup', handleUp);
+          window.removeEventListener('pointercancel', handleUp);
+          isDraggingBlockRef.current = false;
+          setBlockDragState(null);
+
+          if (
+            latestDrop.boundary !== sourceIndex &&
+            latestDrop.boundary !== sourceIndex + 1
+          ) {
+            if (moveEditorBlock(activeEditor, sourceIndex, latestDrop.boundary)) {
+              emitChange(activeEditor.getHTML());
+            }
+          }
+        };
+
+        window.addEventListener('pointermove', handleMove);
+        window.addEventListener('pointerup', handleUp);
+        window.addEventListener('pointercancel', handleUp);
+      },
+      [emitChange]
+    );
 
     // [[ Wiki-Link Live Autocomplete Popup State
     const [mentionPopup, setMentionPopup] = useState<MentionPopupState | null>(null);
@@ -287,10 +687,10 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
           .run();
 
         setMentionPopup(null);
-        onChangeRef.current(activeEditor.getHTML());
+        emitChange(activeEditor.getHTML());
         onNoteMentionSelectedRef.current?.(target, chosenRole);
       },
-      []
+      [emitChange]
     );
 
     const createAndLinkFromPopup = useCallback(
@@ -450,14 +850,44 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
             .deleteRange({ from, to })
             .insertContent('[[')
             .run();
-          onChangeRef.current(activeEditor.getHTML());
+          emitChange(activeEditor.getHTML());
           evaluateMentionTrigger(activeEditor);
+          return;
+        }
+
+        if (item.id === 'subpage' && onCreateInlineSubpageRef.current) {
+          activeEditor.chain().deleteRange({ from, to }).run();
+          emitChange(activeEditor.getHTML());
+          const clampedPos = Math.max(0, Math.min(from, activeEditor.state.doc.content.size));
+          let coords = anchorRect;
+          try {
+            const c = activeEditor.view.coordsAtPos(
+              Math.max(1, Math.min(clampedPos, activeEditor.state.doc.content.size))
+            );
+            if (c && (c.top > 0 || c.left > 0)) {
+              coords = { left: c.left, right: c.right, top: c.top, bottom: c.bottom };
+            }
+          } catch {
+            // fallback to slash anchorRect
+          }
+          const nextCreator: SubpageCreatorState = {
+            isOpen: true,
+            insertPos: clampedPos,
+            coords,
+          };
+          subpageCreatorRef.current = nextCreator;
+          setSubpageTitleInput('');
+          setSubpageSelectedIdx(-1);
+          setSubpageCreator(nextCreator);
+          setTimeout(() => {
+            subpageInputRef.current?.focus();
+          }, 15);
           return;
         }
 
         if (item.kind === 'note') {
           activeEditor.chain().focus().deleteRange({ from, to }).run();
-          onChangeRef.current(activeEditor.getHTML());
+          emitChange(activeEditor.getHTML());
           onSlashNoteActionRef.current?.(item.id as SlashNoteActionId, anchorRect);
           return;
         }
@@ -526,9 +956,9 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
             chain.unsetAllMarks().clearNodes().run();
             break;
         }
-        onChangeRef.current(activeEditor.getHTML());
+        emitChange(activeEditor.getHTML());
       },
-      [evaluateMentionTrigger]
+      [evaluateMentionTrigger, emitChange]
     );
 
     useEffect(() => {
@@ -607,7 +1037,7 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
             }
 
             activeEditor.chain().focus().insertContent(nodesToInsert).run();
-            onChangeRef.current(activeEditor.getHTML());
+            emitChange(activeEditor.getHTML());
           }
         } catch (err) {
           console.error('Failed to paste and copy files to local folder:', err);
@@ -615,7 +1045,7 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
           setIsCopyingFiles(false);
         }
       },
-      []
+      [emitChange]
     );
 
     const handleClipboardDataTransfer = useCallback(
@@ -655,7 +1085,7 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
             }
             const { from, to } = activeEditor.state.selection;
             activeEditor.view.dispatch(activeEditor.state.tr.insertText(plainText, from, to));
-            onChangeRef.current(activeEditor.getHTML());
+            emitChange(activeEditor.getHTML());
             return true;
           }
         }
@@ -681,7 +1111,7 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
               rawEvent.stopPropagation();
             }
             activeEditor.chain().focus().insertContent(html).run();
-            onChangeRef.current(activeEditor.getHTML());
+            emitChange(activeEditor.getHTML());
             return true;
           }
         }
@@ -702,7 +1132,7 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
             }
             const html = convertMarkdownToHtml(plainText);
             activeEditor.chain().focus().insertContent(html).run();
-            onChangeRef.current(activeEditor.getHTML());
+            emitChange(activeEditor.getHTML());
             return true;
           }
         }
@@ -715,14 +1145,14 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
               rawEvent.stopPropagation();
             }
             activeEditor.chain().focus().insertContent(plainText).run();
-            onChangeRef.current(activeEditor.getHTML());
+            emitChange(activeEditor.getHTML());
             return true;
           }
         }
 
         return false;
       },
-      [processAndInsertFiles]
+      [processAndInsertFiles, emitChange]
     );
 
     const editor = useEditor({
@@ -787,6 +1217,16 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
             if (found) setEditingNote(found);
           },
         }),
+        SubpageBlockExtension.configure({
+          onOpenSubpage: async (noteIdOrTitle) => {
+            if (onOpenMentionedNoteRef.current) {
+              onOpenMentionedNoteRef.current(noteIdOrTitle);
+              return;
+            }
+            const found = await resolveNoteByTitleOrId(noteIdOrTitle);
+            if (found) setEditingNote(found);
+          },
+        }),
         Placeholder.configure({
           placeholder,
         }),
@@ -795,7 +1235,7 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
       autofocus: autoFocus ? 'end' : false,
       immediatelyRender: false,
       onUpdate: ({ editor }) => {
-        onChangeRef.current(editor.getHTML());
+        emitChange(editor.getHTML());
         evaluateMentionTrigger(editor);
         evaluateSlashTrigger(editor);
       },
@@ -808,6 +1248,36 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
           class: `w-full ${minHeightClass} outline-none text-stone-800 dark:text-stone-200 leading-relaxed`,
         },
         handleKeyDown: (view, event) => {
+          // Guard NodeSelection on subpageBlock so Enter or typing "/" moves to a paragraph below instead of overwriting the subpage
+          const sel = view.state.selection;
+          if (
+            sel instanceof NodeSelection &&
+            sel.node?.type.name === 'subpageBlock'
+          ) {
+            if (
+              event.key === 'Enter' ||
+              (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey)
+            ) {
+              const afterPos = sel.to;
+              const paraType = view.state.schema.nodes.paragraph;
+              if (paraType) {
+                const $after = view.state.doc.resolve(afterPos);
+                const nextNode = $after.nodeAfter;
+                let tr = view.state.tr;
+                if (!nextNode || nextNode.type.name !== 'paragraph') {
+                  tr = tr.insert(afterPos, paraType.create());
+                }
+                const targetCursor = Math.min(afterPos + 1, tr.doc.content.size);
+                tr = tr.setSelection(TextSelection.near(tr.doc.resolve(targetCursor), 1));
+                view.dispatch(tr.scrollIntoView());
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  return true;
+                }
+              }
+            }
+          }
+
           const activePopup = mentionPopupRef.current;
           if (activePopup?.isOpen) {
             const cands = mentionCandidatesRef.current;
@@ -939,7 +1409,7 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
               const { from, to } = view.state.selection;
               view.dispatch(view.state.tr.insertText(text, from, to));
               if (editorInstanceRef.current) {
-                onChangeRef.current(editorInstanceRef.current.getHTML());
+                emitChange(editorInstanceRef.current.getHTML());
               }
               return true;
             }
@@ -980,21 +1450,26 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
       };
     }, [listenWindowPaste, handleClipboardDataTransfer]);
 
-    // Synchronize external content changes (e.g. switching notes)
+    // Synchronize external content changes (e.g. switching notes or restoring versions)
     useEffect(() => {
       if (editor) {
+        if (content === lastEmittedHtmlRef.current) {
+          return;
+        }
         const currentHtml = editor.getHTML();
         if (content !== currentHtml) {
           if (
             !content.trim() &&
             editor.getText().trim() === '' &&
-            !currentHtml.includes('data-keep-media')
+            !currentHtml.includes('data-keep-media') &&
+            !currentHtml.includes('data-keep-subpage')
           ) {
             return;
           }
 
           const converted = convertMarkdownToHtml(content);
           if (converted !== currentHtml) {
+            lastEmittedHtmlRef.current = content;
             editor.commands.setContent(converted, { emitUpdate: false });
           }
         }
@@ -1077,11 +1552,11 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
               { type: 'text', text: ' ' },
             ])
             .run();
-          onChangeRef.current(editor.getHTML());
+          emitChange(editor.getHTML());
         },
       }),
       // eslint-disable-next-line react-hooks/exhaustive-deps
-      [editor, processAndInsertFiles]
+      [editor, processAndInsertFiles, emitChange]
     );
 
     return (
@@ -1105,7 +1580,61 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
         )}
 
         {/* WYSIWYG Editable Canvas */}
-        <div className="flex-1 py-1 cursor-text" onClick={() => editor?.commands.focus()}>
+        <div
+          ref={editorCanvasRef}
+          onMouseMove={handleCanvasMouseMove}
+          onMouseLeave={() => {
+            if (!isDraggingBlockRef.current) {
+              hideHoverTimerRef.current = setTimeout(() => setHoveredBlock(null), 150);
+            }
+          }}
+          className="flex-1 py-1 cursor-text relative"
+          onClick={(e) => {
+            const target = e.target as HTMLElement | null;
+            if (target?.closest?.('[data-keep-subpage="true"], [data-note-mention="true"], [data-block-drag-handle="true"]')) {
+              return;
+            }
+            editor?.commands.focus();
+          }}
+        >
+          {hoveredBlock && !blockDragState && (
+            <button
+              type="button"
+              data-block-drag-handle="true"
+              data-block-index={hoveredBlock.index}
+              title={`Drag to move "${hoveredBlock.label}" up or down`}
+              onMouseEnter={() => {
+                if (hideHoverTimerRef.current) {
+                  clearTimeout(hideHoverTimerRef.current);
+                  hideHoverTimerRef.current = null;
+                }
+              }}
+              onMouseLeave={() => {
+                hideHoverTimerRef.current = setTimeout(() => setHoveredBlock(null), 120);
+              }}
+              onPointerDown={(e) => startBlockDrag(hoveredBlock.index, hoveredBlock.label, e)}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+              style={{ top: `${Math.max(0, hoveredBlock.top + 2)}px` }}
+              className="absolute -left-4 sm:-left-7 z-20 w-5 h-6 flex items-center justify-center rounded text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-black/[0.06] dark:hover:bg-white/[0.08] cursor-grab active:cursor-grabbing transition-colors select-none touch-none"
+            >
+              <GripVertical className="w-3.5 h-3.5" />
+            </button>
+          )}
+
+          {blockDragState && (
+            <div
+              data-block-drop-indicator="true"
+              style={{ top: `${blockDragState.indicatorTop}px` }}
+              className="pointer-events-none absolute left-0 right-0 z-30 flex items-center"
+            >
+              <div className="w-2 h-2 -ml-1 rounded-full bg-blue-500 shadow-xs" />
+              <div className="flex-1 h-[2px] bg-blue-500 shadow-xs" />
+            </div>
+          )}
+
           <EditorContent editor={editor} />
         </div>
 
@@ -1133,6 +1662,132 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
             }}
           />
         )}
+
+        {/* Cursor-anchored Inline Sub-page Creator Portal */}
+        {typeof document !== 'undefined' &&
+          subpageCreator?.isOpen &&
+          createPortal(
+            <div
+              data-subpage-menu="true"
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                position: 'fixed',
+                left: `${Math.max(12, Math.min(subpageCreator.coords.left, window.innerWidth - 340))}px`,
+                top:
+                  window.innerHeight - subpageCreator.coords.bottom < 240 &&
+                  subpageCreator.coords.top > 240
+                    ? undefined
+                    : `${Math.min(window.innerHeight - 240, subpageCreator.coords.bottom + 6)}px`,
+                bottom:
+                  window.innerHeight - subpageCreator.coords.bottom < 240 &&
+                  subpageCreator.coords.top > 240
+                    ? `${window.innerHeight - subpageCreator.coords.top + 6}px`
+                    : undefined,
+                zIndex: 130,
+              }}
+              className="w-[330px] max-w-[92vw] rounded-xl bg-white dark:bg-[#202124] border border-black/[0.08] dark:border-stone-700/80 shadow-2xl overflow-hidden text-stone-800 dark:text-stone-200 animate-in fade-in duration-100"
+            >
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (subpageSelectedIdx >= 0 && subpageSelectedIdx < subpageCandidates.length) {
+                    commitInlineSubpage({ existingNote: subpageCandidates[subpageSelectedIdx] });
+                    return;
+                  }
+                  const raw = (subpageInputRef.current?.value ?? subpageTitleInput).trim() || 'Untitled';
+                  commitInlineSubpage({ title: raw });
+                }}
+                className="flex items-center gap-2 px-2.5 py-2 border-b border-black/[0.06] dark:border-white/[0.07]"
+              >
+                <FileText className="w-4 h-4 text-stone-400 shrink-0" />
+                <input
+                  ref={subpageInputRef}
+                  type="text"
+                  autoFocus
+                  placeholder="New sub-page title or search..."
+                  value={subpageTitleInput}
+                  onChange={(e) => {
+                    setSubpageTitleInput(e.target.value);
+                    setSubpageSelectedIdx(-1);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      e.nativeEvent.stopImmediatePropagation();
+                      const pos = subpageCreator.insertPos;
+                      subpageCreatorRef.current = null;
+                      setSubpageCreator(null);
+                      setSubpageTitleInput('');
+                      setSubpageSelectedIdx(-1);
+                      editorInstanceRef.current?.chain().focus(pos).run();
+                    } else if (e.key === 'ArrowDown') {
+                      if (subpageCandidates.length > 0) {
+                        e.preventDefault();
+                        setSubpageSelectedIdx((prev) =>
+                          prev < subpageCandidates.length - 1 ? prev + 1 : -1
+                        );
+                      }
+                    } else if (e.key === 'ArrowUp') {
+                      if (subpageCandidates.length > 0) {
+                        e.preventDefault();
+                        setSubpageSelectedIdx((prev) =>
+                          prev > -1 ? prev - 1 : subpageCandidates.length - 1
+                        );
+                      }
+                    }
+                  }}
+                  className="flex-1 min-w-0 bg-transparent text-[13.5px] text-stone-900 dark:text-stone-100 placeholder:text-stone-400 outline-none border-none"
+                />
+                <button
+                  type="submit"
+                  onMouseDown={(e) => e.preventDefault()}
+                  className="px-2.5 py-1 text-xs font-medium rounded-md bg-stone-900 hover:bg-stone-800 dark:bg-stone-100 dark:hover:bg-stone-200 text-white dark:text-stone-900 transition-colors shrink-0 cursor-pointer"
+                >
+                  {subpageSelectedIdx >= 0 ? 'Link' : 'Add'}
+                </button>
+              </form>
+
+              {subpageCandidates.length > 0 && (
+                <div className="max-h-48 overflow-y-auto divide-y divide-black/[0.04] dark:divide-white/[0.05]">
+                  <div className="px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider text-stone-400">
+                    Link existing page
+                  </div>
+                  {subpageCandidates.map((cand, idx) => {
+                    const active = subpageSelectedIdx === idx;
+                    return (
+                      <button
+                        key={cand.id}
+                        type="button"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          commitInlineSubpage({ existingNote: cand });
+                        }}
+                        className={`w-full text-left flex items-center gap-2 px-2.5 py-1.5 text-xs transition-colors cursor-pointer ${
+                          active
+                            ? 'bg-black/[0.05] dark:bg-white/[0.08] text-stone-900 dark:text-white'
+                            : 'hover:bg-black/[0.03] dark:hover:bg-white/[0.04]'
+                        }`}
+                      >
+                        <FileText className="w-3.5 h-3.5 text-stone-400 shrink-0" />
+                        <span className="truncate flex-1">{cand.title || 'Untitled'}</span>
+                        <span className="text-[10px] text-stone-400">Link ↵</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div className="px-2.5 py-1.5 bg-stone-50/70 dark:bg-stone-900/40 text-[11px] text-stone-400 flex items-center justify-between">
+                <span>Adds sub-page right at cursor</span>
+                <span className="font-mono text-[10px]">esc</span>
+              </div>
+            </div>,
+            document.body
+          )}
 
         {/* [[ Wiki-Link Live Autocomplete Portal */}
         {typeof document !== 'undefined' &&

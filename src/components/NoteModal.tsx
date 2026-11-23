@@ -33,6 +33,7 @@ import {
   Folder,
   Home,
   MoreHorizontal,
+  GripVertical,
 } from 'lucide-react';
 import {
   getClassicToolbarsServerSnapshot,
@@ -157,6 +158,10 @@ export const NoteModal: React.FC<NoteModalProps> = ({
   const [connections, setConnections] = useState<NoteConnection[]>([]);
   const [isHub, setIsHub] = useState(false);
   const [childNoteIds, setChildNoteIds] = useState<string[]>([]);
+  const childNoteIdsRef = useRef<string[]>([]);
+  useEffect(() => {
+    childNoteIdsRef.current = childNoteIds;
+  }, [childNoteIds]);
   const [showSubpages, setShowSubpages] = useState(false);
   const [showCompletedTodos, setShowCompletedTodos] = useState(true);
   const [isFormattingOpen, setIsFormattingOpen] = useState(false);
@@ -386,6 +391,11 @@ export const NoteModal: React.FC<NoteModalProps> = ({
     });
   }, [images, content]);
 
+  const nonInlineChildIds = useMemo(
+    () => childNoteIds.filter((id) => !content.includes(`data-note-id="${id}"`)),
+    [childNoteIds, content]
+  );
+
   const isNotionPage = Boolean(
     (note && note.noteType === 'notion') ||
     showSubpages ||
@@ -454,8 +464,13 @@ export const NoteModal: React.FC<NoteModalProps> = ({
         setLinkedNoteIds(note.linkedNoteIds || []);
         setConnections(note.connections || []);
         setIsHub(Boolean(note.isHub));
-        setChildNoteIds(note.childNoteIds || []);
-        setShowSubpages(Boolean(note.childNoteIds && note.childNoteIds.length > 0));
+        const nextChildIds = note.childNoteIds || [];
+        setChildNoteIds(nextChildIds);
+        childNoteIdsRef.current = nextChildIds;
+        const hasNonInlineSubpages = nextChildIds.some(
+          (id) => !initContent.includes(`data-note-id="${id}"`)
+        );
+        setShowSubpages(hasNonInlineSubpages);
         setShowConnectionsPanel(false);
         setIsFormattingOpen(false);
         setIsPreviewMode(false);
@@ -550,22 +565,45 @@ export const NoteModal: React.FC<NoteModalProps> = ({
     };
   } | null>(null);
 
+  const currentNoteLinksRef = useRef(currentNoteForLinks);
   useEffect(() => {
-    if (!isOpen || !currentNoteForLinks.id) return;
+    currentNoteLinksRef.current = currentNoteForLinks;
+  }, [currentNoteForLinks]);
+
+  const linksSignature = useMemo(() => {
+    if (!note?.id) return '';
+    const inlineTokens: string[] = [];
+    const wikiRe = /\[\[([^\]\n]+)\]\]/g;
+    let m: RegExpExecArray | null;
+    while ((m = wikiRe.exec(content)) !== null) {
+      inlineTokens.push(m[1].trim().toLowerCase());
+    }
+    const attrRe = /data-note-(?:id|title)=["']([^"']+)["']/gi;
+    while ((m = attrRe.exec(content)) !== null) {
+      inlineTokens.push(m[1].trim().toLowerCase());
+    }
+    return `${note.id}|${(linkedNoteIds || []).join(',')}|${(connections || [])
+      .map((c) => `${c.targetId}:${c.role}`)
+      .join(',')}|${inlineTokens.join(',')}`;
+  }, [note?.id, linkedNoteIds, connections, content]);
+
+  useEffect(() => {
+    if (!isOpen || !linksSignature) return;
     let cancelled = false;
-    const targetId = currentNoteForLinks.id;
+    const snapshotNote = currentNoteLinksRef.current;
+    const targetId = snapshotNote.id;
     const timer = setTimeout(() => {
-      getBidirectionalLinksFromDB(currentNoteForLinks)
+      getBidirectionalLinksFromDB(snapshotNote)
         .then((res) => {
           if (!cancelled) setDbLinksState({ noteId: targetId, data: res });
         })
         .catch(() => {});
-    }, 150);
+    }, 300);
     return () => {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [isOpen, currentNoteForLinks]);
+  }, [isOpen, linksSignature]);
 
   const dbLinks = isOpen && note && dbLinksState?.noteId === note.id ? dbLinksState.data : null;
 
@@ -793,8 +831,21 @@ export const NoteModal: React.FC<NoteModalProps> = ({
 
     if (hasChanged) {
       setAutoSnapshotStatus('editing');
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+      debounceTimerRef.current = setTimeout(() => {
+        debounceTimerRef.current = null;
+        performAutoSnapshot('Auto checkpoint while editing').catch(() => {});
+      }, 1500);
     }
-  }, [title, content, todos, isList, color, theme, category, labels, reminder, isPinned, isOpen, note?.id]);
+
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, [title, content, todos, isList, color, theme, category, labels, reminder, isPinned, isOpen, note?.id, performAutoSnapshot]);
 
   // Save snapshot and reading stopwatch when closing app, switching tabs, or backgrounding window
   useEffect(() => {
@@ -906,8 +957,8 @@ export const NoteModal: React.FC<NoteModalProps> = ({
             linkedNoteIds,
             connections,
             isHub,
-            childNoteIds,
-            noteType: isHub || showSubpages || childNoteIds.length > 0 ? 'notion' : (note.noteType || 'default'),
+            childNoteIds: childNoteIdsRef.current,
+            noteType: isHub || showSubpages || childNoteIdsRef.current.length > 0 ? 'notion' : (note.noteType || 'default'),
           });
         } catch (err) {
           console.error('Failed saving encrypted note:', err);
@@ -932,8 +983,8 @@ export const NoteModal: React.FC<NoteModalProps> = ({
           linkedNoteIds,
           connections,
           isHub,
-          childNoteIds,
-          noteType: isHub || showSubpages || childNoteIds.length > 0 ? 'notion' : (note.noteType || 'default'),
+          childNoteIds: childNoteIdsRef.current,
+          noteType: isHub || showSubpages || childNoteIdsRef.current.length > 0 ? 'notion' : (note.noteType || 'default'),
         },
         snapshotReason || 'Auto snapshot on save'
       );
@@ -973,7 +1024,6 @@ export const NoteModal: React.FC<NoteModalProps> = ({
     linkedNoteIds,
     connections,
     isHub,
-    childNoteIds,
     showSubpages,
     updateNote,
   ]);
@@ -1013,6 +1063,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
         const hasOpenFloatingMenu = Boolean(
           document.querySelector('[data-slash-menu="true"]') ||
           document.querySelector('[data-mention-menu="true"]') ||
+          document.querySelector('[data-subpage-menu="true"]') ||
           document.querySelector('[data-portal="true"]')
         );
         const hasOpenSubModal =
@@ -1068,6 +1119,84 @@ export const NoteModal: React.FC<NoteModalProps> = ({
 
   const handleRemoveTodo = (id: string) => {
     setTodos((prev) => prev.filter((t) => t.id !== id));
+  };
+
+  const todoListRef = useRef<HTMLDivElement>(null);
+  const todoRowRefs = useRef<Array<HTMLDivElement | null>>([]);
+  const [todoDragState, setTodoDragState] = useState<{
+    sourceIndex: number;
+    dropBoundaryIndex: number;
+    indicatorTop: number;
+  } | null>(null);
+
+  const startTodoDrag = (sourceIndex: number, e: React.PointerEvent<HTMLButtonElement>) => {
+    const containerEl = todoListRef.current;
+    if (!containerEl) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const activeCount = activeTodos.length;
+    const computeDrop = (clientY: number) => {
+      const containerRect = containerEl.getBoundingClientRect();
+      const els = todoRowRefs.current.slice(0, activeCount);
+      for (let i = 0; i < els.length; i++) {
+        const el = els[i];
+        if (!el) continue;
+        const r = el.getBoundingClientRect();
+        if (clientY < r.top + r.height / 2) {
+          return { boundary: i, indicatorTop: r.top - containerRect.top };
+        }
+      }
+      const lastEl = els[els.length - 1];
+      return {
+        boundary: els.length,
+        indicatorTop: (lastEl ? lastEl.getBoundingClientRect().bottom : containerRect.bottom) - containerRect.top,
+      };
+    };
+
+    let latestDrop = computeDrop(e.clientY);
+    setTodoDragState({
+      sourceIndex,
+      dropBoundaryIndex: latestDrop.boundary,
+      indicatorTop: latestDrop.indicatorTop,
+    });
+
+    const onMove = (moveEvent: PointerEvent) => {
+      latestDrop = computeDrop(moveEvent.clientY);
+      setTodoDragState({
+        sourceIndex,
+        dropBoundaryIndex: latestDrop.boundary,
+        indicatorTop: latestDrop.indicatorTop,
+      });
+    };
+
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+      setTodoDragState(null);
+
+      if (
+        latestDrop.boundary !== sourceIndex &&
+        latestDrop.boundary !== sourceIndex + 1
+      ) {
+        setTodos((prev) => {
+          const active = prev.filter((t) => !t.completed);
+          const completed = prev.filter((t) => t.completed);
+          if (sourceIndex < 0 || sourceIndex >= active.length) return prev;
+          const [moved] = active.splice(sourceIndex, 1);
+          const insertAt =
+            latestDrop.boundary > sourceIndex ? latestDrop.boundary - 1 : latestDrop.boundary;
+          active.splice(insertAt, 0, moved);
+          return [...active, ...completed];
+        });
+      }
+    };
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
   };
 
   const handleToggleChecklist = () => {
@@ -2077,18 +2206,28 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
                 />
               </div>
 
-              {/* 1. Notion-style Sub-pages list (Right under title cleanly when sub-pages exist or toggled) */}
-              {(childNoteIds.length > 0 || showSubpages) && (
+              {/* 1. Notion-style Sub-pages list (Only for non-inline sub-pages or when manually toggled) */}
+              {(nonInlineChildIds.length > 0 || showSubpages) && (
                 <div className="pt-0.5 pb-1">
                   <NotionSubpagesSection
                     parentNoteId={note.id}
-                    childNoteIds={childNoteIds}
-                    onChangeChildIds={async (newIds) => {
-                      setChildNoteIds(newIds);
-                      await updateNote(note.id, { childNoteIds: newIds });
+                    childNoteIds={nonInlineChildIds}
+                    excludeChildIds={childNoteIds.filter((id) => content.includes(`data-note-id="${id}"`))}
+                    onChangeChildIds={async (newNonInlineIds) => {
+                      const latestContent = editorRef.current?.getHTML() || content;
+                      const inlineIds = childNoteIdsRef.current.filter((id) =>
+                        latestContent.includes(`data-note-id="${id}"`)
+                      );
+                      const merged = Array.from(new Set([...inlineIds, ...newNonInlineIds]));
+                      childNoteIdsRef.current = merged;
+                      setChildNoteIds(merged);
+                      await updateNote(note.id, { childNoteIds: merged });
                     }}
                     onOpenChildNote={async (childNote) => {
-                      await saveCurrentNote('Auto snapshot before opening sub-page');
+                      await Promise.race([
+                        saveCurrentNote('Auto snapshot before opening sub-page'),
+                        new Promise<void>((r) => setTimeout(r, 250)),
+                      ]);
                       setEditingNote(childNote);
                     }}
                     category={category}
@@ -2101,11 +2240,40 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
               {isList && (
                 <div className={`space-y-2 ${isNotionPage ? 'pt-3 border-t border-black/5 dark:border-white/5' : ''}`}>
                   {/* Active Interactive Checkboxes */}
-                  {activeTodos.map((todo) => (
+                  <div ref={todoListRef} className="space-y-2 relative">
+                    {todoDragState && (
+                      <div
+                        data-todo-drop-indicator="true"
+                        style={{ top: `${todoDragState.indicatorTop}px` }}
+                        className="pointer-events-none absolute left-0 right-0 z-30 flex items-center"
+                      >
+                        <div className="w-2 h-2 -ml-1 rounded-full bg-blue-500 shadow-xs" />
+                        <div className="flex-1 h-[2px] bg-blue-500 shadow-xs" />
+                      </div>
+                    )}
+                  {activeTodos.map((todo, todoIdx) => (
                     <div
                       key={todo.id}
-                      className="flex items-start gap-2.5 sm:gap-3 group py-1 min-w-0 w-full rounded-lg transition-colors hover:bg-black/[0.02] dark:hover:bg-white/[0.02]"
+                      ref={(el) => {
+                        todoRowRefs.current[todoIdx] = el;
+                      }}
+                      className={`relative flex items-start gap-2.5 sm:gap-3 group py-1 min-w-0 w-full rounded-lg transition-colors hover:bg-black/[0.02] dark:hover:bg-white/[0.02] ${
+                        todoDragState?.sourceIndex === todoIdx ? 'opacity-50' : ''
+                      }`}
                     >
+                      <button
+                        type="button"
+                        data-todo-drag-handle="true"
+                        onPointerDown={(e) => startTodoDrag(todoIdx, e)}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                        }}
+                        className="hidden sm:flex items-center justify-center sm:absolute sm:-left-6 sm:top-1.5 opacity-0 group-hover:opacity-100 w-5 h-5 rounded text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-black/[0.06] dark:hover:bg-white/[0.08] cursor-grab active:cursor-grabbing transition-opacity touch-none"
+                        title="Drag item up or down"
+                      >
+                        <GripVertical className="w-3.5 h-3.5" />
+                      </button>
                       <div className="keep-checklist-control">
                         <input
                           type="checkbox"
@@ -2168,6 +2336,7 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
                       </div>
                     </div>
                   ))}
+                  </div>
 
                   {/* Add item row */}
                   <div className="flex items-start gap-2.5 sm:gap-3 pt-2 border-t border-black/5 dark:border-white/5 min-w-0 w-full">
@@ -2309,10 +2478,69 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
                         labelsCount: labels.length,
                       }}
                       onSlashNoteAction={handleSlashNoteAction}
+                      onCreateInlineSubpage={async ({ title: rawTitle, existingNote }) => {
+                        if (existingNote) {
+                          if (!existingNote.parentNoteId || existingNote.parentNoteId !== note.id) {
+                            await updateNote(existingNote.id, { parentNoteId: note.id });
+                          }
+                          return {
+                            id: existingNote.id,
+                            title: existingNote.title || 'Untitled',
+                            isList: existingNote.isList,
+                          };
+                        }
+                        const created = await addNote({
+                          title: (rawTitle || '').trim() || 'Untitled',
+                          content: '',
+                          isList: false,
+                          todos: [],
+                          color: 'default',
+                          theme: 'none',
+                          category: category || null,
+                          labels: [],
+                          isPinned: false,
+                          isArchived: false,
+                          isTrash: false,
+                          images: [],
+                          parentNoteId: note.id,
+                          noteType: 'notion',
+                        });
+                        if (!created) return null;
+                        return {
+                          id: created.id,
+                          title: created.title || 'Untitled',
+                          isList: created.isList,
+                        };
+                      }}
+                      onAfterInsertInlineSubpage={async (sub, updatedHtml) => {
+                        const nextChildIds = Array.from(
+                          new Set([...childNoteIdsRef.current, sub.id])
+                        );
+                        childNoteIdsRef.current = nextChildIds;
+                        setChildNoteIds(nextChildIds);
+                        setContent(updatedHtml);
+                        if (debounceTimerRef.current) {
+                          clearTimeout(debounceTimerRef.current);
+                          debounceTimerRef.current = null;
+                        }
+                        if (lastSnapshottedRef.current) {
+                          lastSnapshottedRef.current.content = updatedHtml.trim();
+                          lastSnapshottedRef.current.timestamp = Date.now();
+                        }
+                        setAutoSnapshotStatus('saved');
+                        await updateNote(note.id, {
+                          content: updatedHtml,
+                          childNoteIds: nextChildIds,
+                          noteType: 'notion',
+                        });
+                      }}
                       onOpenMentionedNote={async (titleOrId) => {
                         const found = await resolveNoteByTitleOrId(titleOrId);
                         if (found) {
-                          await saveCurrentNote('Auto snapshot before following link');
+                          await Promise.race([
+                            saveCurrentNote('Auto snapshot before following link'),
+                            new Promise<void>((r) => setTimeout(r, 250)),
+                          ]);
                           setEditingNote(found);
                         }
                       }}

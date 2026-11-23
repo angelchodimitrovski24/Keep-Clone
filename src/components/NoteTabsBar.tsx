@@ -24,6 +24,7 @@ interface NoteTabsBarProps {
   openTabIds: string[];
   activeTabId: string | null;
   notes: Note[];
+  tabNotesById?: Record<string, Note>;
   currentFilter: ViewFilter;
   selectedCategory: string | null;
   selectedLabel: string | null;
@@ -37,6 +38,7 @@ export const NoteTabsBar: React.FC<NoteTabsBarProps> = ({
   openTabIds,
   activeTabId,
   notes,
+  tabNotesById,
   currentFilter,
   selectedCategory,
   selectedLabel,
@@ -91,7 +93,7 @@ export const NoteTabsBar: React.FC<NoteTabsBarProps> = ({
 
         {/* Note Tabs */}
         {openTabIds.map((id) => {
-          const note = notes.find((n) => n.id === id);
+          const note = notes.find((n) => n.id === id) || tabNotesById?.[id];
           if (!note) return null;
           const isActive = activeTabId === id;
           const colorObj = NOTE_COLORS.find((c) => c.id === note.color);

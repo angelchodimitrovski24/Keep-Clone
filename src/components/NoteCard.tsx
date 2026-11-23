@@ -173,11 +173,13 @@ const NoteCardComponent: React.FC<NoteCardProps> = ({
     // Also include any notes that have parentNoteId === note.id
     if (note.id) {
       const extras = [...dbChildNotes, ...notes].filter(
-        (n) => n.parentNoteId === note.id && !n.isTrash && !seen.has(n.id)
+        (n) => n.parentNoteId === note.id && !n.isTrash
       );
       for (const extraNote of extras) {
-        seen.add(extraNote.id);
-        list.push(extraNote);
+        if (!seen.has(extraNote.id)) {
+          seen.add(extraNote.id);
+          list.push(extraNote);
+        }
       }
     }
 

@@ -59,6 +59,8 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
   const {
     notes,
     addNote,
+    updateNote,
+    resolveNoteByTitleOrId,
     selectedLabel,
     selectedCategory,
     defaultCategory,
@@ -94,6 +96,10 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
   const [parentHubId, setParentHubId] = useState<string | null>(null);
   const [isHub, setIsHub] = useState(false);
   const [childNoteIds, setChildNoteIds] = useState<string[]>([]);
+  const childNoteIdsRef = useRef<string[]>([]);
+  React.useEffect(() => {
+    childNoteIdsRef.current = childNoteIds;
+  }, [childNoteIds]);
   const [isNotionMode, setIsNotionMode] = useState(false);
   const [tempNoteId, setTempNoteId] = useState<string>(() => 'note-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6));
   const [showLinkModal, setShowLinkModal] = useState(false);
@@ -183,7 +189,8 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
         target.closest('.keep-modal') ||
         target.closest('[data-portal="true"]') ||
         target.closest('[data-slash-menu="true"]') ||
-        target.closest('[data-mention-menu="true"]')
+        target.closest('[data-mention-menu="true"]') ||
+        target.closest('[data-subpage-menu="true"]')
       ) {
         return;
       }
@@ -269,7 +276,8 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
         title.trim().length > 0 ||
         (latestContent.trim().length > 0 && latestContent.trim() !== '<p></p>');
       const hasMedia = images.length > 0 || drawings.length > 0;
-      const hasSubnotes = childNoteIds.length > 0;
+      const latestChildIds = childNoteIdsRef.current;
+      const hasSubnotes = latestChildIds.length > 0;
 
       if (hasText || hasTodos || hasMedia || hasSubnotes) {
         const finalTodos = newTodoInput.trim()
@@ -309,8 +317,8 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
               connections,
               isHub,
               parentNoteId: parentHubId,
-              childNoteIds,
-              noteType: isHub || isNotionMode || childNoteIds.length > 0 ? 'notion' : 'default',
+              childNoteIds: latestChildIds,
+              noteType: isHub || isNotionMode || latestChildIds.length > 0 ? 'notion' : 'default',
               isEncrypted: true,
               encryptedData: bundle,
             });
@@ -348,8 +356,8 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
             connections,
             isHub,
             parentNoteId: parentHubId,
-            childNoteIds,
-            noteType: isHub || isNotionMode || childNoteIds.length > 0 ? 'notion' : 'default',
+            childNoteIds: latestChildIds,
+            noteType: isHub || isNotionMode || latestChildIds.length > 0 ? 'notion' : 'default',
           });
           if (parentHubId && created) {
             await connectNotes(created.id, parentHubId, 'part_of');
@@ -887,15 +895,24 @@ const handleImportMhtml = async (file: File) => {
 
         {/* Content body: List, Notion Sub-pages, or Text - mixed together */}
         <div className="px-4 py-2 space-y-3">
-          {/* 1. Notion subpages section */}
-          {(isNotionMode || childNoteIds.length > 0) && (
+          {/* 1. Notion subpages section (non-inline subpages or explicit section toggle) */}
+          {(isNotionMode || childNoteIds.some((id) => !content.includes(`data-note-id="${id}"`))) && (
             <div className="mb-2">
               <NotionSubpagesSection
                 parentNoteId={tempNoteId}
-                childNoteIds={childNoteIds}
-                onChangeChildIds={setChildNoteIds}
-                onOpenChildNote={(child) => {
-                  handleSaveAndClose();
+                childNoteIds={childNoteIds.filter((id) => !content.includes(`data-note-id="${id}"`))}
+                excludeChildIds={childNoteIds.filter((id) => content.includes(`data-note-id="${id}"`))}
+                onChangeChildIds={(newNonInlineIds) => {
+                  const latestContent = editorRef.current?.getHTML() || content;
+                  const inlineIds = childNoteIdsRef.current.filter((id) =>
+                    latestContent.includes(`data-note-id="${id}"`)
+                  );
+                  const merged = Array.from(new Set([...inlineIds, ...newNonInlineIds]));
+                  childNoteIdsRef.current = merged;
+                  setChildNoteIds(merged);
+                }}
+                onOpenChildNote={async (child) => {
+                  await handleSaveAndClose();
                   setEditingNote(child);
                 }}
                 category={category}
@@ -1022,6 +1039,55 @@ const handleImportMhtml = async (file: File) => {
                   labelsCount: labels.length,
                 }}
                 onSlashNoteAction={handleSlashNoteAction}
+                onCreateInlineSubpage={async ({ title: rawTitle, existingNote }) => {
+                  if (existingNote) {
+                    if (!existingNote.parentNoteId || existingNote.parentNoteId !== tempNoteId) {
+                      await updateNote(existingNote.id, { parentNoteId: tempNoteId });
+                    }
+                    return {
+                      id: existingNote.id,
+                      title: existingNote.title || 'Untitled',
+                      isList: existingNote.isList,
+                    };
+                  }
+                  const created = await addNote({
+                    title: (rawTitle || '').trim() || 'Untitled',
+                    content: '',
+                    isList: false,
+                    todos: [],
+                    color: 'default',
+                    theme: 'none',
+                    category: category || null,
+                    labels: [],
+                    isPinned: false,
+                    isArchived: false,
+                    isTrash: false,
+                    images: [],
+                    parentNoteId: tempNoteId,
+                    noteType: 'notion',
+                  });
+                  if (!created) return null;
+                  return {
+                    id: created.id,
+                    title: created.title || 'Untitled',
+                    isList: created.isList,
+                  };
+                }}
+                onAfterInsertInlineSubpage={(sub, updatedHtml) => {
+                  const nextChildIds = Array.from(
+                    new Set([...childNoteIdsRef.current, sub.id])
+                  );
+                  childNoteIdsRef.current = nextChildIds;
+                  setChildNoteIds(nextChildIds);
+                  setContent(updatedHtml);
+                }}
+                onOpenMentionedNote={async (titleOrId) => {
+                  const found = await resolveNoteByTitleOrId(titleOrId);
+                  if (found) {
+                    await handleSaveAndClose();
+                    setEditingNote(found);
+                  }
+                }}
                 onNoteMentionSelected={(target, role) => {
                   if (role === 'part_of') {
                     setParentHubId(target.id);

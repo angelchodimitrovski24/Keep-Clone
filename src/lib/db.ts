@@ -20,6 +20,7 @@ interface KeepDB extends DBSchema {
       'by-trash': number;
       'by-category': string;
       'by-isBenchmark': number;
+      'by-parent': string;
     };
   };
   searchTokens: {
@@ -84,7 +85,7 @@ export interface KeepMediaRecord {
 }
 
 const DB_NAME = 'google-keep-local-db';
-const DB_VERSION = 6;
+const DB_VERSION = 7;
 
 let dbPromise: Promise<IDBPDatabase<KeepDB>> | null = null;
 
@@ -105,6 +106,7 @@ export function getKeepDB() {
           noteStore.createIndex('by-trash', 'isTrash');
           noteStore.createIndex('by-category', 'category');
           noteStore.createIndex('by-isBenchmark', 'isBenchmark');
+          noteStore.createIndex('by-parent', 'parentNoteId');
         } else {
           noteStore = transaction.objectStore('notes');
           if (!noteStore.indexNames.contains('by-updated')) {
@@ -124,6 +126,9 @@ export function getKeepDB() {
           }
           if (!noteStore.indexNames.contains('by-isBenchmark')) {
             noteStore.createIndex('by-isBenchmark', 'isBenchmark');
+          }
+          if (!noteStore.indexNames.contains('by-parent')) {
+            noteStore.createIndex('by-parent', 'parentNoteId');
           }
         }
 
@@ -375,6 +380,10 @@ export interface HubTreeRecord {
 
 export async function getHubTreesFromDB(): Promise<HubTreeRecord[]> {
   const activeNotes = await getAllActiveNotesForStructureFromDB(3000);
+  return computeHubTrees(activeNotes);
+}
+
+function computeHubTrees(activeNotes: Note[]): HubTreeRecord[] {
   const byId = new Map(activeNotes.map((n) => [n.id, n]));
   const hubs = activeNotes
     .filter((n) => Boolean(n.isHub))
@@ -401,6 +410,17 @@ export async function getHubTreesFromDB(): Promise<HubTreeRecord[]> {
       children: Array.from(childMap.values()),
     };
   });
+}
+
+export async function getStructureSummaryFromDB(): Promise<{
+  hubTrees: HubTreeRecord[];
+  unconnectedCount: number;
+}> {
+  const activeNotes = await getAllActiveNotesForStructureFromDB(3500);
+  const hubTrees = computeHubTrees(activeNotes);
+  const connected = buildConnectedNoteIdsSet(activeNotes);
+  const unconnectedCount = activeNotes.filter((n) => !n.isHub && !connected.has(n.id)).length;
+  return { hubTrees, unconnectedCount };
 }
 
 export async function getNotesPagedFromDB(params: {
@@ -754,17 +774,26 @@ export async function getChildNotesForParentFromDB(parentId: string, childNoteId
     }
   }
 
-  // 2. Scan for any notes having parentNoteId === parentId
+  // 2. Query notes having parentNoteId === parentId via 'by-parent' index (fallback to cursor if unavailable)
   if (parentId) {
     try {
       const tx = db.transaction('notes', 'readonly');
-      let cursor = await tx.store.openCursor();
-      while (cursor) {
-        const note = cursor.value;
-        if (note.parentNoteId === parentId && !note.isTrash && !foundMap.has(note.id)) {
-          foundMap.set(note.id, note);
+      if (tx.store.indexNames.contains('by-parent')) {
+        const indexedChildren = await tx.store.index('by-parent').getAll(IDBKeyRange.only(parentId));
+        for (const note of indexedChildren) {
+          if (!note.isTrash && !foundMap.has(note.id)) {
+            foundMap.set(note.id, note);
+          }
         }
-        cursor = await cursor.continue();
+      } else {
+        let cursor = await tx.store.openCursor();
+        while (cursor) {
+          const note = cursor.value;
+          if (note.parentNoteId === parentId && !note.isTrash && !foundMap.has(note.id)) {
+            foundMap.set(note.id, note);
+          }
+          cursor = await cursor.continue();
+        }
       }
     } catch {}
   }
@@ -807,21 +836,38 @@ export async function searchLinkableNotesFromDB(params: {
     return (note.category || '').toLowerCase() === catFilter.toLowerCase();
   };
 
+  const fastMatchesLinkQuery = (note: Note, query: string): boolean => {
+    if (!query) return true;
+    const title = (note.title || '').toLowerCase();
+    if (title.includes(query)) return true;
+    const category = (note.category || '').toLowerCase();
+    if (category.includes(query)) return true;
+    if (note.labels && note.labels.some((l) => (l || '').toLowerCase().includes(query))) {
+      return true;
+    }
+    if (note.content && note.content.toLowerCase().includes(query)) {
+      return true;
+    }
+    return false;
+  };
+
   const results: Note[] = [];
   const seenIds = new Set<string>();
   const tx = db.transaction('notes', 'readonly');
   const index = tx.store.index('by-updated');
   let cursor = await index.openCursor(null, 'prev');
   let scanned = 0;
-  const maxScan = q ? 50000 : 10000;
+  const maxScan = q ? 600 : 250;
 
   while (cursor && results.length < limit && scanned < maxScan) {
-    scanned++;
     const note = cursor.value;
-    if (!note.isTrash && !excludeSet.has(note.id) && !seenIds.has(note.id) && matchesCategory(note)) {
-      if (!q || noteMatchesSearchQuery(note, q)) {
-        seenIds.add(note.id);
-        results.push(note);
+    if (!note.isBenchmark) {
+      scanned++;
+      if (!note.isTrash && !excludeSet.has(note.id) && !seenIds.has(note.id) && matchesCategory(note)) {
+        if (!q || fastMatchesLinkQuery(note, q)) {
+          seenIds.add(note.id);
+          results.push(note);
+        }
       }
     }
     cursor = await cursor.continue();

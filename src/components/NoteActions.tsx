@@ -1696,6 +1696,83 @@ export const NoteActions = React.forwardRef<NoteActionsHandle, NoteActionsProps>
                           <ChevronRight className="w-4 h-4 text-stone-400 shrink-0" />
                         </button>
                       )}
+
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowMenu(false);
+                          setShowColorPicker(true);
+                        }}
+                        className="w-full text-left px-6 py-3.5 flex items-center justify-between hover:bg-black/[0.04] dark:hover:bg-white/[0.06] active:bg-black/[0.08] dark:active:bg-white/[0.1] text-stone-800 dark:text-stone-200 text-[14.5px] font-medium tracking-[0.15px] transition-colors"
+                      >
+                        <div className="flex items-center gap-4 min-w-0">
+                          <Palette className="w-5 h-5 text-amber-500 shrink-0" />
+                          <span>Color &amp; theme</span>
+                        </div>
+                        <ChevronRight className="w-4 h-4 text-stone-400 shrink-0" />
+                      </button>
+
+                      {onAddReminder && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShowMenu(false);
+                            setShowReminderPicker(true);
+                          }}
+                          className="w-full text-left px-6 py-3.5 flex items-center justify-between hover:bg-black/[0.04] dark:hover:bg-white/[0.06] active:bg-black/[0.08] dark:active:bg-white/[0.1] text-stone-800 dark:text-stone-200 text-[14.5px] font-medium tracking-[0.15px] transition-colors"
+                        >
+                          <div className="flex items-center gap-4 min-w-0">
+                            <Bell className="w-5 h-5 text-stone-500 dark:text-stone-400 shrink-0" />
+                            <span>{note.reminder ? 'Edit reminder' : 'Add reminder'}</span>
+                          </div>
+                          <ChevronRight className="w-4 h-4 text-stone-400 shrink-0" />
+                        </button>
+                      )}
+
+                      {onAddImage && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowMenu(false);
+                            fileInputRef.current?.click();
+                          }}
+                          className="w-full text-left px-6 py-3.5 flex items-center gap-4 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] active:bg-black/[0.08] dark:active:bg-white/[0.1] text-stone-800 dark:text-stone-200 text-[14.5px] font-normal tracking-[0.15px] transition-colors"
+                        >
+                          <ImageIcon className="w-5 h-5 text-stone-500 dark:text-stone-400 shrink-0" />
+                          <span>Insert image or file</span>
+                        </button>
+                      )}
+
+                      {onStartDrawing && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowMenu(false);
+                            onStartDrawing();
+                          }}
+                          className="w-full text-left px-6 py-3.5 flex items-center gap-4 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] active:bg-black/[0.08] dark:active:bg-white/[0.1] text-stone-800 dark:text-stone-200 text-[14.5px] font-normal tracking-[0.15px] transition-colors"
+                        >
+                          <PenTool className="w-5 h-5 text-stone-500 dark:text-stone-400 shrink-0" />
+                          <span>Add drawing</span>
+                        </button>
+                      )}
+
+                      {showFormattingToggle && onToggleFormatting && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowMenu(false);
+                            onToggleFormatting();
+                          }}
+                          className="w-full text-left px-6 py-3.5 flex items-center gap-4 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] active:bg-black/[0.08] dark:active:bg-white/[0.1] text-stone-800 dark:text-stone-200 text-[14.5px] font-normal tracking-[0.15px] transition-colors"
+                        >
+                          <Type className="w-5 h-5 text-stone-500 dark:text-stone-400 shrink-0" />
+                          <span>{isFormattingOpen ? 'Hide formatting toolbar' : 'Show formatting toolbar'}</span>
+                        </button>
+                      )}
+
                       {onStartReading && (
                         <button
                           type="button"
@@ -1889,6 +1966,26 @@ export const NoteActions = React.forwardRef<NoteActionsHandle, NoteActionsProps>
                         </button>
                       )}
                     </div>
+
+                    {onToggleClassicToolbars && (
+                      <>
+                        <div className="my-1 border-t border-black/[0.06] dark:border-white/[0.08]" />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowMenu(false);
+                            onToggleClassicToolbars();
+                          }}
+                          className="w-full text-left px-6 py-3.5 flex items-center justify-between hover:bg-black/[0.04] dark:hover:bg-white/[0.06] active:bg-black/[0.08] dark:active:bg-white/[0.1] text-stone-800 dark:text-stone-200 text-[14.5px] font-normal tracking-[0.15px] transition-colors"
+                        >
+                          <div className="flex items-center gap-4">
+                            <SlidersHorizontal className="w-5 h-5 text-stone-500 dark:text-stone-400 shrink-0" />
+                            <span>{showClassicToolbars ? 'Clean Notion mode' : 'Show classic toolbars'}</span>
+                          </div>
+                          {showClassicToolbars && <Check className="w-4 h-4 text-emerald-500 shrink-0" />}
+                        </button>
+                      </>
+                    )}
 
                     {onDelete && (
                       <>

@@ -20,6 +20,7 @@ import { LinkNoteModal } from './LinkNoteModal';
 interface NotionSubpagesSectionProps {
   parentNoteId: string;
   childNoteIds: string[];
+  excludeChildIds?: string[];
   onChangeChildIds: (newIds: string[]) => void;
   onOpenChildNote: (note: Note) => void;
   category?: string | null;
@@ -29,6 +30,7 @@ interface NotionSubpagesSectionProps {
 export const NotionSubpagesSection: React.FC<NotionSubpagesSectionProps> = ({
   parentNoteId,
   childNoteIds = [],
+  excludeChildIds = [],
   onChangeChildIds,
   onOpenChildNote,
   category,
@@ -47,6 +49,17 @@ export const NotionSubpagesSection: React.FC<NotionSubpagesSectionProps> = ({
 
   const bottomInputRef = useRef<HTMLInputElement>(null);
   const insertInputRef = useRef<HTMLInputElement>(null);
+  const listContainerRef = useRef<HTMLDivElement>(null);
+  const subpageRowRefs = useRef<Array<HTMLDivElement | null>>([]);
+  const [subpageDragState, setSubpageDragState] = useState<{
+    sourceIndex: number;
+    dropBoundaryIndex: number;
+    indicatorTop: number;
+  } | null>(null);
+  const childNoteIdsRef = useRef<string[]>(childNoteIds);
+  React.useEffect(() => {
+    childNoteIdsRef.current = childNoteIds;
+  }, [childNoteIds]);
 
   React.useEffect(() => {
     if (autoOpenAddSignal <= 0) return;
@@ -54,6 +67,7 @@ export const NotionSubpagesSection: React.FC<NotionSubpagesSectionProps> = ({
       setIsAddingActive(true);
       requestAnimationFrame(() => {
         bottomInputRef.current?.focus();
+        bottomInputRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
       });
     }, 30);
     return () => clearTimeout(t);
@@ -72,8 +86,6 @@ export const NotionSubpagesSection: React.FC<NotionSubpagesSectionProps> = ({
           }
         })
         .catch(() => {});
-    } else {
-      setDbChildNotes([]);
     }
     return () => {
       active = false;
@@ -81,11 +93,13 @@ export const NotionSubpagesSection: React.FC<NotionSubpagesSectionProps> = ({
   }, [parentNoteId, childNoteIds, notes, getChildNotes]);
 
   // Resolve child notes in the specified order with guaranteed fallback to IndexedDB records
+  const excludeSet = useMemo(() => new Set(excludeChildIds), [excludeChildIds]);
   const childNotes = useMemo(() => {
     const list: Note[] = [];
     const seen = new Set<string>();
 
     for (const id of childNoteIds) {
+      if (excludeSet.has(id)) continue;
       const found =
         dbChildNotes.find((n) => n.id === id && !n.isTrash) ||
         notes.find((n) => n.id === id && !n.isTrash);
@@ -97,14 +111,19 @@ export const NotionSubpagesSection: React.FC<NotionSubpagesSectionProps> = ({
 
     if (parentNoteId) {
       for (const ex of [...dbChildNotes, ...notes]) {
-        if (ex.parentNoteId === parentNoteId && !ex.isTrash && !seen.has(ex.id)) {
+        if (
+          ex.parentNoteId === parentNoteId &&
+          !ex.isTrash &&
+          !excludeSet.has(ex.id) &&
+          !seen.has(ex.id)
+        ) {
           seen.add(ex.id);
           list.push(ex);
         }
       }
     }
     return list;
-  }, [childNoteIds, notes, parentNoteId, dbChildNotes]);
+  }, [childNoteIds, notes, parentNoteId, dbChildNotes, excludeSet]);
 
   // Real-time matching existing notes for bottom input
   const bottomMatches = useMemo(() => {
@@ -114,7 +133,7 @@ export const NotionSubpagesSection: React.FC<NotionSubpagesSectionProps> = ({
       .filter((n) => {
         if (n.isTrash) return false;
         if (parentNoteId && n.id === parentNoteId) return false;
-        if (childNoteIds.includes(n.id)) return false;
+        if (childNoteIds.includes(n.id) || excludeSet.has(n.id)) return false;
 
         const titleMatch = Boolean(n.title && n.title.toLowerCase().includes(q));
         const contentMatch = Boolean(n.content && n.content.toLowerCase().includes(q));
@@ -124,7 +143,7 @@ export const NotionSubpagesSection: React.FC<NotionSubpagesSectionProps> = ({
         return titleMatch || contentMatch || labelMatch || categoryMatch;
       })
       .slice(0, 6);
-  }, [newSubpageTitle, notes, parentNoteId, childNoteIds]);
+  }, [newSubpageTitle, notes, parentNoteId, childNoteIds, excludeSet]);
 
   // Real-time matching existing notes for inline input
   const inlineMatches = useMemo(() => {
@@ -134,7 +153,7 @@ export const NotionSubpagesSection: React.FC<NotionSubpagesSectionProps> = ({
       .filter((n) => {
         if (n.isTrash) return false;
         if (parentNoteId && n.id === parentNoteId) return false;
-        if (childNoteIds.includes(n.id)) return false;
+        if (childNoteIds.includes(n.id) || excludeSet.has(n.id)) return false;
 
         const titleMatch = Boolean(n.title && n.title.toLowerCase().includes(q));
         const contentMatch = Boolean(n.content && n.content.toLowerCase().includes(q));
@@ -144,7 +163,7 @@ export const NotionSubpagesSection: React.FC<NotionSubpagesSectionProps> = ({
         return titleMatch || contentMatch || labelMatch || categoryMatch;
       })
       .slice(0, 6);
-  }, [inlineTitle, notes, parentNoteId, childNoteIds]);
+  }, [inlineTitle, notes, parentNoteId, childNoteIds, excludeSet]);
 
   const handleCreateSubpage = async (title: string, insertAtIndex?: number) => {
     const trimmed = title.trim();
@@ -159,28 +178,40 @@ export const NotionSubpagesSection: React.FC<NotionSubpagesSectionProps> = ({
     });
 
     if (created) {
+      setDbChildNotes((prev) => [created, ...prev.filter((n) => n.id !== created.id)]);
+      const currentIds = Array.from(
+        new Set([...childNotes.map((n) => n.id), ...childNoteIdsRef.current])
+      );
       let updated: string[];
       if (typeof insertAtIndex === 'number' && insertAtIndex >= 0) {
-        updated = [...childNoteIds];
+        updated = [...currentIds];
         updated.splice(insertAtIndex + 1, 0, created.id);
       } else {
-        updated = [...childNoteIds, created.id];
+        updated = [...currentIds, created.id];
       }
-      await onChangeChildIds(Array.from(new Set(updated)));
+      const deduped = Array.from(new Set(updated));
+      childNoteIdsRef.current = deduped;
+      await onChangeChildIds(deduped);
     }
   };
 
   const handleAttachExistingNote = async (targetNote: Note, insertAtIndex?: number) => {
-    if (childNoteIds.includes(targetNote.id)) return;
+    const currentIds = Array.from(
+      new Set([...childNotes.map((n) => n.id), ...childNoteIdsRef.current])
+    );
+    if (currentIds.includes(targetNote.id)) return;
 
+    setDbChildNotes((prev) => [targetNote, ...prev.filter((n) => n.id !== targetNote.id)]);
     let updated: string[];
     if (typeof insertAtIndex === 'number' && insertAtIndex >= 0) {
-      updated = [...childNoteIds];
+      updated = [...currentIds];
       updated.splice(insertAtIndex + 1, 0, targetNote.id);
     } else {
-      updated = [...childNoteIds, targetNote.id];
+      updated = [...currentIds, targetNote.id];
     }
-    onChangeChildIds(updated);
+    const deduped = Array.from(new Set(updated));
+    childNoteIdsRef.current = deduped;
+    await onChangeChildIds(deduped);
 
     if (parentNoteId) {
       await updateNote(targetNote.id, { parentNoteId });
@@ -234,29 +265,38 @@ export const NotionSubpagesSection: React.FC<NotionSubpagesSectionProps> = ({
   const handleInsertSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    const idx = insertAfterIndex;
+    if (isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
+    try {
+      const idx = insertAfterIndex;
 
-    if (inlineSelectedIndex >= 0 && inlineSelectedIndex < inlineMatches.length) {
-      const selected = inlineMatches[inlineSelectedIndex];
+      if (inlineSelectedIndex >= 0 && inlineSelectedIndex < inlineMatches.length) {
+        const selected = inlineMatches[inlineSelectedIndex];
+        if (insertInputRef.current) insertInputRef.current.value = '';
+        setInlineTitle('');
+        setInlineSelectedIndex(-1);
+        setInsertAfterIndex(null);
+        if (idx !== null) {
+          await handleAttachExistingNote(selected, idx);
+        }
+        return;
+      }
+
+      const rawVal = insertInputRef.current?.value ?? inlineTitle;
+      const titleToCreate = rawVal.trim();
+      if (!titleToCreate) {
+        setInsertAfterIndex(null);
+        return;
+      }
+      if (insertInputRef.current) insertInputRef.current.value = '';
       setInlineTitle('');
       setInlineSelectedIndex(-1);
       setInsertAfterIndex(null);
       if (idx !== null) {
-        await handleAttachExistingNote(selected, idx);
+        await handleCreateSubpage(titleToCreate, idx);
       }
-      return;
-    }
-
-    if (!inlineTitle.trim()) {
-      setInsertAfterIndex(null);
-      return;
-    }
-    const titleToCreate = inlineTitle.trim();
-    setInlineTitle('');
-    setInlineSelectedIndex(-1);
-    setInsertAfterIndex(null);
-    if (idx !== null) {
-      await handleCreateSubpage(titleToCreate, idx);
+    } finally {
+      isSubmittingRef.current = false;
     }
   };
 
@@ -270,6 +310,83 @@ export const NotionSubpagesSection: React.FC<NotionSubpagesSectionProps> = ({
         updateNote(subNoteId, { parentNoteId: null });
       }
     }
+  };
+
+  const handleOpenSubpageRow = (subNote: Note, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (e.ctrlKey || e.metaKey) {
+      window.open(`/note/${encodeURIComponent(subNote.id)}`, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    onOpenChildNote(subNote);
+  };
+
+  const startSubpageDrag = (sourceIndex: number, e: React.PointerEvent<HTMLButtonElement>) => {
+    const containerEl = listContainerRef.current;
+    if (!containerEl) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const computeDrop = (clientY: number) => {
+      const containerRect = containerEl.getBoundingClientRect();
+      const rowEls = subpageRowRefs.current.slice(0, childNotes.length);
+      for (let i = 0; i < rowEls.length; i++) {
+        const el = rowEls[i];
+        if (!el) continue;
+        const r = el.getBoundingClientRect();
+        if (clientY < r.top + r.height / 2) {
+          return { boundary: i, indicatorTop: r.top - containerRect.top };
+        }
+      }
+      const lastEl = rowEls[rowEls.length - 1];
+      return {
+        boundary: rowEls.length,
+        indicatorTop: (lastEl ? lastEl.getBoundingClientRect().bottom : containerRect.bottom) - containerRect.top,
+      };
+    };
+
+    let latestDrop = computeDrop(e.clientY);
+    setSubpageDragState({
+      sourceIndex,
+      dropBoundaryIndex: latestDrop.boundary,
+      indicatorTop: latestDrop.indicatorTop,
+    });
+
+    const onMove = (moveEvent: PointerEvent) => {
+      latestDrop = computeDrop(moveEvent.clientY);
+      setSubpageDragState({
+        sourceIndex,
+        dropBoundaryIndex: latestDrop.boundary,
+        indicatorTop: latestDrop.indicatorTop,
+      });
+    };
+
+    const onUp = async () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+      setSubpageDragState(null);
+
+      if (
+        latestDrop.boundary !== sourceIndex &&
+        latestDrop.boundary !== sourceIndex + 1
+      ) {
+        const orderedIds = childNotes.map((n) => n.id);
+        const [moved] = orderedIds.splice(sourceIndex, 1);
+        const insertAt =
+          latestDrop.boundary > sourceIndex ? latestDrop.boundary - 1 : latestDrop.boundary;
+        orderedIds.splice(insertAt, 0, moved);
+        const extraIds = childNoteIdsRef.current.filter((id) => !orderedIds.includes(id));
+        const nextIds = [...orderedIds, ...extraIds];
+        childNoteIdsRef.current = nextIds;
+        await onChangeChildIds(nextIds);
+      }
+    };
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
   };
 
   return (
@@ -327,8 +444,11 @@ export const NotionSubpagesSection: React.FC<NotionSubpagesSectionProps> = ({
             onClick={() => {
               setIsAddingActive(true);
               setTimeout(() => {
-                bottomInputRef.current?.focus();
-              }, 50);
+                requestAnimationFrame(() => {
+                  bottomInputRef.current?.focus();
+                  bottomInputRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                });
+              }, 30);
             }}
             className="inline-flex items-center gap-1 text-[11px] text-stone-500 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 transition-colors px-1.5 py-0.5 rounded hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
           >
@@ -340,12 +460,34 @@ export const NotionSubpagesSection: React.FC<NotionSubpagesSectionProps> = ({
 
       {/* ================= LIST VIEW (Clean Notion style) ================= */}
       {viewMode === 'list' ? (
-        <div className="space-y-0.5">
+        <div ref={listContainerRef} className="space-y-0.5 relative">
+          {subpageDragState && (
+            <div
+              data-subpage-drop-indicator="true"
+              style={{ top: `${subpageDragState.indicatorTop}px` }}
+              className="pointer-events-none absolute left-0 right-0 z-30 flex items-center"
+            >
+              <div className="w-2 h-2 -ml-1 rounded-full bg-blue-500 shadow-xs" />
+              <div className="flex-1 h-[2px] bg-blue-500 shadow-xs" />
+            </div>
+          )}
           {childNotes.map((subNote, index) => (
             <React.Fragment key={subNote.id}>
               <div
-                onClick={() => onOpenChildNote(subNote)}
-                className="group relative flex items-center justify-between py-1 px-1.5 -mx-1.5 rounded-md hover:bg-black/[0.04] dark:hover:bg-white/[0.05] active:bg-black/[0.06] cursor-pointer transition-colors"
+                ref={(el) => {
+                  subpageRowRefs.current[index] = el;
+                }}
+                onClick={(e) => handleOpenSubpageRow(subNote, e)}
+                onAuxClick={(e) => {
+                  if (e.button === 1) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    window.open(`/note/${encodeURIComponent(subNote.id)}`, '_blank', 'noopener,noreferrer');
+                  }
+                }}
+                className={`group relative flex items-center justify-between py-1 px-1.5 -mx-1.5 rounded-md hover:bg-black/[0.04] dark:hover:bg-white/[0.05] active:bg-black/[0.06] cursor-pointer transition-colors ${
+                  subpageDragState?.sourceIndex === index ? 'opacity-50' : ''
+                }`}
               >
                 {/* Left side: Gutter (+ and :: on hover) + Page Icon + Title */}
                 <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -361,20 +503,30 @@ export const NotionSubpagesSection: React.FC<NotionSubpagesSectionProps> = ({
                         setInsertAfterIndex(index);
                         setInlineSelectedIndex(-1);
                         setTimeout(() => {
-                          insertInputRef.current?.focus();
-                        }, 50);
+                          requestAnimationFrame(() => {
+                            insertInputRef.current?.focus();
+                            insertInputRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                          });
+                        }, 30);
                       }}
                       className="p-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10 hover:text-stone-800 dark:hover:text-stone-200 transition-colors"
                       title="Add sub-page below"
                     >
                       <Plus className="w-3.5 h-3.5" />
                     </button>
-                    <span
-                      className="p-0.5 cursor-grab hover:text-stone-800 dark:hover:text-stone-200 transition-colors"
-                      title="Drag to reorder"
+                    <button
+                      type="button"
+                      data-subpage-drag-handle="true"
+                      onPointerDown={(e) => startSubpageDrag(index, e)}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }}
+                      className="p-0.5 cursor-grab active:cursor-grabbing hover:text-stone-800 dark:hover:text-stone-200 transition-colors touch-none"
+                      title="Drag to move up or down"
                     >
                       <GripVertical className="w-3.5 h-3.5" />
-                    </span>
+                    </button>
                   </div>
 
                   {/* Notion Document Icon */}
@@ -401,12 +553,9 @@ export const NotionSubpagesSection: React.FC<NotionSubpagesSectionProps> = ({
                 >
                   <button
                     type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onOpenChildNote(subNote);
-                    }}
+                    onClick={(e) => handleOpenSubpageRow(subNote, e)}
                     className="p-1 rounded text-stone-400 hover:text-stone-800 dark:hover:text-stone-100 hover:bg-black/[0.06] dark:hover:bg-white/10 transition-colors"
-                    title="Open page"
+                    title="Open in new tab (Ctrl+click for browser tab)"
                   >
                     <ArrowUpRight className="w-4 h-4" />
                   </button>
@@ -516,7 +665,6 @@ export const NotionSubpagesSection: React.FC<NotionSubpagesSectionProps> = ({
                                 }
                               }}
                               onClick={(e) => e.stopPropagation()}
-                              onMouseEnter={() => setInlineSelectedIndex(idx)}
                               className={`flex items-start gap-2.5 px-3 py-2 cursor-pointer transition-colors ${
                                 isHighlighted
                                   ? 'bg-amber-500/15 dark:bg-amber-500/20 text-amber-900 dark:text-amber-100'
@@ -706,7 +854,6 @@ export const NotionSubpagesSection: React.FC<NotionSubpagesSectionProps> = ({
                           }, 50);
                         }}
                         onClick={(e) => e.stopPropagation()}
-                        onMouseEnter={() => setBottomSelectedIndex(idx)}
                         className={`flex items-start gap-2.5 px-3 py-2 cursor-pointer transition-colors ${
                           isHighlighted
                             ? 'bg-amber-500/15 dark:bg-amber-500/20 text-amber-900 dark:text-amber-100'

@@ -623,3 +623,25 @@ body {
   cursor: pointer;
 }
 
+/* Inline Notion Sub-page block in rendered card previews */
+.keep-subpage-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  width: 100%;
+  padding: 0.28rem 0.4rem;
+  margin: 0.2rem 0;
+  border-radius: 0.4rem;
+  font-size: 0.94em;
+  font-weight: 500;
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: rgba(120, 113, 108, 0.45);
+  text-underline-offset: 4px;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+.keep-subpage-row:hover {
+  background-color: rgba(120, 113, 108, 0.08);
+}
+

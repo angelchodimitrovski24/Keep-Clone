@@ -87,6 +87,7 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
   const [noteNotFoundId, setNoteNotFoundId] = useState<string | null>(null);
   const [openTabIds, setOpenTabIds] = useState<string[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
+  const [tabNotesById, setTabNotesById] = useState<Record<string, Note>>({});
 
   // When search query is entered, reset active note tab to display search results in grid
   useEffect(() => {
@@ -159,28 +160,54 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
       setOpenTabIds((prev) => (prev.includes(editingNote.id) ? prev : [...prev, editingNote.id]));
       setActiveTabId(editingNote.id);
       setNoteNotFoundId(null);
+      setTabNotesById((prev) => ({ ...prev, [editingNote.id]: editingNote }));
     } else {
       setActiveTabId(null);
     }
   }, [editingNote]);
 
+  // Keep open tab records hydrated even when notes paginate or hideSubnotesFromFeed is active
+  useEffect(() => {
+    for (const id of openTabIds) {
+      if (!notes.some((n) => n.id === id) && !tabNotesById[id]) {
+        getNoteById(id)
+          .then((fetched) => {
+            if (fetched) {
+              setTabNotesById((prev) => ({ ...prev, [id]: fetched }));
+            }
+          })
+          .catch(() => {});
+      }
+    }
+  }, [openTabIds, notes, getNoteById, tabNotesById]);
+
   // Tab action handlers
   const openNoteInTab = useCallback(
     async (noteId: string) => {
-      const found = notes.find((n) => n.id === noteId) || (await getNoteById(noteId));
+      const found =
+        notes.find((n) => n.id === noteId) ||
+        tabNotesById[noteId] ||
+        (await getNoteById(noteId));
       if (!found) return;
+      setTabNotesById((prev) => ({ ...prev, [noteId]: found }));
       setOpenTabIds((prev) => (prev.includes(noteId) ? prev : [...prev, noteId]));
       setActiveTabId(noteId);
       setEditingNote(found);
       setNoteNotFoundId(null);
     },
-    [notes, getNoteById, setEditingNote]
+    [notes, tabNotesById, getNoteById, setEditingNote]
   );
 
   const closeNoteTab = useCallback(
     async (noteId: string) => {
       const remainingIds = openTabIds.filter((id) => id !== noteId);
       setOpenTabIds(remainingIds);
+      setTabNotesById((prev) => {
+        if (!(noteId in prev)) return prev;
+        const next = { ...prev };
+        delete next[noteId];
+        return next;
+      });
 
       const isClosingActive = activeTabId === noteId || editingNote?.id === noteId;
       if (!isClosingActive) return;
@@ -188,7 +215,10 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
       if (remainingIds.length > 0) {
         const nextActiveId = remainingIds[remainingIds.length - 1];
         const nextNote =
-          notes.find((n) => n.id === nextActiveId) || (await getNoteById(nextActiveId)) || null;
+          notes.find((n) => n.id === nextActiveId) ||
+          tabNotesById[nextActiveId] ||
+          (await getNoteById(nextActiveId)) ||
+          null;
         if (nextNote) {
           setActiveTabId(nextActiveId);
           setEditingNote(nextNote);
@@ -199,7 +229,7 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
       setActiveTabId(null);
       setEditingNote(null);
     },
-    [openTabIds, activeTabId, editingNote, notes, getNoteById, setEditingNote]
+    [openTabIds, activeTabId, editingNote, notes, tabNotesById, getNoteById, setEditingNote]
   );
 
   const handleSelectMainTab = () => {
@@ -212,6 +242,7 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
       title: '',
       content: '',
     });
+    setTabNotesById((prev) => ({ ...prev, [newNote.id]: newNote }));
     openNoteInTab(newNote.id);
   };
 
@@ -227,7 +258,7 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
         if (currentPath !== targetPath) {
           window.history.pushState({ noteId: activeTabId }, '', targetPath);
         }
-        const activeNote = notes.find((n) => n.id === activeTabId);
+        const activeNote = notes.find((n) => n.id === activeTabId) || tabNotesById[activeTabId];
         if (typeof document !== 'undefined') {
           document.title = `${activeNote?.title || 'Note'} - Keep Clone`;
         }
@@ -245,7 +276,7 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
     }, 0);
 
     return () => clearTimeout(timer);
-  }, [activeTabId, currentFilter, notes]);
+  }, [activeTabId, currentFilter, notes, tabNotesById]);
 
   // Listen to browser Back / Forward buttons (popstate)
   useEffect(() => {
@@ -257,7 +288,7 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
 
       if (match && match[1]) {
         const noteId = decodeURIComponent(match[1]);
-        const target = notes.find((n) => n.id === noteId);
+        const target = notes.find((n) => n.id === noteId) || tabNotesById[noteId];
         if (target) {
           setOpenTabIds((prev) => (prev.includes(noteId) ? prev : [...prev, noteId]));
           setActiveTabId(noteId);
@@ -274,18 +305,18 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [notes, setEditingNote]);
+  }, [notes, tabNotesById, setEditingNote]);
 
   const activeTabNote = useMemo(() => {
     if (!activeTabId) return null;
-    const fromList = notes.find((n) => n.id === activeTabId);
+    const fromList = notes.find((n) => n.id === activeTabId) || tabNotesById[activeTabId];
     if (editingNote?.id === activeTabId) {
       if (!fromList || (editingNote.updatedAt || 0) >= (fromList.updatedAt || 0)) {
         return editingNote;
       }
     }
     return fromList || null;
-  }, [activeTabId, notes, editingNote]);
+  }, [activeTabId, notes, tabNotesById, editingNote]);
 
   const handleExtractedUrl = async (result: ExtractUrlResult, insertMode?: boolean) => {
     const htmlContent = convertMarkdownToHtml(result.markdown);
@@ -363,6 +394,7 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
             openTabIds={openTabIds}
             activeTabId={activeTabId}
             notes={notes}
+            tabNotesById={tabNotesById}
             currentFilter={currentFilter}
             selectedCategory={selectedCategory}
             selectedLabel={selectedLabel}
