@@ -405,8 +405,14 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
           />
 
           {/* Notes Feed / Active Note Full Page View Container */}
-          <main className="flex-1 min-h-0 overflow-y-auto overscroll-contain w-full">
-            <div className="p-2.5 sm:p-4 md:p-8 max-w-[1600px] mx-auto w-full">
+          <main className="flex-1 min-h-0 overflow-y-auto overscroll-contain w-full flex flex-col">
+            <div
+              className={
+                !pendingNoteIdRef.current && !noteNotFoundId && activeTabNote
+                  ? 'w-full flex-1 min-h-full flex flex-col'
+                  : 'p-2.5 sm:p-4 md:p-8 max-w-[1600px] mx-auto w-full'
+              }
+            >
             {pendingNoteIdRef.current && isLoading ? (
               <div className="w-full max-w-4xl mx-auto py-24 flex flex-col items-center justify-center text-stone-400">
                 <div className="w-8 h-8 border-3 border-amber-500 border-t-transparent rounded-full animate-spin mb-3" />

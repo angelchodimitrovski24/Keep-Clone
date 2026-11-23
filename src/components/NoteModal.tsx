@@ -1582,7 +1582,7 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
       } : undefined}
       className={
         fullPage
-          ? "w-full max-w-5xl mx-auto flex flex-col pb-8 animate-in fade-in duration-150"
+          ? "w-full flex-1 min-h-full flex flex-col animate-in fade-in duration-150"
           : "fixed inset-0 z-50 flex flex-col bg-black/55 backdrop-blur-xs p-0 sm:p-4 md:p-8 sm:items-center sm:justify-center overflow-y-auto animate-in fade-in duration-150"
       }
     >
@@ -1642,7 +1642,7 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
         }}
         className={
           fullPage
-            ? `w-full min-h-[calc(100vh-160px)] rounded-2xl border border-stone-200/80 dark:border-stone-700/80 shadow-xs flex flex-col transition-all duration-150 relative overflow-hidden ${colorClasses}`
+            ? `w-full flex-1 min-h-full flex flex-col transition-all duration-150 relative ${colorClasses}`
             : `w-full h-full sm:h-auto sm:max-w-3xl sm:min-h-[460px] sm:max-h-[92vh] rounded-none sm:rounded-2xl border-0 sm:border sm:border-stone-200/80 dark:sm:border-stone-700/80 shadow-none sm:keep-elevation-2 flex flex-col transition-all duration-150 relative overflow-hidden ${colorClasses}`
         }
       >
@@ -2175,7 +2175,7 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
               <div
                 className={`w-full flex-1 flex flex-col justify-between space-y-5 ${
                   fullPage
-                    ? 'max-w-[760px] mx-auto px-5 sm:px-10 py-6 sm:py-10'
+                    ? 'max-w-[760px] mx-auto px-4 sm:px-12 py-5 sm:py-10'
                     : 'px-4 sm:px-7 py-5 sm:py-6'
                 }`}
               >
