@@ -1163,8 +1163,6 @@ export function KeepProvider({
         updatedAt: Date.now(),
       };
 
-      await saveNoteToDB(updated);
-
       const staysInView = noteMatchesCurrentView(updated);
       setNotes((prev) => {
         const remaining = prev.filter((n) => n.id !== id);
@@ -1187,6 +1185,8 @@ export function KeepProvider({
         }
         return prev;
       });
+
+      await saveNoteToDB(updated);
 
       const membershipChanged =
         updates.isTrash !== undefined ||

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useKeep } from '@/context/KeepContext';
 import { Header } from '@/components/Header';
 import { Sidebar } from '@/components/Sidebar';
@@ -159,39 +159,48 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
       setOpenTabIds((prev) => (prev.includes(editingNote.id) ? prev : [...prev, editingNote.id]));
       setActiveTabId(editingNote.id);
       setNoteNotFoundId(null);
-    } else if (activeTabId) {
+    } else {
       setActiveTabId(null);
     }
-  }, [editingNote, activeTabId]);
+  }, [editingNote]);
 
   // Tab action handlers
-  const openNoteInTab = (noteId: string) => {
-    const found = notes.find((n) => n.id === noteId);
-    if (!found) return;
-    setOpenTabIds((prev) => (prev.includes(noteId) ? prev : [...prev, noteId]));
-    setActiveTabId(noteId);
-    setEditingNote(found);
-    setNoteNotFoundId(null);
-    // URL and title sync handled asynchronously in useEffect
-  };
+  const openNoteInTab = useCallback(
+    async (noteId: string) => {
+      const found = notes.find((n) => n.id === noteId) || (await getNoteById(noteId));
+      if (!found) return;
+      setOpenTabIds((prev) => (prev.includes(noteId) ? prev : [...prev, noteId]));
+      setActiveTabId(noteId);
+      setEditingNote(found);
+      setNoteNotFoundId(null);
+    },
+    [notes, getNoteById, setEditingNote]
+  );
 
-  const closeNoteTab = async (noteId: string) => {
-    const next = openTabIds.filter((id) => id !== noteId);
-    setOpenTabIds(next);
+  const closeNoteTab = useCallback(
+    async (noteId: string) => {
+      const remainingIds = openTabIds.filter((id) => id !== noteId);
+      setOpenTabIds(remainingIds);
 
-    if (activeTabId === noteId) {
-      if (next.length > 0) {
-        const nextActiveId = next[next.length - 1];
-        setActiveTabId(nextActiveId);
+      const isClosingActive = activeTabId === noteId || editingNote?.id === noteId;
+      if (!isClosingActive) return;
+
+      if (remainingIds.length > 0) {
+        const nextActiveId = remainingIds[remainingIds.length - 1];
         const nextNote =
           notes.find((n) => n.id === nextActiveId) || (await getNoteById(nextActiveId)) || null;
-        setEditingNote(nextNote);
-      } else {
-        setActiveTabId(null);
-        setEditingNote(null);
+        if (nextNote) {
+          setActiveTabId(nextActiveId);
+          setEditingNote(nextNote);
+          return;
+        }
       }
-    }
-  };
+
+      setActiveTabId(null);
+      setEditingNote(null);
+    },
+    [openTabIds, activeTabId, editingNote, notes, getNoteById, setEditingNote]
+  );
 
   const handleSelectMainTab = () => {
     setActiveTabId(null);

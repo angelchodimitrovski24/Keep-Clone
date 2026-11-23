@@ -344,9 +344,12 @@ export async function getAllActiveNotesForStructureFromDB(limit = 2000): Promise
   const tx = db.transaction('notes', 'readonly');
   const index = tx.store.index('by-updated');
   let cursor = await index.openCursor(null, 'prev');
-  while (cursor && results.length < limit) {
+  let scanned = 0;
+  const maxScan = Math.max(limit * 4, 8000);
+  while (cursor && results.length < limit && scanned < maxScan) {
+    scanned++;
     const note = cursor.value;
-    if (!note.isTrash && !note.isArchived) {
+    if (!note.isTrash && !note.isArchived && !note.isBenchmark) {
       results.push(note);
     }
     cursor = await cursor.continue();
@@ -919,10 +922,10 @@ export async function getBidirectionalLinksFromDB(currentNote: Note): Promise<Bi
   let cursor = await index.openCursor(null, 'prev');
   let scanned = 0;
 
-  while (cursor && scanned < 5000) {
+  while (cursor && scanned < 1500) {
     scanned++;
     const other = cursor.value;
-    if (!other.isTrash && other.id !== currentNote.id) {
+    if (!other.isTrash && (currentNote.isBenchmark || !other.isBenchmark) && other.id !== currentNote.id) {
       const otherTitleLower = (other.title || '').trim().toLowerCase();
       const otherIdLower = other.id.toLowerCase();
 

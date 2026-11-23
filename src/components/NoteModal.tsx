@@ -502,6 +502,16 @@ export const NoteModal: React.FC<NoteModalProps> = ({
     [note, title, content, linkedNoteIds, connections, isHub]
   );
 
+  const currentNoteForConnections = useMemo(
+    () => ({
+      ...currentNoteForLinks,
+      category,
+      labels,
+      childNoteIds,
+    }),
+    [currentNoteForLinks, category, labels, childNoteIds]
+  );
+
   const memLinks = useMemo(
     () =>
       note
@@ -946,14 +956,29 @@ export const NoteModal: React.FC<NoteModalProps> = ({
     isHub,
     childNoteIds,
     showSubpages,
-    setUnlockedNote,
     updateNote,
   ]);
 
+  const isClosingRef = useRef(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      isClosingRef.current = false;
+    }
+  }, [isOpen, note?.id]);
+
   const handleSaveAndClose = useCallback(async () => {
+    if (isClosingRef.current) {
+      onClose();
+      return;
+    }
+    isClosingRef.current = true;
     try {
       if (note) {
-        await saveCurrentNote('Auto snapshot on close');
+        await Promise.race([
+          saveCurrentNote('Auto snapshot on close'),
+          new Promise<void>((resolve) => setTimeout(resolve, 250)),
+        ]);
       }
     } catch (err) {
       console.error('Failed saving note on close:', err);
@@ -2073,17 +2098,7 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
 
           {/* Structured Connections Neighborhood, Prev/Next Stepper & Suggestions */}
           <NoteConnectionsPanel
-            note={{
-              ...note,
-              title,
-              content,
-              category,
-              labels,
-              linkedNoteIds,
-              connections,
-              isHub,
-              childNoteIds,
-            }}
+            note={currentNoteForConnections}
             ancestors={ancestors}
             outgoing={outgoing}
             backlinks={backlinks}
