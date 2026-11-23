@@ -33,11 +33,20 @@ import {
   ClipboardCopy,
   DownloadCloud,
   Sparkles,
+  Type,
+  PenTool,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { Note, NoteColor, NoteBackgroundTheme } from '@/types/note';
 import { NOTE_COLORS, NOTE_THEMES } from '@/lib/constants';
 import { useKeep } from '@/context/KeepContext';
 import { copyNoteToClipboard } from '@/lib/formatUtils';
+
+export type PickerAnchorTarget =
+  | HTMLElement
+  | { left: number; right?: number; top: number; bottom: number; width?: number }
+  | null
+  | undefined;
 
 interface NoteActionsProps {
   note: Partial<Note>;
@@ -76,14 +85,20 @@ interface NoteActionsProps {
   onInsertDataview?: () => void;
   onExtractUrl?: () => void;
   onSummarizeWithAi?: () => void;
+  onStartDrawing?: () => void;
+  hideInlineBar?: boolean;
+  showClassicToolbars?: boolean;
+  onToggleClassicToolbars?: () => void;
 }
 
 export interface NoteActionsHandle {
-  openCategoryPicker: (anchorEl?: HTMLElement | null) => void;
-  openLabelPicker: (anchorEl?: HTMLElement | null) => void;
-  openColorPicker: () => void;
-  openReminderPicker: () => void;
-  openMoreMenu: () => void;
+  openCategoryPicker: (anchorTarget?: PickerAnchorTarget) => void;
+  openLabelPicker: (anchorTarget?: PickerAnchorTarget) => void;
+  openColorPicker: (anchorTarget?: PickerAnchorTarget) => void;
+  openReminderPicker: (anchorTarget?: PickerAnchorTarget) => void;
+  openMoreMenu: (anchorTarget?: PickerAnchorTarget) => void;
+  triggerImageUpload: () => void;
+  triggerMhtmlUpload: () => void;
 }
 
 export const NoteActions = React.forwardRef<NoteActionsHandle, NoteActionsProps>(({
@@ -101,6 +116,10 @@ export const NoteActions = React.forwardRef<NoteActionsHandle, NoteActionsProps>
   onInsertDataview,
   onExtractUrl,
   onSummarizeWithAi,
+  onStartDrawing,
+  hideInlineBar = false,
+  showClassicToolbars = false,
+  onToggleClassicToolbars,
   onToggleChecklist,
   onAddReminder,
   onToggleLabel,
@@ -143,12 +162,40 @@ export const NoteActions = React.forwardRef<NoteActionsHandle, NoteActionsProps>
   } | null>(null);
 
   const anchorElRef = useRef<HTMLElement | null>(null);
+  const anchorRectRef = useRef<{ left: number; right: number; top: number; bottom: number } | null>(null);
   const anchoredPickerRef = useRef<HTMLDivElement>(null);
 
-  const computePickerAnchorBox = (anchorEl: HTMLElement) => {
-    const rect = anchorEl.getBoundingClientRect();
-    const menuWidth = Math.min(256, window.innerWidth - 32);
-    const left = Math.max(16, Math.min(rect.left, window.innerWidth - menuWidth - 16));
+  const isHtmlElementTarget = (target: PickerAnchorTarget): target is HTMLElement =>
+    Boolean(target && typeof HTMLElement !== 'undefined' && target instanceof HTMLElement);
+
+  const resolveRawAnchorRect = React.useCallback((target: PickerAnchorTarget) => {
+    if (isHtmlElementTarget(target)) {
+      const r = target.getBoundingClientRect();
+      return { left: r.left, right: r.right, top: r.top, bottom: r.bottom };
+    }
+    if (target && typeof target === 'object' && typeof target.left === 'number') {
+      const right = typeof target.right === 'number'
+        ? target.right
+        : target.left + (typeof target.width === 'number' ? target.width : 12);
+      return { left: target.left, right, top: target.top, bottom: target.bottom };
+    }
+    if (typeof window !== 'undefined') {
+      const cx = Math.round(window.innerWidth / 2 - 120);
+      return { left: cx, right: cx + 240, top: 76, bottom: 76 };
+    }
+    return { left: 40, right: 160, top: 76, bottom: 76 };
+  }, []);
+
+  const computePickerAnchorBox = React.useCallback((
+    target: PickerAnchorTarget,
+    kind: 'category' | 'label' | 'color' | 'reminder' | 'menu' = 'category'
+  ) => {
+    const rect = resolveRawAnchorRect(target);
+    const desiredWidth = kind === 'color' ? 288 : kind === 'menu' ? 240 : 256;
+    const menuWidth = Math.min(desiredWidth, window.innerWidth - 32);
+    const preferRightAlign = kind === 'menu' && rect.left > window.innerWidth * 0.55;
+    const rawLeft = preferRightAlign ? rect.right - menuWidth : rect.left;
+    const left = Math.max(16, Math.min(rawLeft, window.innerWidth - menuWidth - 16));
     const margin = 16;
     const spaceBelow = window.innerHeight - rect.bottom - margin;
     const spaceAbove = rect.top - margin;
@@ -157,70 +204,91 @@ export const NoteActions = React.forwardRef<NoteActionsHandle, NoteActionsProps>
       return {
         left: Math.round(left),
         top: Math.round(rect.bottom + 6),
-        maxHeight: Math.min(420, Math.max(180, Math.floor(spaceBelow))),
+        maxHeight: Math.min(460, Math.max(180, Math.floor(spaceBelow))),
       };
     }
 
     return {
       left: Math.round(left),
       bottom: Math.round(window.innerHeight - rect.top + 6),
-      maxHeight: Math.min(420, Math.max(180, Math.floor(spaceAbove))),
+      maxHeight: Math.min(460, Math.max(180, Math.floor(spaceAbove))),
     };
-  };
+  }, [resolveRawAnchorRect]);
 
   const clearPickerAnchor = () => {
     anchorElRef.current = null;
+    anchorRectRef.current = null;
     setAnchoredPickerBox(null);
   };
 
-  const openPicker = (kind: 'category' | 'label', anchorEl?: HTMLElement | null) => {
-    const isAlreadyOpen = kind === 'category' ? showCategoryPicker : showLabelPicker;
-    const setTargetOpen = kind === 'category' ? setShowCategoryPicker : setShowLabelPicker;
-    if (isAlreadyOpen && anchorEl && anchorElRef.current === anchorEl) {
-      setTargetOpen(false);
+  const openPicker = (
+    kind: 'category' | 'label' | 'color' | 'reminder' | 'menu',
+    anchorTarget?: PickerAnchorTarget
+  ) => {
+    const currentlyOpen =
+      (kind === 'category' && showCategoryPicker) ||
+      (kind === 'label' && showLabelPicker) ||
+      (kind === 'color' && showColorPicker) ||
+      (kind === 'reminder' && showReminderPicker) ||
+      (kind === 'menu' && showMenu);
+
+    const sameEl =
+      isHtmlElementTarget(anchorTarget) && anchorElRef.current === anchorTarget;
+
+    if (currentlyOpen && sameEl) {
+      setShowMenu(false);
+      setShowColorPicker(false);
+      setShowReminderPicker(false);
+      setShowCategoryPicker(false);
+      setShowLabelPicker(false);
       clearPickerAnchor();
       return;
     }
-    setShowMenu(false);
-    setShowColorPicker(false);
-    setShowReminderPicker(false);
+
+    setShowMenu(kind === 'menu');
+    setShowColorPicker(kind === 'color');
+    setShowReminderPicker(kind === 'reminder');
     setShowCategoryPicker(kind === 'category');
     setShowLabelPicker(kind === 'label');
-    if (anchorEl) {
-      anchorElRef.current = anchorEl;
-      setAnchoredPickerBox(computePickerAnchorBox(anchorEl));
+
+    if (anchorTarget || hideInlineBar) {
+      if (isHtmlElementTarget(anchorTarget)) {
+        anchorElRef.current = anchorTarget;
+        anchorRectRef.current = null;
+      } else if (anchorTarget && typeof anchorTarget === 'object') {
+        anchorElRef.current = null;
+        anchorRectRef.current = resolveRawAnchorRect(anchorTarget);
+      } else {
+        anchorElRef.current = null;
+        anchorRectRef.current = resolveRawAnchorRect(null);
+      }
+      setAnchoredPickerBox(computePickerAnchorBox(anchorTarget || anchorRectRef.current, kind));
     } else {
       clearPickerAnchor();
     }
   };
 
+  const openSubpickerFromMenu = (kind: 'category' | 'label' | 'color' | 'reminder') => {
+    const savedEl = anchorElRef.current;
+    const savedRect = anchorRectRef.current;
+    setShowMenu(false);
+    setShowColorPicker(kind === 'color');
+    setShowReminderPicker(kind === 'reminder');
+    setShowCategoryPicker(kind === 'category');
+    setShowLabelPicker(kind === 'label');
+    if (savedEl || savedRect || hideInlineBar) {
+      setAnchoredPickerBox(computePickerAnchorBox(savedEl || savedRect, kind));
+    }
+  };
+
   React.useImperativeHandle(ref, () => ({
-    openCategoryPicker: (anchorEl?: HTMLElement | null) => openPicker('category', anchorEl),
-    openLabelPicker: (anchorEl?: HTMLElement | null) => openPicker('label', anchorEl),
-    openColorPicker: () => {
-      setShowMenu(false);
-      setShowReminderPicker(false);
-      setShowCategoryPicker(false);
-      setShowLabelPicker(false);
-      clearPickerAnchor();
-      setShowColorPicker(true);
-    },
-    openReminderPicker: () => {
-      setShowMenu(false);
-      setShowColorPicker(false);
-      setShowCategoryPicker(false);
-      setShowLabelPicker(false);
-      clearPickerAnchor();
-      setShowReminderPicker(true);
-    },
-    openMoreMenu: () => {
-      setShowColorPicker(false);
-      setShowReminderPicker(false);
-      setShowCategoryPicker(false);
-      setShowLabelPicker(false);
-      clearPickerAnchor();
-      setShowMenu(true);
-    },
+    openCategoryPicker: (anchorTarget?: PickerAnchorTarget) => openPicker('category', anchorTarget),
+    openLabelPicker: (anchorTarget?: PickerAnchorTarget) => openPicker('label', anchorTarget),
+    openColorPicker: (anchorTarget?: PickerAnchorTarget) => openPicker('color', anchorTarget),
+    openReminderPicker: (anchorTarget?: PickerAnchorTarget) => openPicker('reminder', anchorTarget),
+    openMoreMenu: (anchorTarget?: PickerAnchorTarget) => openPicker('menu', anchorTarget),
+    triggerImageUpload: () => fileInputRef.current?.click(),
+    triggerMhtmlUpload: () => mhtmlInputRef.current?.click(),
   }));
 
   const handleCreateAndSelectCategory = async (name: string) => {
@@ -347,37 +415,62 @@ export const NoteActions = React.forwardRef<NoteActionsHandle, NoteActionsProps>
 
   const hasAnchoredPicker = Boolean(anchoredPickerBox);
 
+  const anyDesktopPickerOpen =
+    showCategoryPicker || showLabelPicker || showColorPicker || showReminderPicker || showMenu;
+
   useEffect(() => {
-    if (!(showCategoryPicker || showLabelPicker) || !hasAnchoredPicker) return;
+    if (!anyDesktopPickerOpen) return;
+
+    const activeKind = showColorPicker
+      ? 'color'
+      : showMenu
+      ? 'menu'
+      : showReminderPicker
+      ? 'reminder'
+      : showLabelPicker
+      ? 'label'
+      : 'category';
 
     const handleReposition = () => {
+      if (!hasAnchoredPicker) return;
       const el = anchorElRef.current;
-      if (!el || !el.isConnected) {
-        setShowCategoryPicker(false);
-        setShowLabelPicker(false);
-        setAnchoredPickerBox(null);
-        return;
+      if (el) {
+        if (!el.isConnected) {
+          setShowMenu(false);
+          setShowColorPicker(false);
+          setShowReminderPicker(false);
+          setShowCategoryPicker(false);
+          setShowLabelPicker(false);
+          clearPickerAnchor();
+          return;
+        }
+        setAnchoredPickerBox(computePickerAnchorBox(el, activeKind));
+      } else if (anchorRectRef.current) {
+        setAnchoredPickerBox(computePickerAnchorBox(anchorRectRef.current, activeKind));
       }
-      setAnchoredPickerBox(computePickerAnchorBox(el));
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        e.stopPropagation();
+        setShowMenu(false);
+        setShowColorPicker(false);
+        setShowReminderPicker(false);
         setShowCategoryPicker(false);
         setShowLabelPicker(false);
-        setAnchoredPickerBox(null);
+        clearPickerAnchor();
       }
     };
 
     window.addEventListener('resize', handleReposition);
     window.addEventListener('scroll', handleReposition, true);
-    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('keydown', handleKeyDown, true);
     return () => {
       window.removeEventListener('resize', handleReposition);
       window.removeEventListener('scroll', handleReposition, true);
-      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('keydown', handleKeyDown, true);
     };
-  }, [showCategoryPicker, showLabelPicker, hasAnchoredPicker]);
+  }, [anyDesktopPickerOpen, hasAnchoredPicker, showCategoryPicker, showLabelPicker, showColorPicker, showReminderPicker, showMenu, computePickerAnchorBox]);
 
   // Close menus when clicking outside
   useEffect(() => {
@@ -444,22 +537,800 @@ export const NoteActions = React.forwardRef<NoteActionsHandle, NoteActionsProps>
     );
   }
 
+  const getPopoverStyle = (extra?: React.CSSProperties): React.CSSProperties =>
+    anchoredPickerBox
+      ? {
+          position: 'fixed',
+          left: `${anchoredPickerBox.left}px`,
+          top: anchoredPickerBox.top !== undefined ? `${anchoredPickerBox.top}px` : undefined,
+          bottom: anchoredPickerBox.bottom !== undefined ? `${anchoredPickerBox.bottom}px` : undefined,
+          maxHeight: `${anchoredPickerBox.maxHeight}px`,
+          ...extra,
+        }
+      : {
+          maxHeight: dynamicMaxHeight ? `${dynamicMaxHeight}px` : undefined,
+          ...extra,
+        };
+
+  const desktopReminderPanel = !isMobile && showReminderPicker ? (
+    <div
+      ref={anchoredPickerBox ? anchoredPickerRef : undefined}
+      data-portal={anchoredPickerBox ? 'true' : undefined}
+      onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+      onTouchStart={(e) => e.stopPropagation()}
+      style={getPopoverStyle()}
+      className={`${
+        anchoredPickerBox ? 'fixed z-[1000]' : `absolute left-0 ${verticalPositionClass} z-50`
+      } w-64 max-w-[calc(100vw-2rem)] p-2.5 bg-white dark:bg-[#202124] rounded-xl keep-elevation-2 border border-black/[0.08] dark:border-stone-700/60 text-[13.5px] font-normal shadow-xl overflow-y-auto overscroll-contain`}
+    >
+      <p className="text-xs font-medium px-2.5 py-1 text-stone-500 tracking-wide uppercase">
+        Set Reminder
+      </p>
+      <div className="flex flex-col gap-0.5 mt-1">
+        <button
+          type="button"
+          onClick={() => {
+            const todayEve = new Date();
+            todayEve.setHours(20, 0, 0, 0);
+            onAddReminder?.(todayEve.toISOString());
+            setShowReminderPicker(false);
+            clearPickerAnchor();
+          }}
+          className="text-left px-2.5 py-2 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] rounded-lg transition-colors text-stone-800 dark:text-stone-200"
+        >
+          Later today (8:00 PM)
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            const tmrw = new Date();
+            tmrw.setDate(tmrw.getDate() + 1);
+            tmrw.setHours(8, 0, 0, 0);
+            onAddReminder?.(tmrw.toISOString());
+            setShowReminderPicker(false);
+            clearPickerAnchor();
+          }}
+          className="text-left px-2.5 py-2 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] rounded-lg transition-colors text-stone-800 dark:text-stone-200"
+        >
+          Tomorrow (8:00 AM)
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            const nextWeek = new Date();
+            nextWeek.setDate(nextWeek.getDate() + 7);
+            nextWeek.setHours(8, 0, 0, 0);
+            onAddReminder?.(nextWeek.toISOString());
+            setShowReminderPicker(false);
+            clearPickerAnchor();
+          }}
+          className="text-left px-2.5 py-2 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] rounded-lg transition-colors text-stone-800 dark:text-stone-200"
+        >
+          Next week (8:00 AM)
+        </button>
+        <div className="pt-2 mt-1 border-t border-black/[0.06] dark:border-white/[0.08]">
+          <input
+            type="datetime-local"
+            onChange={(e) => {
+              if (e.target.value) {
+                onAddReminder?.(new Date(e.target.value).toISOString());
+                setShowReminderPicker(false);
+                clearPickerAnchor();
+              }
+            }}
+            className="w-full text-xs p-1.5 rounded-lg bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 outline-none text-stone-800 dark:text-stone-200"
+          />
+        </div>
+      </div>
+    </div>
+  ) : null;
+
+  const desktopColorPanel = !isMobile && showColorPicker ? (
+    <div
+      ref={anchoredPickerBox ? anchoredPickerRef : undefined}
+      data-portal={anchoredPickerBox ? 'true' : undefined}
+      onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+      onTouchStart={(e) => e.stopPropagation()}
+      style={getPopoverStyle()}
+      className={`${
+        anchoredPickerBox ? 'fixed z-[1000]' : `absolute left-0 ${verticalPositionClass} z-50`
+      } w-72 max-w-[calc(100vw-2rem)] p-3 bg-white dark:bg-[#202124] rounded-xl keep-elevation-2 border border-black/[0.08] dark:border-stone-700/60 shadow-xl overflow-y-auto overscroll-contain`}
+    >
+      <p className="text-xs font-medium text-stone-500 mb-2 px-1">Colors</p>
+      <div className="grid grid-cols-6 gap-2 mb-3">
+        {NOTE_COLORS.map((c) => (
+          <button
+            key={c.id}
+            type="button"
+            title={c.name}
+            onClick={() => {
+              onColorChange(c.id);
+            }}
+            className={`w-7 h-7 sm:w-6 sm:h-6 rounded-full border border-black/15 dark:border-white/20 transition-transform hover:scale-110 flex items-center justify-center ${
+              note.color === c.id ? 'ring-2 ring-blue-500 ring-offset-1 dark:ring-offset-[#202124]' : ''
+            }`}
+            style={{ backgroundColor: c.swatch }}
+          />
+        ))}
+      </div>
+
+      {onThemeChange && (
+        <>
+          <p className="text-xs font-medium text-stone-500 mb-2 px-1 border-t border-black/[0.06] dark:border-white/[0.08] pt-2">
+            Themes
+          </p>
+          <div className="grid grid-cols-5 gap-1.5">
+            {NOTE_THEMES.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                title={t.name}
+                onClick={() => onThemeChange(t.id)}
+                className={`h-9 sm:h-8 flex items-center justify-center text-lg sm:text-base rounded-lg border border-black/[0.08] dark:border-white/[0.1] hover:scale-105 transition-all ${
+                  note.theme === t.id ? 'ring-2 ring-blue-500' : ''
+                }`}
+              >
+                {t.icon}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  ) : null;
+
+  const backToMenu = () => {
+    const savedEl = anchorElRef.current;
+    const savedRect = anchorRectRef.current;
+    setShowCategoryPicker(false);
+    setShowLabelPicker(false);
+    setShowColorPicker(false);
+    setShowReminderPicker(false);
+    setShowMenu(true);
+    if (savedEl || savedRect || hideInlineBar) {
+      setAnchoredPickerBox(computePickerAnchorBox(savedEl || savedRect, 'menu'));
+    }
+  };
+
+  const desktopMoreMenuPanel = !isMobile && showMenu ? (
+    <div
+      ref={anchoredPickerBox ? anchoredPickerRef : moreMenuRef}
+      data-portal={anchoredPickerBox ? 'true' : undefined}
+      onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+      onTouchStart={(e) => e.stopPropagation()}
+      style={getPopoverStyle()}
+      className={`${
+        anchoredPickerBox ? 'fixed z-[1000]' : `absolute ${alignClass} ${verticalPositionClass} z-50`
+      } w-60 max-w-[calc(100vw-2rem)] py-1.5 bg-white dark:bg-[#202124] rounded-xl keep-elevation-2 border border-black/[0.08] dark:border-stone-700/60 text-[13.5px] font-normal overflow-y-auto overscroll-contain shadow-xl`}
+    >
+      {onSelectCategory && (
+        <button
+          type="button"
+          onClick={() => openSubpickerFromMenu('category')}
+          className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
+        >
+          <Folder className="w-4 h-4 text-blue-500" />
+          <span>{note.category ? `Category: ${note.category}` : 'Change category'}</span>
+        </button>
+      )}
+
+      {onToggleLabel && (
+        <button
+          type="button"
+          onClick={() => openSubpickerFromMenu('label')}
+          className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
+        >
+          <Tag className="w-4 h-4 text-emerald-500" />
+          <span>{note.labels && note.labels.length > 0 ? `Labels (${note.labels.length})` : 'Change labels'}</span>
+        </button>
+      )}
+
+      <button
+        type="button"
+        onClick={() => openSubpickerFromMenu('color')}
+        className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
+      >
+        <Palette className="w-4 h-4 text-amber-500" />
+        <span>Color &amp; theme</span>
+      </button>
+
+      {onAddReminder && (
+        <button
+          type="button"
+          onClick={() => openSubpickerFromMenu('reminder')}
+          className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
+        >
+          <Bell className="w-4 h-4 text-stone-500" />
+          <span>{note.reminder ? 'Edit reminder' : 'Add reminder'}</span>
+        </button>
+      )}
+
+      {(onAddImage || onStartDrawing || (showFormattingToggle && onToggleFormatting)) && (
+        <div className="my-1 border-t border-black/[0.06] dark:border-white/[0.08]" />
+      )}
+
+      {onAddImage && (
+        <button
+          type="button"
+          onClick={() => {
+            setShowMenu(false);
+            clearPickerAnchor();
+            fileInputRef.current?.click();
+          }}
+          className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
+        >
+          <ImageIcon className="w-4 h-4 text-stone-500" />
+          <span>Insert image or file</span>
+        </button>
+      )}
+
+      {onStartDrawing && (
+        <button
+          type="button"
+          onClick={() => {
+            setShowMenu(false);
+            clearPickerAnchor();
+            onStartDrawing();
+          }}
+          className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
+        >
+          <PenTool className="w-4 h-4 text-stone-500" />
+          <span>Add drawing</span>
+        </button>
+      )}
+
+      {showFormattingToggle && onToggleFormatting && (
+        <button
+          type="button"
+          onClick={() => {
+            setShowMenu(false);
+            clearPickerAnchor();
+            onToggleFormatting();
+          }}
+          className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
+        >
+          <Type className="w-4 h-4 text-stone-500" />
+          <span>{isFormattingOpen ? 'Hide formatting toolbar' : 'Show formatting toolbar'}</span>
+        </button>
+      )}
+
+      {onToggleChecklist && (
+        <button
+          type="button"
+          onClick={() => {
+            setShowMenu(false);
+            clearPickerAnchor();
+            onToggleChecklist();
+          }}
+          className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
+        >
+          <CheckSquare className="w-4 h-4" />
+          <span>{note.isList ? 'Convert checklist to text' : 'Show Keep checkboxes'}</span>
+        </button>
+      )}
+
+      {onToggleSubpages && (
+        <button
+          type="button"
+          onClick={() => {
+            setShowMenu(false);
+            clearPickerAnchor();
+            onToggleSubpages();
+          }}
+          className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
+        >
+          <FileText className="w-4 h-4 text-amber-500" />
+          <span>{hasSubpages ? 'Toggle sub-pages section' : 'Add Notion sub-pages'}</span>
+        </button>
+      )}
+
+      {onInsertDataview && (
+        <button
+          type="button"
+          onClick={() => {
+            setShowMenu(false);
+            clearPickerAnchor();
+            onInsertDataview();
+          }}
+          className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
+        >
+          <Database className="w-4 h-4 text-purple-500" />
+          <span>Insert Dataview query</span>
+        </button>
+      )}
+
+      <div className="my-1 border-t border-black/[0.06] dark:border-white/[0.08]" />
+
+      {onEncrypt && (
+        <button
+          type="button"
+          onClick={() => {
+            setShowMenu(false);
+            clearPickerAnchor();
+            onEncrypt();
+          }}
+          className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
+        >
+          <Lock className="w-4 h-4 text-amber-500" />
+          <span>{note.isEncrypted ? 'Encryption Settings (AES-256)' : 'Encrypt Note (AES-256)'}</span>
+        </button>
+      )}
+
+      {onLinkNote && (
+        <button
+          type="button"
+          onClick={() => {
+            setShowMenu(false);
+            clearPickerAnchor();
+            onLinkNote();
+          }}
+          className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
+        >
+          <Link2 className="w-4 h-4 text-purple-500" />
+          <span>Connect / link note</span>
+        </button>
+      )}
+
+      {onOpenVersions && (
+        <button
+          type="button"
+          onClick={() => {
+            setShowMenu(false);
+            clearPickerAnchor();
+            onOpenVersions();
+          }}
+          className="w-full text-left px-3.5 py-2 flex items-center justify-between hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <History className="w-4 h-4 text-amber-500" />
+            <span>Version history</span>
+          </div>
+          {note.versions && note.versions.length > 1 && (
+            <span className="text-[10px] bg-amber-500/15 text-amber-700 dark:text-amber-300 font-semibold px-1.5 py-0.5 rounded-full">
+              {note.versions.length}
+            </span>
+          )}
+        </button>
+      )}
+
+      {onStartReading && (
+        <button
+          type="button"
+          onClick={() => {
+            setShowMenu(false);
+            clearPickerAnchor();
+            onStartReading();
+          }}
+          className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-emerald-600 dark:text-emerald-400 transition-colors"
+        >
+          <Timer className="w-4 h-4" />
+          <span>Start reading stopwatch</span>
+        </button>
+      )}
+
+      {onSummarizeWithAi && (
+        <button
+          type="button"
+          onClick={() => {
+            setShowMenu(false);
+            clearPickerAnchor();
+            onSummarizeWithAi();
+          }}
+          className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
+        >
+          <Sparkles className="w-4 h-4 text-amber-500 shrink-0" />
+          <span>Summarize &amp; Chat with AI</span>
+        </button>
+      )}
+
+      {onExtractUrl && (
+        <button
+          type="button"
+          onClick={() => {
+            setShowMenu(false);
+            clearPickerAnchor();
+            onExtractUrl();
+          }}
+          className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
+        >
+          <Globe className="w-4 h-4 text-sky-500 shrink-0" />
+          <span>Web Clipper (Extract URL)</span>
+        </button>
+      )}
+
+      {onImportMhtml && (
+        <button
+          type="button"
+          onClick={() => {
+            setShowMenu(false);
+            clearPickerAnchor();
+            mhtmlInputRef.current?.click();
+          }}
+          className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
+        >
+          <DownloadCloud className="w-4 h-4 text-blue-500 shrink-0" />
+          <span>Import webpage (.mhtml/.html)</span>
+        </button>
+      )}
+
+      {(onDuplicate || onArchiveToggle || onShare || onPrint || onDelete || onToggleClassicToolbars) && (
+        <div className="my-1 border-t border-black/[0.06] dark:border-white/[0.08]" />
+      )}
+
+      {onPrint && (
+        <button
+          type="button"
+          onClick={() => {
+            setShowMenu(false);
+            clearPickerAnchor();
+            onPrint();
+          }}
+          className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
+        >
+          <Printer className="w-4 h-4 text-stone-500" />
+          <span>Print / Save PDF</span>
+        </button>
+      )}
+
+      <button
+        type="button"
+        onClick={() => {
+          handleCopyTitleAndContent();
+          setTimeout(() => {
+            setShowMenu(false);
+            clearPickerAnchor();
+          }, 300);
+        }}
+        className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
+      >
+        {copiedToast ? (
+          <>
+            <Check className="w-4 h-4 text-emerald-500 shrink-0" />
+            <span className="text-emerald-600 dark:text-emerald-400 font-medium">Copied!</span>
+          </>
+        ) : (
+          <>
+            <ClipboardCopy className="w-4 h-4 text-stone-500 shrink-0" />
+            <span>Copy title &amp; content</span>
+          </>
+        )}
+      </button>
+
+      {onDuplicate && (
+        <button
+          type="button"
+          onClick={() => {
+            setShowMenu(false);
+            clearPickerAnchor();
+            onDuplicate();
+          }}
+          className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
+        >
+          <Copy className="w-4 h-4" />
+          <span>Duplicate note</span>
+        </button>
+      )}
+
+      {onShare && (
+        <button
+          type="button"
+          onClick={() => {
+            setShowMenu(false);
+            clearPickerAnchor();
+            onShare();
+          }}
+          className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
+        >
+          <Share2 className="w-4 h-4 text-amber-500" />
+          <span>Share note</span>
+        </button>
+      )}
+
+      {onArchiveToggle && (
+        <button
+          type="button"
+          onClick={() => {
+            setShowMenu(false);
+            clearPickerAnchor();
+            onArchiveToggle();
+          }}
+          className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
+        >
+          {note.isArchived ? (
+            <>
+              <ArchiveRestore className="w-4 h-4 text-amber-500" />
+              <span>Unarchive note</span>
+            </>
+          ) : (
+            <>
+              <Archive className="w-4 h-4" />
+              <span>Archive note</span>
+            </>
+          )}
+        </button>
+      )}
+
+      {onToggleClassicToolbars && (
+        <button
+          type="button"
+          onClick={() => {
+            setShowMenu(false);
+            clearPickerAnchor();
+            onToggleClassicToolbars();
+          }}
+          className="w-full text-left px-3.5 py-2 flex items-center justify-between hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-700 dark:text-stone-300 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <SlidersHorizontal className="w-4 h-4 text-stone-400" />
+            <span>{showClassicToolbars ? 'Clean Notion mode' : 'Show classic toolbars'}</span>
+          </div>
+          {showClassicToolbars && <Check className="w-3.5 h-3.5 text-emerald-500" />}
+        </button>
+      )}
+
+      {onDelete && (
+        <button
+          type="button"
+          onClick={() => {
+            setShowMenu(false);
+            clearPickerAnchor();
+            onDelete();
+          }}
+          className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-red-600 dark:text-red-400 transition-colors"
+        >
+          <Trash2 className="w-4 h-4" />
+          <span>Delete note</span>
+        </button>
+      )}
+    </div>
+  ) : null;
+
+  const desktopCategoryLabelPanel = !isMobile && (showCategoryPicker || showLabelPicker) ? (() => {
+    const isCategory = showCategoryPicker;
+    const closeActivePicker = () => {
+      if (isCategory) setShowCategoryPicker(false);
+      else setShowLabelPicker(false);
+      clearPickerAnchor();
+    };
+    return (
+      <div
+        ref={anchoredPickerBox ? anchoredPickerRef : undefined}
+        data-portal={anchoredPickerBox ? 'true' : undefined}
+        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+        onTouchStart={(e) => e.stopPropagation()}
+        style={getPopoverStyle()}
+        className={`${
+          anchoredPickerBox
+            ? 'fixed z-[1000]'
+            : `absolute ${alignClass} ${verticalPositionClass} z-50`
+        } w-64 max-w-[calc(100vw-2rem)] p-2.5 bg-white dark:bg-[#202124] rounded-xl keep-elevation-2 border border-black/[0.08] dark:border-stone-700/60 text-[13.5px] overflow-y-auto overscroll-contain shadow-xl`}
+      >
+        <div className="flex items-center justify-between pb-2 mb-2 border-b border-black/[0.06] dark:border-white/[0.08]">
+          <div className="flex items-center gap-1.5">
+            {(!anchoredPickerBox || hideInlineBar) && (
+              <button
+                type="button"
+                onClick={backToMenu}
+                className="p-1 -ml-1 text-stone-500 hover:text-stone-800 dark:hover:text-stone-200 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+                title="Back to options"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+            )}
+            <span className="text-xs font-medium text-stone-500 uppercase tracking-wider">
+              {isCategory ? 'Select Category' : 'Label note'}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={closeActivePicker}
+            className="text-xs font-medium text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100"
+          >
+            Done
+          </button>
+        </div>
+
+        {isCategory ? (
+          <>
+            <div className="max-h-48 overflow-y-auto space-y-0.5 mb-2">
+              <button
+                type="button"
+                onClick={() => {
+                  onSelectCategory?.(null);
+                  closeActivePicker();
+                }}
+                className={`w-full text-left flex items-center justify-between px-2.5 py-2 rounded-lg text-xs transition-colors ${
+                  !note.category
+                    ? 'bg-stone-100 text-stone-900 dark:bg-stone-800 dark:text-stone-100 font-semibold'
+                    : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-600 dark:text-stone-400'
+                }`}
+              >
+                <span>None (No category)</span>
+                {!note.category && <span>✓</span>}
+              </button>
+
+              {categories.map((cat) => {
+                const isSelected = note.category === cat.name;
+                return (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => {
+                      onSelectCategory?.(cat.name);
+                      closeActivePicker();
+                    }}
+                    className={`w-full text-left flex items-center justify-between px-2.5 py-2 rounded-lg text-xs transition-colors ${
+                      isSelected
+                        ? 'bg-stone-100 text-stone-900 dark:bg-stone-800 dark:text-stone-100 font-semibold'
+                        : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span>{cat.icon || '📁'}</span>
+                      <div
+                        className="w-2 h-2 rounded-full"
+                        style={{ backgroundColor: cat.color || '#3b82f6' }}
+                      />
+                      <span>{cat.name}</span>
+                    </div>
+                    {isSelected && <span>✓</span>}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="pt-2 border-t border-black/[0.06] dark:border-white/[0.08]">
+              <button
+                type="button"
+                onClick={() => {
+                  closeActivePicker();
+                  setIsCategoryModalOpen(true);
+                }}
+                className="w-full text-center text-xs font-semibold py-1.5 text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 rounded-lg transition-colors"
+              >
+                + Manage Categories
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="max-h-48 overflow-y-auto space-y-0.5 mb-2">
+              {filteredLabels.length === 0 && labelQuery && (
+                <div className="text-center py-3 text-stone-400 dark:text-stone-500 text-xs">
+                  No matching labels
+                </div>
+              )}
+
+              {filteredLabels.map((lbl) => {
+                const isSelected = note.labels?.includes(lbl.name);
+                return (
+                  <label
+                    key={lbl.id}
+                    className="flex items-center gap-2.5 px-2.5 py-1.5 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] rounded-lg cursor-pointer transition-colors text-stone-800 dark:text-stone-200"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => onToggleLabel?.(lbl.name)}
+                      className="w-4 h-4 rounded accent-stone-900 dark:accent-stone-300"
+                    />
+                    <span className="truncate">{lbl.name}</span>
+                  </label>
+                );
+              })}
+
+              {!exactMatchExists && labelQuery && (
+                <button
+                  type="button"
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    const trimmed = newLabelText.trim();
+                    await createLabel(trimmed);
+                    onToggleLabel?.(trimmed);
+                    setNewLabelText('');
+                  }}
+                  className="w-full text-left px-2.5 py-1.5 flex items-center gap-2 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-900 dark:text-stone-100 font-semibold text-xs rounded-lg transition-colors mt-1"
+                >
+                  <Plus className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate">Create &quot;{newLabelText.trim()}&quot;</span>
+                </button>
+              )}
+            </div>
+
+            <div className="flex items-center gap-1.5 pt-2 border-t border-black/[0.06] dark:border-white/[0.08] relative">
+              <Search className="w-3.5 h-3.5 text-stone-400 absolute left-2.5 pointer-events-none" />
+              <input
+                type="text"
+                placeholder="Enter label name"
+                value={newLabelText}
+                onChange={(e) => setNewLabelText(e.target.value)}
+                onKeyDown={async (e) => {
+                  if (e.key === 'Enter' && newLabelText.trim()) {
+                    e.preventDefault();
+                    const trimmed = newLabelText.trim();
+                    const exact = labels.find((l) => l.name.toLowerCase() === trimmed.toLowerCase());
+                    if (exact) {
+                      onToggleLabel?.(exact.name);
+                    } else {
+                      await createLabel(trimmed);
+                      onToggleLabel?.(trimmed);
+                    }
+                    setNewLabelText('');
+                  }
+                }}
+                className="w-full text-xs pl-7 pr-7 py-1.5 rounded-lg bg-stone-100 dark:bg-stone-800 text-stone-800 dark:text-stone-200 border-none outline-none focus:ring-1 focus:ring-stone-400 dark:focus:ring-stone-600"
+              />
+              {newLabelText && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setNewLabelText('');
+                  }}
+                  className="absolute right-2 p-0.5 text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 rounded-full"
+                  title="Clear search"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    );
+  })() : null;
+
   return (
     <div
       ref={containerRef}
       className={`relative flex flex-wrap items-center gap-0.5 sm:gap-1 text-stone-600 dark:text-stone-300 ${className}`}
     >
+      {/* Hidden File Inputs (Always mounted so slash commands & menus work even when inline bar is hidden) */}
+      {onAddImage && (
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt,.md,.json,.zip,.mp3,.mp4,.wav,*"
+          multiple
+          className="hidden"
+          onChange={onAddImage}
+        />
+      )}
+      {onImportMhtml && (
+        <input
+          ref={mhtmlInputRef}
+          type="file"
+          accept=".html,.htm,.mhtml,.mht,text/html,multipart/related,message/rfc822"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f && onImportMhtml) {
+              onImportMhtml(f);
+            }
+            e.target.value = '';
+          }}
+        />
+      )}
+
+      {!hideInlineBar && (
+        <>
       {/* Reminder button */}
       <div className="relative">
         <button
           type="button"
           onClick={(e) => {
             e.stopPropagation();
+            clearPickerAnchor();
             updateDropdownPlacement(e.currentTarget);
             setShowReminderPicker(!showReminderPicker);
             setShowColorPicker(false);
             setShowMenu(false);
             setShowLabelPicker(false);
+            setShowCategoryPicker(false);
           }}
           className={showReminderPicker ? activeIconBtnClass : iconBtnClass}
           title="Remind me"
@@ -467,71 +1338,7 @@ export const NoteActions = React.forwardRef<NoteActionsHandle, NoteActionsProps>
           <Bell className="w-4 h-4" />
         </button>
 
-        {!isMobile && showReminderPicker && (
-          <div
-            onClick={(e) => e.stopPropagation()}
-            onMouseDown={(e) => e.stopPropagation()}
-            onTouchStart={(e) => e.stopPropagation()}
-            style={{ maxHeight: dynamicMaxHeight ? `${dynamicMaxHeight}px` : undefined }}
-            className={`absolute left-0 ${verticalPositionClass} w-64 max-w-[calc(100vw-2rem)] p-2.5 bg-white dark:bg-[#202124] rounded-xl keep-elevation-2 border border-black/[0.08] dark:border-stone-700/60 z-50 text-[13.5px] font-normal shadow-xl overflow-y-auto overscroll-contain`}
-          >
-            <p className="text-xs font-medium px-2.5 py-1 text-stone-500 tracking-wide uppercase">
-              Set Reminder
-            </p>
-            <div className="flex flex-col gap-0.5 mt-1">
-              <button
-                type="button"
-                onClick={() => {
-                  const todayEve = new Date();
-                  todayEve.setHours(20, 0, 0, 0);
-                  onAddReminder?.(todayEve.toISOString());
-                  setShowReminderPicker(false);
-                }}
-                className="text-left px-2.5 py-2 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] rounded-lg transition-colors text-stone-800 dark:text-stone-200"
-              >
-                Later today (8:00 PM)
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const tmrw = new Date();
-                  tmrw.setDate(tmrw.getDate() + 1);
-                  tmrw.setHours(8, 0, 0, 0);
-                  onAddReminder?.(tmrw.toISOString());
-                  setShowReminderPicker(false);
-                }}
-                className="text-left px-2.5 py-2 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] rounded-lg transition-colors text-stone-800 dark:text-stone-200"
-              >
-                Tomorrow (8:00 AM)
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const nextWeek = new Date();
-                  nextWeek.setDate(nextWeek.getDate() + 7);
-                  nextWeek.setHours(8, 0, 0, 0);
-                  onAddReminder?.(nextWeek.toISOString());
-                  setShowReminderPicker(false);
-                }}
-                className="text-left px-2.5 py-2 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] rounded-lg transition-colors text-stone-800 dark:text-stone-200"
-              >
-                Next week (8:00 AM)
-              </button>
-              <div className="pt-2 mt-1 border-t border-black/[0.06] dark:border-white/[0.08]">
-                <input
-                  type="datetime-local"
-                  onChange={(e) => {
-                    if (e.target.value) {
-                      onAddReminder?.(new Date(e.target.value).toISOString());
-                      setShowReminderPicker(false);
-                    }
-                  }}
-                  className="w-full text-xs p-1.5 rounded-lg bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 outline-none text-stone-800 dark:text-stone-200"
-                />
-              </div>
-            </div>
-          </div>
-        )}
+        {!anchoredPickerBox && desktopReminderPanel}
       </div>
 
       {/* Color Picker */}
@@ -540,11 +1347,13 @@ export const NoteActions = React.forwardRef<NoteActionsHandle, NoteActionsProps>
           type="button"
           onClick={(e) => {
             e.stopPropagation();
+            clearPickerAnchor();
             updateDropdownPlacement(e.currentTarget);
             setShowColorPicker(!showColorPicker);
             setShowReminderPicker(false);
             setShowMenu(false);
             setShowLabelPicker(false);
+            setShowCategoryPicker(false);
           }}
           className={showColorPicker ? activeIconBtnClass : iconBtnClass}
           title="Background options"
@@ -552,95 +1361,22 @@ export const NoteActions = React.forwardRef<NoteActionsHandle, NoteActionsProps>
           <Palette className="w-4 h-4" />
         </button>
 
-        {!isMobile && showColorPicker && (
-          <div
-            onClick={(e) => e.stopPropagation()}
-            onMouseDown={(e) => e.stopPropagation()}
-            onTouchStart={(e) => e.stopPropagation()}
-            style={{ maxHeight: dynamicMaxHeight ? `${dynamicMaxHeight}px` : undefined }}
-            className={`absolute left-0 ${verticalPositionClass} w-72 max-w-[calc(100vw-2rem)] p-3 bg-white dark:bg-[#202124] rounded-xl keep-elevation-2 border border-black/[0.08] dark:border-stone-700/60 z-50 shadow-xl overflow-y-auto overscroll-contain`}
-          >
-            <p className="text-xs font-medium text-stone-500 mb-2 px-1">Colors</p>
-            <div className="grid grid-cols-6 gap-2 mb-3">
-              {NOTE_COLORS.map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  title={c.name}
-                  onClick={() => {
-                    onColorChange(c.id);
-                  }}
-                  className={`w-7 h-7 sm:w-6 sm:h-6 rounded-full border border-black/15 dark:border-white/20 transition-transform hover:scale-110 flex items-center justify-center ${
-                    note.color === c.id ? 'ring-2 ring-blue-500 ring-offset-1 dark:ring-offset-[#202124]' : ''
-                  }`}
-                  style={{ backgroundColor: c.swatch }}
-                />
-              ))}
-            </div>
-
-            {onThemeChange && (
-              <>
-                <p className="text-xs font-medium text-stone-500 mb-2 px-1 border-t border-black/[0.06] dark:border-white/[0.08] pt-2">
-                  Themes
-                </p>
-                <div className="grid grid-cols-5 gap-1.5">
-                  {NOTE_THEMES.map((t) => (
-                    <button
-                      key={t.id}
-                      type="button"
-                      title={t.name}
-                      onClick={() => onThemeChange(t.id)}
-                      className={`h-9 sm:h-8 flex items-center justify-center text-lg sm:text-base rounded-lg border border-black/[0.08] dark:border-white/[0.1] hover:scale-105 transition-all ${
-                        note.theme === t.id ? 'ring-2 ring-blue-500' : ''
-                      }`}
-                    >
-                      {t.icon}
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-        )}
+        {!anchoredPickerBox && desktopColorPanel}
       </div>
 
       {/* Image attachment */}
       {onAddImage && (
-        <>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              fileInputRef.current?.click();
-            }}
-            className={iconBtnClass}
-            title="Add image or file attachment"
-          >
-            <ImageIcon className="w-4 h-4" />
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt,.md,.json,.zip,.mp3,.mp4,.wav,*"
-            multiple
-            className="hidden"
-            onChange={onAddImage}
-          />
-          <input
-            ref={mhtmlInputRef}
-            type="file"
-            accept=".html,.htm,.mhtml,.mht,text/html,multipart/related,message/rfc822"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f && onImportMhtml) {
-                onImportMhtml(f);
-              }
-              e.target.value = '';
-            }}
-          />
-
-        </>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            fileInputRef.current?.click();
+          }}
+          className={iconBtnClass}
+          title="Add image or file attachment"
+        >
+          <ImageIcon className="w-4 h-4" />
+        </button>
       )}
 
       {/* AI Summarize & Chat (Ollama) */}
@@ -835,6 +1571,7 @@ export const NoteActions = React.forwardRef<NoteActionsHandle, NoteActionsProps>
           type="button"
           onClick={(e) => {
             e.stopPropagation();
+            clearPickerAnchor();
             updateDropdownPlacement(e.currentTarget);
             setShowMenu(!showMenu);
             setShowColorPicker(false);
@@ -848,528 +1585,27 @@ export const NoteActions = React.forwardRef<NoteActionsHandle, NoteActionsProps>
           <MoreVertical className="w-4 h-4" />
         </button>
 
-        {!isMobile && showMenu && (
-          <div
-            ref={moreMenuRef}
-            onClick={(e) => e.stopPropagation()}
-            onMouseDown={(e) => e.stopPropagation()}
-            onTouchStart={(e) => e.stopPropagation()}
-            style={{ maxHeight: dynamicMaxHeight ? `${dynamicMaxHeight}px` : undefined }}
-            className={`absolute ${alignClass} ${verticalPositionClass} w-56 max-w-[calc(100vw-2rem)] py-1.5 bg-white dark:bg-[#202124] rounded-xl keep-elevation-2 border border-black/[0.08] dark:border-stone-700/60 z-50 text-[13.5px] font-normal overflow-y-auto overscroll-contain shadow-xl`}
-          >
-            {onSelectCategory && (
-              <button
-                type="button"
-                onClick={() => {
-                  clearPickerAnchor();
-                  setShowMenu(false);
-                  setShowCategoryPicker(true);
-                }}
-                className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
-              >
-                <Folder className="w-4 h-4 text-blue-500" />
-                Change category
-              </button>
-            )}
-
-            {onToggleLabel && (
-              <button
-                type="button"
-                onClick={() => {
-                  clearPickerAnchor();
-                  setShowMenu(false);
-                  setShowLabelPicker(true);
-                }}
-                className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
-              >
-                <Tag className="w-4 h-4 text-emerald-500" />
-                Change labels
-              </button>
-            )}
-
-            {onToggleChecklist && (
-              <button
-                type="button"
-                onClick={() => {
-                  setShowMenu(false);
-                  onToggleChecklist();
-                }}
-                className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
-              >
-                <CheckSquare className="w-4 h-4" />
-                {note.isList ? 'Show plain text' : 'Show checkboxes'}
-              </button>
-            )}
-
-            {onToggleSubpages && (
-              <button
-                type="button"
-                onClick={() => {
-                  setShowMenu(false);
-                  onToggleSubpages();
-                }}
-                className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
-              >
-                <FileText className="w-4 h-4 text-amber-500" />
-                {hasSubpages ? 'Sub-pages (Notion)' : 'Add Notion sub-pages'}
-              </button>
-            )}
-            {onImportMhtml && (
-              <button
-                type="button"
-                onClick={() => {
-                  setShowMenu(false);
-                  mhtmlInputRef.current?.click();
-                }}
-                className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
-              >
-                <Globe className="w-4 h-4 text-blue-500" />
-                Import MHTML into note
-              </button>
-            )}
-            {onInsertDataview && (
-              <button
-                type="button"
-                onClick={() => {
-                  setShowMenu(false);
-                  onInsertDataview();
-                }}
-                className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
-              >
-                <Database className="w-4 h-4 text-purple-500" />
-                Insert Dataview (Notion query)
-              </button>
-            )}
-
-
-
-            <div className="my-1 border-t border-black/[0.06] dark:border-white/[0.08]" />
-
-            {onEncrypt && (
-              <button
-                type="button"
-                onClick={() => {
-                  setShowMenu(false);
-                  onEncrypt();
-                }}
-                className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
-              >
-                <Lock className="w-4 h-4 text-amber-500" />
-                {note.isEncrypted ? 'Encryption Settings (AES-256)' : 'Encrypt Note (AES-256)'}
-              </button>
-            )}
-
-            {onLinkNote && (
-              <button
-                type="button"
-                onClick={() => {
-                  setShowMenu(false);
-                  onLinkNote();
-                }}
-                className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
-              >
-                <Link2 className="w-4 h-4 text-purple-500" />
-                Link to note
-              </button>
-            )}
-
-            {onOpenVersions && (
-              <button
-                type="button"
-                onClick={() => {
-                  setShowMenu(false);
-                  onOpenVersions();
-                }}
-                className="w-full text-left px-3.5 py-2 flex items-center justify-between hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  <History className="w-4 h-4 text-amber-500" />
-                  <span>Version history</span>
-                </div>
-                {note.versions && note.versions.length > 1 && (
-                  <span className="text-[10px] bg-amber-500/15 text-amber-700 dark:text-amber-300 font-semibold px-1.5 py-0.5 rounded-full">
-                    {note.versions.length}
-                  </span>
-                )}
-              </button>
-            )}
-
-            {onStartReading && (
-              <button
-                type="button"
-                onClick={() => {
-                  setShowMenu(false);
-                  onStartReading();
-                }}
-                className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-emerald-600 dark:text-emerald-400 transition-colors"
-              >
-                <Timer className="w-4 h-4" />
-                <span>Start reading stopwatch</span>
-              </button>
-            )}
-
-            {(onDuplicate || onArchiveToggle || onShare || onPrint || onDelete) && (
-              <div className="my-1 border-t border-black/[0.06] dark:border-white/[0.08]" />
-            )}
-
-            {onPrint && (
-              <button
-                type="button"
-                onClick={() => {
-                  setShowMenu(false);
-                  onPrint();
-                }}
-                className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
-              >
-                <Printer className="w-4 h-4 text-stone-500" />
-                <span>Print note</span>
-              </button>
-            )}
-
-            <button
-              type="button"
-              onClick={() => {
-                handleCopyTitleAndContent();
-                setTimeout(() => setShowMenu(false), 300);
-              }}
-              className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
-            >
-              {copiedToast ? (
-                <>
-                  <Check className="w-4 h-4 text-emerald-500 shrink-0" />
-                  <span className="text-emerald-600 dark:text-emerald-400 font-medium">Copied!</span>
-                </>
-              ) : (
-                <>
-                  <ClipboardCopy className="w-4 h-4 text-stone-500 shrink-0" />
-                  <span>Copy title & content</span>
-                </>
-              )}
-            </button>
-
-            {onDuplicate && (
-              <button
-                type="button"
-                onClick={() => {
-                  setShowMenu(false);
-                  onDuplicate();
-                }}
-                className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
-              >
-                <Copy className="w-4 h-4" />
-                Clone note (Make a copy)
-              </button>
-            )}
-
-            {onArchiveToggle && (
-              <button
-                type="button"
-                onClick={() => {
-                  setShowMenu(false);
-                  onArchiveToggle();
-                }}
-                className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
-              >
-                {note.isArchived ? (
-                  <>
-                    <ArchiveRestore className="w-4 h-4 text-amber-500" />
-                    Unarchive note
-                  </>
-                ) : (
-                  <>
-                    <Archive className="w-4 h-4" />
-                    Archive note
-                  </>
-                )}
-              </button>
-            )}
-
-            {onShare && (
-              <button
-                type="button"
-                onClick={() => {
-                  setShowMenu(false);
-                  onShare();
-                }}
-                className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
-              >
-                <Share2 className="w-4 h-4 text-amber-500" />
-                Share note (Short link)
-              </button>
-            )}
-            {onImportMhtml && (
-              <button
-                type="button"
-                onClick={() => {
-                  setShowMenu(false);
-                  mhtmlInputRef.current?.click();
-                }}
-                className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
-              >
-                <Globe className="w-4 h-4 text-blue-500 shrink-0" />
-                <span>Import Webpage into note (.html, .mhtml)</span>
-              </button>
-            )}
-            {onSummarizeWithAi && (
-              <button
-                type="button"
-                onClick={() => {
-                  setShowMenu(false);
-                  onSummarizeWithAi();
-                }}
-                className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
-              >
-                <Sparkles className="w-4 h-4 text-amber-500 shrink-0" />
-                <span>Summarize & Chat with AI</span>
-              </button>
-            )}
-
-            {onExtractUrl && (
-              <button
-                type="button"
-                onClick={() => {
-                  setShowMenu(false);
-                  onExtractUrl();
-                }}
-                className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200 transition-colors"
-              >
-                <Globe className="w-4 h-4 text-sky-500 shrink-0" />
-                <span>Import from Webpage (URL / Web Clipper)</span>
-              </button>
-            )}
-
-
-            {onDelete && (
-              <button
-                type="button"
-                onClick={() => {
-                  setShowMenu(false);
-                  onDelete();
-                }}
-                className="w-full text-left px-3.5 py-2 flex items-center gap-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-red-600 dark:text-red-400 transition-colors"
-              >
-                <Trash2 className="w-4 h-4" />
-                Delete note
-              </button>
-            )}
-          </div>
-        )}
-
-        {/* Category & Label Picker submenus (anchored to clicked top pill or footer ... menu) */}
-        {!isMobile && (showCategoryPicker || showLabelPicker) && (() => {
-          const isCategory = showCategoryPicker;
-          const closeActivePicker = () => {
-            if (isCategory) setShowCategoryPicker(false);
-            else setShowLabelPicker(false);
-            clearPickerAnchor();
-          };
-          const submenuNode = (
-            <div
-              ref={anchoredPickerBox ? anchoredPickerRef : undefined}
-              data-portal={anchoredPickerBox ? 'true' : undefined}
-              onClick={(e) => e.stopPropagation()}
-              onMouseDown={(e) => e.stopPropagation()}
-              onTouchStart={(e) => e.stopPropagation()}
-              style={
-                anchoredPickerBox
-                  ? {
-                      position: 'fixed',
-                      left: `${anchoredPickerBox.left}px`,
-                      top: anchoredPickerBox.top !== undefined ? `${anchoredPickerBox.top}px` : undefined,
-                      bottom: anchoredPickerBox.bottom !== undefined ? `${anchoredPickerBox.bottom}px` : undefined,
-                      maxHeight: `${anchoredPickerBox.maxHeight}px`,
-                    }
-                  : { maxHeight: dynamicMaxHeight ? `${dynamicMaxHeight}px` : undefined }
-              }
-              className={`${
-                anchoredPickerBox
-                  ? 'fixed z-[1000]'
-                  : `absolute ${alignClass} ${verticalPositionClass} z-50`
-              } w-64 max-w-[calc(100vw-2rem)] p-2.5 bg-white dark:bg-[#202124] rounded-xl keep-elevation-2 border border-black/[0.08] dark:border-stone-700/60 text-[13.5px] overflow-y-auto overscroll-contain shadow-xl`}
-            >
-              <div className="flex items-center justify-between pb-2 mb-2 border-b border-black/[0.06] dark:border-white/[0.08]">
-                <div className="flex items-center gap-1.5">
-                  {!anchoredPickerBox && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        closeActivePicker();
-                        setShowMenu(true);
-                      }}
-                      className="p-1 -ml-1 text-stone-500 hover:text-stone-800 dark:hover:text-stone-200 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
-                      title="Back to options"
-                    >
-                      <ChevronLeft className="w-4 h-4" />
-                    </button>
-                  )}
-                  <span className="text-xs font-medium text-stone-500 uppercase tracking-wider">
-                    {isCategory ? 'Select Category' : 'Label note'}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={closeActivePicker}
-                  className="text-xs font-semibold text-stone-900 dark:text-stone-100 hover:underline"
-                >
-                  Done
-                </button>
-              </div>
-
-              {isCategory ? (
-                <>
-                  <div className="max-h-56 overflow-y-auto space-y-0.5 mb-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onSelectCategory?.(null);
-                        closeActivePicker();
-                      }}
-                      className={`w-full text-left flex items-center justify-between px-2.5 py-2 rounded-lg text-xs transition-colors ${
-                        !note.category
-                          ? 'bg-stone-100 text-stone-900 dark:bg-stone-800 dark:text-stone-100 font-semibold'
-                          : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-600 dark:text-stone-400'
-                      }`}
-                    >
-                      <span>None (No category)</span>
-                      {!note.category && <span>✓</span>}
-                    </button>
-
-                    {categories.map((cat) => {
-                      const isSelected = note.category === cat.name;
-                      return (
-                        <button
-                          key={cat.id}
-                          type="button"
-                          onClick={() => {
-                            onSelectCategory?.(cat.name);
-                            closeActivePicker();
-                          }}
-                          className={`w-full text-left flex items-center justify-between px-2.5 py-2 rounded-lg text-xs transition-colors ${
-                            isSelected
-                              ? 'bg-stone-100 text-stone-900 dark:bg-stone-800 dark:text-stone-100 font-semibold'
-                              : 'hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-800 dark:text-stone-200'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2">
-                            <span>{cat.icon || '📁'}</span>
-                            <div
-                              className="w-2 h-2 rounded-full"
-                              style={{ backgroundColor: cat.color || '#3b82f6' }}
-                            />
-                            <span>{cat.name}</span>
-                          </div>
-                          {isSelected && <span>✓</span>}
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  <div className="pt-2 border-t border-black/[0.06] dark:border-white/[0.08]">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        closeActivePicker();
-                        setIsCategoryModalOpen(true);
-                      }}
-                      className="w-full text-center text-xs font-semibold py-1.5 text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 rounded-lg transition-colors"
-                    >
-                      + Manage Categories
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="max-h-48 overflow-y-auto space-y-0.5 mb-2">
-                    {filteredLabels.length === 0 && labelQuery && (
-                      <div className="text-center py-3 text-stone-400 dark:text-stone-500 text-xs">
-                        No matching labels
-                      </div>
-                    )}
-
-                    {filteredLabels.map((lbl) => {
-                      const isSelected = note.labels?.includes(lbl.name);
-                      return (
-                        <label
-                          key={lbl.id}
-                          className="flex items-center gap-2.5 px-2.5 py-1.5 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] rounded-lg cursor-pointer transition-colors text-stone-800 dark:text-stone-200"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => onToggleLabel?.(lbl.name)}
-                            className="w-4 h-4 rounded accent-stone-900 dark:accent-stone-300"
-                          />
-                          <span className="truncate">{lbl.name}</span>
-                        </label>
-                      );
-                    })}
-
-                    {!exactMatchExists && labelQuery && (
-                      <button
-                        type="button"
-                        onClick={async (e) => {
-                          e.stopPropagation();
-                          const trimmed = newLabelText.trim();
-                          await createLabel(trimmed);
-                          onToggleLabel?.(trimmed);
-                          setNewLabelText('');
-                        }}
-                        className="w-full text-left px-2.5 py-1.5 flex items-center gap-2 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] text-stone-900 dark:text-stone-100 font-semibold text-xs rounded-lg transition-colors mt-1"
-                      >
-                        <Plus className="w-3.5 h-3.5 shrink-0" />
-                        <span className="truncate">Create &quot;{newLabelText.trim()}&quot;</span>
-                      </button>
-                    )}
-                  </div>
-
-                  <div className="flex items-center gap-1.5 pt-2 border-t border-black/[0.06] dark:border-white/[0.08] relative">
-                    <Search className="w-3.5 h-3.5 text-stone-400 absolute left-2.5 pointer-events-none" />
-                    <input
-                      type="text"
-                      placeholder="Enter label name"
-                      value={newLabelText}
-                      onChange={(e) => setNewLabelText(e.target.value)}
-                      onKeyDown={async (e) => {
-                        if (e.key === 'Enter' && newLabelText.trim()) {
-                          e.preventDefault();
-                          const trimmed = newLabelText.trim();
-                          const exact = labels.find((l) => l.name.toLowerCase() === trimmed.toLowerCase());
-                          if (exact) {
-                            onToggleLabel?.(exact.name);
-                          } else {
-                            await createLabel(trimmed);
-                            onToggleLabel?.(trimmed);
-                          }
-                          setNewLabelText('');
-                        }
-                      }}
-                      className="w-full text-xs pl-7 pr-7 py-1.5 rounded-lg bg-stone-100 dark:bg-stone-800 text-stone-800 dark:text-stone-200 border-none outline-none focus:ring-1 focus:ring-stone-400 dark:focus:ring-stone-600"
-                    />
-                    {newLabelText && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setNewLabelText('');
-                        }}
-                        className="absolute right-2 p-0.5 text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 rounded-full"
-                        title="Clear search"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
-                </>
-              )}
-            </div>
-          );
-
-          if (anchoredPickerBox && mounted && typeof document !== 'undefined') {
-            return createPortal(submenuNode, document.body);
-          }
-          return submenuNode;
-        })()}
+        {!anchoredPickerBox && desktopMoreMenuPanel}
+        {!anchoredPickerBox && desktopCategoryLabelPanel}
       </div>
+        </>
+      )}
+
+      {/* Anchored Portal Overlay for Top-bar Ellipsis / Slash Command Triggers */}
+      {anchoredPickerBox &&
+        !isMobile &&
+        mounted &&
+        typeof document !== 'undefined' &&
+        (showMenu || showReminderPicker || showColorPicker || showCategoryPicker || showLabelPicker) &&
+        createPortal(
+          <>
+            {desktopMoreMenuPanel}
+            {desktopReminderPanel}
+            {desktopColorPanel}
+            {desktopCategoryLabelPanel}
+          </>,
+          document.body
+        )}
 
       {/* Native Mobile Bottom Sheet (For Android & Small Screens < 640px) */}
       {mounted &&

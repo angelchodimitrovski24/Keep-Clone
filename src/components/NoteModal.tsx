@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback, useSyncExternalStore } from 'react';
 import {
   Pin,
   X,
@@ -32,7 +32,16 @@ import {
   Tag,
   Folder,
   Home,
+  MoreHorizontal,
 } from 'lucide-react';
+import {
+  getClassicToolbarsServerSnapshot,
+  getClassicToolbarsSnapshot,
+  SlashAnchorRect,
+  SlashNoteActionId,
+  subscribeClassicToolbars,
+  toggleClassicToolbarsPreference,
+} from '@/lib/slashCommands';
 import { Note, NoteColor, NoteBackgroundTheme, TodoItem, NoteDrawing, NoteVersion, NoteConnection, NoteConnectionRole } from '@/types/note';
 import { getNoteColorClasses } from '@/lib/constants';
 import { NoteActions, NoteActionsHandle } from './NoteActions';
@@ -160,6 +169,19 @@ export const NoteModal: React.FC<NoteModalProps> = ({
   const [stopwatchToast, setStopwatchToast] = useState<string | null>(null);
   const [copiedUrlToast, setCopiedUrlToast] = useState(false);
   const [copiedContentToast, setCopiedContentToast] = useState(false);
+  const [showConnectionsPanel, setShowConnectionsPanel] = useState(false);
+  const [subpagesAddSignal, setSubpagesAddSignal] = useState(0);
+  const [slashNotice, setSlashNotice] = useState<string | null>(null);
+
+  const showClassicToolbars = useSyncExternalStore(
+    subscribeClassicToolbars,
+    getClassicToolbarsSnapshot,
+    getClassicToolbarsServerSnapshot
+  );
+
+  const handleToggleClassicToolbars = useCallback(() => {
+    toggleClassicToolbarsPreference();
+  }, []);
 
   // Text selection and extract into new note
   const modalContentRef = useRef<HTMLDivElement | null>(null);
@@ -433,11 +455,8 @@ export const NoteModal: React.FC<NoteModalProps> = ({
         setConnections(note.connections || []);
         setIsHub(Boolean(note.isHub));
         setChildNoteIds(note.childNoteIds || []);
-        setShowSubpages(
-          Boolean(note.isHub) ||
-          !!(note.childNoteIds && note.childNoteIds.length > 0) ||
-          note.noteType === 'notion'
-        );
+        setShowSubpages(Boolean(note.childNoteIds && note.childNoteIds.length > 0));
+        setShowConnectionsPanel(false);
         setIsFormattingOpen(false);
         setIsPreviewMode(false);
         setAutoSnapshotStatus('idle');
@@ -991,18 +1010,24 @@ export const NoteModal: React.FC<NoteModalProps> = ({
     if (!isOpen || !note) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        const hasOpenFloatingMenu = Boolean(
+          document.querySelector('[data-slash-menu="true"]') ||
+          document.querySelector('[data-mention-menu="true"]') ||
+          document.querySelector('[data-portal="true"]')
+        );
         const hasOpenSubModal =
           showEncryptModal ||
           showLinkModal ||
-          isEditingReadingTime;
-        if (!hasOpenSubModal) {
+          isEditingReadingTime ||
+          isExtractUrlModalOpen;
+        if (!hasOpenSubModal && !hasOpenFloatingMenu) {
           handleSaveAndClose();
         }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, showEncryptModal, showLinkModal, isEditingReadingTime, handleSaveAndClose]);
+  }, [isOpen, showEncryptModal, showLinkModal, isEditingReadingTime, isExtractUrlModalOpen, handleSaveAndClose]);
 
   const handlePrint = () => {
     if (!note) return;
@@ -1183,6 +1208,239 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
   const activeTodos = todos.filter((t) => !t.completed);
   const completedTodos = todos.filter((t) => t.completed);
   const colorClasses = getNoteColorClasses(color, theme);
+  const totalConnectionsCount =
+    ancestors.length + outgoing.length + backlinks.length + prevNotes.length + nextNotes.length + sources.length;
+
+  const availableNoteSlashActions = useMemo<SlashNoteActionId[]>(() => {
+    const actions: SlashNoteActionId[] = [
+      'wiki-link',
+      'subpage',
+      'toggle-subpages',
+      'link-note',
+      'file-hub',
+      'next-note',
+      'source-note',
+      'toggle-hub',
+      'connections',
+      'knowledge-map',
+      'image',
+      'extract-url',
+      'import-mhtml',
+      'notion-template',
+      'date-digest',
+      'category',
+      'label',
+      'color',
+      'reminder',
+      'checklist-mode',
+      'formatting-toolbar',
+      'stopwatch',
+      'edit-reading-time',
+      'ai-chat',
+      'ai-suggest',
+      'extract-selection',
+      'encrypt',
+      'history',
+      'preview',
+      'pin',
+      'copy-url',
+      'copy-content',
+      'share',
+      'duplicate',
+      'print',
+      'archive',
+      'trash',
+      'close',
+    ];
+    if (onOpenDrawingModal) {
+      actions.push('drawing');
+    }
+    return actions;
+  }, [onOpenDrawingModal]);
+
+  const showSlashNotice = (msg: string) => {
+    setSlashNotice(msg);
+    setTimeout(() => setSlashNotice(null), 2600);
+  };
+
+  const handleSlashNoteAction = async (actionId: SlashNoteActionId, anchorRect: SlashAnchorRect) => {
+    if (!note) return;
+    switch (actionId) {
+      case 'subpage':
+        setShowSubpages(true);
+        setSubpagesAddSignal((n) => n + 1);
+        break;
+      case 'toggle-subpages':
+        setShowSubpages((prev) => !prev);
+        break;
+      case 'link-note':
+        setLinkModalRole('related');
+        setShowLinkModal(true);
+        break;
+      case 'file-hub':
+        setLinkModalRole('part_of');
+        setShowLinkModal(true);
+        break;
+      case 'next-note':
+        setLinkModalRole('next');
+        setShowLinkModal(true);
+        break;
+      case 'source-note':
+        setLinkModalRole('source');
+        setShowLinkModal(true);
+        break;
+      case 'toggle-hub': {
+        const nextHub = !isHub;
+        setIsHub(nextHub);
+        if (nextHub) setShowSubpages(true);
+        await updateNote(note.id, {
+          isHub: nextHub,
+          noteType: nextHub ? 'notion' : (note.noteType || 'default'),
+        });
+        break;
+      }
+      case 'connections':
+        setShowConnectionsPanel((prev) => !prev);
+        break;
+      case 'knowledge-map':
+        await saveCurrentNote('Auto snapshot before opening Knowledge Map');
+        onClose();
+        openInKnowledgeMap(note.id);
+        break;
+      case 'image':
+        noteActionsRef.current?.triggerImageUpload();
+        break;
+      case 'drawing':
+        onOpenDrawingModal?.(note.id);
+        break;
+      case 'extract-url':
+        setIsExtractUrlModalOpen(true);
+        break;
+      case 'import-mhtml':
+        noteActionsRef.current?.triggerMhtmlUpload();
+        break;
+      case 'notion-template':
+        setIsNotionTemplateModalOpen(true);
+        break;
+      case 'date-digest':
+        setIsDateCompileModalOpen(true);
+        break;
+      case 'category':
+        noteActionsRef.current?.openCategoryPicker(anchorRect);
+        break;
+      case 'label':
+        noteActionsRef.current?.openLabelPicker(anchorRect);
+        break;
+      case 'color':
+        noteActionsRef.current?.openColorPicker(anchorRect);
+        break;
+      case 'reminder':
+        noteActionsRef.current?.openReminderPicker(anchorRect);
+        break;
+      case 'checklist-mode':
+        handleToggleChecklist();
+        break;
+      case 'formatting-toolbar':
+        setIsFormattingOpen((prev) => !prev);
+        break;
+      case 'stopwatch':
+        if (isThisNoteStopwatchActive) {
+          await handleStopStopwatch();
+        } else {
+          startReadingStopwatch(note.id, title, category);
+        }
+        break;
+      case 'edit-reading-time':
+        setIsEditingReadingTime(true);
+        break;
+      case 'ai-chat':
+        openAiChatForNote({
+          ...note,
+          title,
+          content: editorRef.current?.getHTML() || content,
+          isList,
+          todos,
+          color,
+          theme,
+          labels,
+          reminder,
+          category,
+        });
+        break;
+      case 'ai-suggest':
+        setShowConnectionsPanel(true);
+        break;
+      case 'extract-selection':
+        if (selectedText) {
+          await handleExtractToNewNote();
+        } else {
+          showSlashNotice('Highlight some text first to extract it into a new note');
+        }
+        break;
+      case 'encrypt':
+        setShowEncryptModal(true);
+        break;
+      case 'history': {
+        if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+        if (maxWaitTimerRef.current) clearTimeout(maxWaitTimerRef.current);
+        await performAutoSnapshot('Snapshot before viewing history');
+        const latestNote = notes.find((n) => n.id === note.id) || note;
+        setVersionHistoryNote(latestNote);
+        break;
+      }
+      case 'preview':
+        setIsPreviewMode((prev) => !prev);
+        break;
+      case 'pin':
+        setIsPinned((prev) => !prev);
+        break;
+      case 'copy-url':
+        handleCopyNoteUrl();
+        break;
+      case 'copy-content':
+        await handleCopyTitleAndContent();
+        break;
+      case 'share':
+        setSharingNote({
+          ...note,
+          title,
+          content: editorRef.current?.getHTML() || content,
+          isList,
+          todos,
+          color,
+          theme,
+          labels,
+          category,
+          images,
+          drawings,
+        });
+        break;
+      case 'duplicate':
+        await handleSaveAndClose();
+        await duplicateNote(note.id);
+        break;
+      case 'print':
+        handlePrint();
+        break;
+      case 'archive':
+        if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+        if (maxWaitTimerRef.current) clearTimeout(maxWaitTimerRef.current);
+        await saveCurrentNote('Auto snapshot before archive toggle');
+        await toggleArchiveNote(note.id);
+        onClose();
+        break;
+      case 'trash':
+        if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+        if (maxWaitTimerRef.current) clearTimeout(maxWaitTimerRef.current);
+        activeNoteIdRef.current = null;
+        await trashNote(note.id);
+        onClose();
+        break;
+      case 'close':
+        await handleSaveAndClose();
+        break;
+    }
+  };
 
   if (!isOpen || !note) return null;
 
@@ -1195,35 +1453,10 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
       } : undefined}
       className={
         fullPage
-          ? "w-full max-w-5xl mx-auto flex flex-col pb-12 animate-in fade-in duration-150"
-          : "fixed inset-0 z-50 flex flex-col bg-black/60 backdrop-blur-xs p-0 sm:p-4 md:p-8 sm:items-center sm:justify-center overflow-y-auto animate-in fade-in duration-150"
+          ? "w-full max-w-5xl mx-auto flex flex-col pb-8 animate-in fade-in duration-150"
+          : "fixed inset-0 z-50 flex flex-col bg-black/55 backdrop-blur-xs p-0 sm:p-4 md:p-8 sm:items-center sm:justify-center overflow-y-auto animate-in fade-in duration-150"
       }
     >
-      {fullPage && (
-        <div className="flex items-center justify-between mb-3 px-1 sm:px-2">
-          <button
-            type="button"
-            onClick={handleSaveAndClose}
-            className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-black/5 dark:hover:bg-white/10 transition-colors cursor-pointer group border border-stone-200/80 dark:border-stone-700/80 bg-white/60 dark:bg-stone-800/60 shadow-2xs backdrop-blur-xs"
-            title="Back to all notes"
-          >
-            <ArrowLeft className="w-4 h-4 transition-transform group-hover:-translate-x-0.5" />
-            <span>Back to notes</span>
-          </button>
-
-          <div className="flex items-center gap-2 text-xs text-stone-500 dark:text-stone-400">
-            <span>{noteTextStats.words.toLocaleString()} {noteTextStats.words === 1 ? 'word' : 'words'}</span>
-            <span>•</span>
-            <span>{noteTextStats.characters.toLocaleString()} {noteTextStats.characters === 1 ? 'character' : 'characters'}</span>
-            {note.updatedAt && (
-              <>
-                <span>•</span>
-                <span>Last edited {new Date(note.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-              </>
-            )}
-          </div>
-        </div>
-      )}
       <div
         ref={modalContentRef}
         onClick={(e) => e.stopPropagation()}
@@ -1382,17 +1615,32 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
           </div>
         )}
 
-        {/* Multi-Level Knowledge Breadcrumb */}
-        {(isNotionPage || ancestors.length > 0) && (
-          <div className="px-3.5 sm:px-6 pt-3 pb-0 select-none flex items-center flex-wrap gap-1.5 text-xs text-stone-400 dark:text-stone-400">
-            <span>Workspace</span>
-            <span>/</span>
-            {category && (
-              <>
-                <span className="text-stone-500 dark:text-stone-400">{category}</span>
-                <span>/</span>
-              </>
+        {slashNotice && (
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-2 px-3.5 py-2 rounded-xl bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 shadow-xl text-xs font-medium animate-in fade-in duration-150">
+            <span>{slashNotice}</span>
+          </div>
+        )}
+
+        {/* Unified Notion Clean Top Header Bar */}
+        <div className="px-3 sm:px-5 h-11 flex items-center justify-between gap-2 border-b border-black/[0.05] dark:border-white/[0.06] shrink-0 select-none">
+          {/* Left: Back arrow + Clean Breadcrumb + Only Active Metadata Badges */}
+          <div className="flex items-center gap-1.5 min-w-0 flex-1 overflow-x-auto no-scrollbar text-xs">
+            <button
+              type="button"
+              onClick={handleSaveAndClose}
+              className={`inline-flex items-center gap-1 px-1.5 py-1 rounded-md text-stone-500 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-black/[0.05] dark:hover:bg-white/[0.07] transition-colors shrink-0 cursor-pointer ${
+                fullPage ? '' : 'sm:hidden'
+              }`}
+              title={fullPage ? 'Back to notes' : 'Save and close'}
+            >
+              <ArrowLeft className="w-4 h-4" />
+              {fullPage && <span className="hidden sm:inline font-medium">Notes</span>}
+            </button>
+
+            {fullPage && (
+              <span className="hidden sm:inline text-stone-300 dark:text-stone-600 shrink-0">/</span>
             )}
+
             {ancestors.map((anc) => (
               <React.Fragment key={anc.id}>
                 <button
@@ -1401,251 +1649,77 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
                     await saveCurrentNote('Auto snapshot before returning to parent');
                     setEditingNote(anc);
                   }}
-                  className="hover:underline flex items-center gap-1 text-stone-500 hover:text-amber-600 dark:hover:text-amber-400 cursor-pointer"
+                  className="hover:underline inline-flex items-center gap-1 text-stone-500 hover:text-stone-900 dark:text-stone-400 dark:hover:text-stone-100 cursor-pointer shrink-0 max-w-[140px]"
                 >
-                  {anc.isHub ? (
-                    <span className="text-xs">🏠</span>
-                  ) : (
-                    <FileText className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                  )}
-                  <span className="truncate max-w-[150px]">{anc.title || 'Parent note'}</span>
+                  {anc.isHub && <span className="text-[11px]">🏠</span>}
+                  <span className="truncate">{anc.title || 'Untitled'}</span>
                 </button>
-                <span>/</span>
+                <span className="text-stone-300 dark:text-stone-600 shrink-0">/</span>
               </React.Fragment>
             ))}
-            <span className="text-stone-700 dark:text-stone-200 font-medium truncate max-w-[200px]">
-              {isHub ? '🏠' : categoryObj?.icon || '📚'} {title || 'Untitled'}
+
+            <span className="text-stone-800 dark:text-stone-200 font-medium truncate max-w-[190px]">
+              {title || 'Untitled'}
             </span>
-          </div>
-        )}
 
-        {/* Header: Note Title */}
-        <div className="px-3.5 sm:px-6 pt-3 sm:pt-4 pb-1.5 shrink-0">
-          <div className="flex items-center gap-2">
-            {/* Native Mobile App Back Arrow (←) */}
-            <button
-              type="button"
-              onClick={handleSaveAndClose}
-              className="sm:hidden p-2 -ml-1.5 rounded-full text-stone-600 dark:text-stone-300 hover:bg-black/10 dark:hover:bg-white/10 transition-colors shrink-0"
-              title="Save and back"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </button>
-
-            {isNotionPage && (
-              <span className="text-2xl sm:text-3xl leading-none select-none shrink-0 mr-1">
-                {categoryObj?.icon || '📚'}
-              </span>
-            )}
-
-            <textarea
-              placeholder={isNotionPage ? 'Untitled page' : 'Title'}
-              value={title}
-              rows={1}
-              onChange={(e) => {
-                setTitle(e.target.value);
-                e.target.style.height = 'auto';
-                e.target.style.height = `${e.target.scrollHeight}px`;
-              }}
-              ref={(el) => {
-                if (el) {
-                  el.style.height = 'auto';
-                  el.style.height = `${el.scrollHeight}px`;
-                }
-              }}
-              className={`w-full bg-transparent text-stone-900 dark:text-stone-100 placeholder:text-stone-400 outline-none resize-none leading-snug overflow-hidden block ${
-                isNotionPage ? 'font-bold text-2xl sm:text-3xl tracking-tight' : 'font-semibold'
-              }`}
-              style={!isNotionPage ? { fontSize: 'calc(var(--note-font-size, 15px) * 1.25)' } : undefined}
-            />
-
-            {/* Mobile Done checkmark button */}
-            <button
-              type="button"
-              onClick={handleSaveAndClose}
-              className="sm:hidden p-2 -mr-1.5 rounded-full text-stone-600 dark:text-stone-300 hover:bg-black/10 dark:hover:bg-white/10 transition-colors shrink-0"
-              title="Save and done"
-            >
-              <Check className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-            </button>
-          </div>
-
-          {/* Quick-Access Category & Labels Bar (Optimized for Mobile & Desktop) */}
-          <div className="flex flex-wrap items-center gap-1.5 mt-2 mb-1">
-            {/* Category Chip or "+ Category" button */}
-            {category ? (
-              <span
-                className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-full text-xs font-semibold bg-stone-100 dark:bg-stone-800 text-stone-800 dark:text-stone-200 border border-stone-200 dark:border-stone-700 shadow-2xs group transition-all"
-              >
+            {/* Quiet Active Category Pill (clickable to change or remove) */}
+            {category && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-black/[0.04] dark:bg-white/[0.07] text-stone-600 dark:text-stone-300 shrink-0">
                 <button
                   type="button"
                   onClick={(e) => noteActionsRef.current?.openCategoryPicker(e.currentTarget)}
-                  className="flex items-center gap-1.5 hover:opacity-80 cursor-pointer"
+                  className="inline-flex items-center gap-1 hover:text-stone-900 dark:hover:text-white cursor-pointer"
                   title="Change category"
                 >
                   <span>{categoryObj?.icon || '📁'}</span>
-                  <span>{category}</span>
+                  <span className="truncate max-w-[100px]">{category}</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => handleCategoryChange(null)}
-                  className="hover:opacity-75 ml-0.5 rounded-full p-0.5 hover:bg-black/10 dark:hover:bg-white/10 transition-colors cursor-pointer"
+                  className="text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 cursor-pointer"
                   title="Remove category"
                 >
-                  <X className="w-3 h-3" />
+                  <X className="w-2.5 h-2.5" />
                 </button>
               </span>
-            ) : (
-              <button
-                type="button"
-                onClick={(e) => noteActionsRef.current?.openCategoryPicker(e.currentTarget)}
-                className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-full text-xs font-medium bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 border border-stone-200 dark:border-stone-700 transition-colors cursor-pointer"
-                title="Add category"
-              >
-                <Folder className="w-3.5 h-3.5 text-stone-500 dark:text-stone-400" />
-                <span>+ Category</span>
-              </button>
             )}
 
-            {/* Labels Chips */}
+            {/* Quiet Active Labels (only when assigned) */}
             {labels.map((lbl) => (
               <span
                 key={lbl}
-                className="inline-flex items-center gap-1 px-2.5 sm:px-3 py-1 rounded-full text-xs font-medium bg-stone-100 dark:bg-stone-800 text-stone-800 dark:text-stone-200 border border-stone-200 dark:border-stone-700 shadow-2xs"
+                className="hidden md:inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] text-stone-500 dark:text-stone-400 bg-black/[0.03] dark:bg-white/[0.05] shrink-0"
               >
-                <span className="text-stone-400 dark:text-stone-500 font-semibold">#</span>
-                <span>{lbl}</span>
+                <span>#{lbl}</span>
                 <button
                   type="button"
                   onClick={() => handleToggleLabel(lbl)}
-                  className="hover:text-red-500 ml-0.5 rounded-full p-0.5 hover:bg-black/10 dark:hover:bg-white/10 transition-colors cursor-pointer"
+                  className="hover:text-red-500 cursor-pointer"
                   title="Remove label"
                 >
-                  <X className="w-3 h-3" />
+                  <X className="w-2.5 h-2.5" />
                 </button>
               </span>
             ))}
 
-            {/* "+ Label" button - always accessible with 1 tap */}
-            <button
-              type="button"
-              onClick={(e) => noteActionsRef.current?.openLabelPicker(e.currentTarget)}
-              className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-full text-xs font-medium bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 border border-stone-200 dark:border-stone-700 transition-colors cursor-pointer"
-              title="Add label"
-            >
-              <Tag className="w-3.5 h-3.5 text-stone-500 dark:text-stone-400" />
-              <span>+ Label</span>
-            </button>
-
-            {/* Knowledge Hub Pin Toggle */}
-            <button
-              type="button"
-              onClick={async () => {
-                const nextHub = !isHub;
-                setIsHub(nextHub);
-                if (nextHub) setShowSubpages(true);
-                await updateNote(note.id, {
-                  isHub: nextHub,
-                  noteType: nextHub ? 'notion' : (note.noteType || 'default'),
-                });
-              }}
-              className={`inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-full text-xs font-semibold border transition-colors cursor-pointer ${
-                isHub
-                  ? 'bg-amber-500/15 border-amber-500/40 text-amber-800 dark:text-amber-300 shadow-2xs'
-                  : 'bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-600 dark:text-stone-300 border-stone-200 dark:border-stone-700'
-              }`}
-              title={
-                isHub
-                  ? 'Pinned as a Knowledge Hub in your Sidebar Tree (click to unpin)'
-                  : 'Pin as a Knowledge Hub (top-level index page in your Sidebar Tree)'
-              }
-            >
-              <Home className={`w-3.5 h-3.5 ${isHub ? 'text-amber-500' : 'text-stone-400'}`} />
-              <span>{isHub ? 'Hub ✓' : 'Make Hub'}</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Action Menus Toolbar (Start Reading always prominent on left; tools wrap/scroll cleanly on small screens) */}
-        <div className="flex flex-wrap items-center justify-between px-3.5 sm:px-6 pb-2 pt-0.5 shrink-0 gap-1.5 sm:gap-2 border-b border-black/5 dark:border-white/5">
-          {/* Left: Reading Stopwatch Controls & AES Encryption badge */}
-          <div className="flex items-center gap-1.5 flex-wrap shrink-0 max-w-full">
-            {isThisNoteStopwatchActive ? (
-              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-800 dark:text-emerald-300 animate-in fade-in shrink-0">
-                <span className="relative flex h-2 w-2 shrink-0">
-                  {activeStopwatch?.isRunning && (
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  )}
-                  <span className={`relative inline-flex rounded-full h-2 w-2 ${activeStopwatch?.isRunning ? 'bg-emerald-500' : 'bg-amber-500'}`}></span>
-                </span>
-                <span className="font-mono font-semibold text-xs min-w-[36px] tracking-tight">
-                  {formatStopwatchTime(activeStopwatch?.elapsedSeconds || 0)}
-                </span>
-                {activeStopwatch?.isRunning ? (
-                  <button
-                    type="button"
-                    onClick={pauseReadingStopwatch}
-                    className="p-1 hover:bg-emerald-500/20 rounded-full transition-colors text-emerald-700 dark:text-emerald-300"
-                    title="Pause stopwatch"
-                  >
-                    <Pause className="w-3.5 h-3.5 fill-current" />
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={resumeReadingStopwatch}
-                    className="p-1 hover:bg-emerald-500/20 rounded-full transition-colors text-emerald-700 dark:text-emerald-300"
-                    title="Resume stopwatch"
-                  >
-                    <Play className="w-3.5 h-3.5 fill-current" />
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={handleStopStopwatch}
-                  className="px-2.5 py-0.5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-semibold transition-colors flex items-center gap-1 shadow-xs whitespace-nowrap"
-                  title="Stop reading and save time"
-                >
-                  <Square className="w-2.5 h-2.5 fill-current" />
-                  <span>Stop & Save</span>
-                </button>
-              </div>
-            ) : (
-              <div className="flex items-center gap-1 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => startReadingStopwatch(note.id, title, category)}
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 transition-all border border-emerald-500/25 shadow-2xs whitespace-nowrap shrink-0"
-                  title={`Start reading stopwatch. Total recorded: ${formatReadingDuration(noteReadingStats.totalSeconds)} (${noteReadingStats.sessionCount} sessions)`}
-                >
-                  <Timer className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                  <span>Start Reading</span>
-                  {noteReadingStats.totalSeconds > 0 && (
-                    <span className="text-[10px] text-stone-500 dark:text-stone-400 font-mono">
-                      {formatReadingDuration(noteReadingStats.totalSeconds)}
-                    </span>
-                  )}
-                </button>
-                {noteReadingStats.totalSeconds > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setIsEditingReadingTime(true)}
-                    className="p-1 text-stone-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-stone-100 dark:hover:bg-stone-800 rounded-full transition-colors shrink-0"
-                    title="Edit or reset reading time stats for this note"
-                  >
-                    <Edit2 className="w-3 h-3" />
-                  </button>
-                )}
-              </div>
+            {/* Quiet Active Hub badge (only when Hub) */}
+            {isHub && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[11px] font-medium bg-amber-500/12 text-amber-700 dark:text-amber-300 shrink-0">
+                <span>🏠</span>
+                <span className="hidden sm:inline">Hub</span>
+              </span>
             )}
 
+            {/* Encryption Protected badge (only when encrypted) */}
             {note.isEncrypted && (
-              <div className="shrink-0 flex items-center gap-1.5">
+              <div className="shrink-0 flex items-center gap-1">
                 <span
-                  className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 shadow-xs"
-                  title="Protected with AES-256-GCM zero-knowledge encryption"
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[11px] font-medium bg-amber-500/12 text-amber-700 dark:text-amber-300"
+                  title="Protected with AES-256-GCM encryption"
                 >
-                  <Lock className="w-3 h-3 text-amber-600 dark:text-amber-400" /> AES-256 Protected
+                  <Lock className="w-3 h-3" />
+                  <span className="hidden sm:inline">Encrypted</span>
                 </span>
                 <button
                   type="button"
@@ -1653,119 +1727,69 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
                     lockNoteInSession(note.id);
                     onClose();
                   }}
-                  className="px-2 py-0.5 rounded-full bg-stone-200 hover:bg-stone-300 dark:bg-stone-800 dark:hover:bg-stone-700 text-[11px] font-medium text-stone-700 dark:text-stone-300 transition-colors"
-                  title="Lock note immediately (clears decrypted cache from session)"
+                  className="px-1.5 py-0.5 rounded text-[11px] text-stone-500 hover:bg-black/[0.05] dark:hover:bg-white/[0.08] cursor-pointer"
+                  title="Lock note now"
                 >
-                  Lock Now
+                  Lock
+                </button>
+              </div>
+            )}
+
+            {/* Running Stopwatch Pill (only when active) */}
+            {isThisNoteStopwatchActive && (
+              <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-[11px] shrink-0">
+                <span className="font-mono font-semibold">
+                  {formatStopwatchTime(activeStopwatch?.elapsedSeconds || 0)}
+                </span>
+                {activeStopwatch?.isRunning ? (
+                  <button
+                    type="button"
+                    onClick={pauseReadingStopwatch}
+                    className="p-0.5 hover:bg-emerald-500/20 rounded"
+                    title="Pause stopwatch"
+                  >
+                    <Pause className="w-3 h-3 fill-current" />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={resumeReadingStopwatch}
+                    className="p-0.5 hover:bg-emerald-500/20 rounded"
+                    title="Resume stopwatch"
+                  >
+                    <Play className="w-3 h-3 fill-current" />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={handleStopStopwatch}
+                  className="px-1.5 py-0.5 rounded bg-emerald-600 text-white text-[10px] font-semibold"
+                  title="Stop & Save reading time"
+                >
+                  Stop
                 </button>
               </div>
             )}
           </div>
 
-          {/* Right: Menus & Action Buttons (Auto-snapshot status, Extract, History, Preview, URL, Share, Pin) */}
-          <div className="flex items-center gap-1 sm:gap-1.5 ml-auto overflow-x-auto no-scrollbar max-w-full">
+          {/* Right: Quiet Edit Status + Share + Pin + ••• Menu + Close & Save */}
+          <div className="flex items-center gap-1 shrink-0">
             {stopwatchToast && (
-              <span className="text-[11px] font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 px-2 py-0.5 rounded-full animate-in fade-in whitespace-nowrap">
+              <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400 px-1.5 hidden sm:inline">
                 ✓ {stopwatchToast}
               </span>
             )}
 
-            {/* Live Auto-Snapshot Status Indicator */}
-            {autoSnapshotStatus === 'editing' && (
-              <span className="text-[11px] font-medium text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/25 px-2.5 py-0.5 rounded-full flex items-center gap-1.5 animate-in fade-in">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-                <span className="hidden sm:inline">Auto-snapshotting…</span>
-                <span className="sm:hidden">Saving…</span>
-              </span>
-            )}
-            {autoSnapshotStatus === 'saved' && (
-              <span className="text-[11px] font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 border border-emerald-500/25 px-2.5 py-0.5 rounded-full flex items-center gap-1 animate-in fade-in">
-                <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                <span className="hidden sm:inline">Snapshot saved</span>
-                <span className="sm:hidden">Saved</span>
-              </span>
-            )}
+            <span className="hidden md:inline text-[11.5px] text-stone-400 dark:text-stone-500 mr-1.5 whitespace-nowrap">
+              {autoSnapshotStatus === 'editing'
+                ? 'Saving…'
+                : autoSnapshotStatus === 'saved'
+                ? 'Saved'
+                : note.updatedAt
+                ? `Edited ${new Date(note.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                : 'Edited just now'}
+            </span>
 
-            {/* Extract Selected Text to New Note Button */}
-            <button
-              type="button"
-              onClick={() => handleExtractToNewNote()}
-              disabled={!selectedText}
-              className={`p-2 rounded-full transition-colors relative ${
-                selectedText
-                  ? 'text-amber-600 bg-amber-100 dark:bg-amber-950/60 dark:text-amber-400 shadow-xs ring-1 ring-amber-500/50'
-                  : 'text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 hover:bg-black/10'
-              }`}
-              title={
-                selectedText
-                  ? `Extract selected text ("${selectedText.slice(0, 25)}...") into new note`
-                  : 'Extract selected text into new note (highlight text in note to activate)'
-              }
-            >
-              <FilePlus className="w-5 h-5" />
-              {selectedText && (
-                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-amber-500 animate-ping" />
-              )}
-            </button>
-
-            {/* Version History Button */}
-            <button
-              type="button"
-              onClick={async () => {
-                if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
-                if (maxWaitTimerRef.current) clearTimeout(maxWaitTimerRef.current);
-                await performAutoSnapshot('Snapshot before viewing history');
-                const latestNote = notes.find((n) => n.id === note.id) || note;
-                setVersionHistoryNote(latestNote);
-              }}
-              className="p-2 rounded-full transition-colors text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-black/10 relative"
-              title={`Version history (${note.versions?.length || 1} versions)`}
-            >
-              <History className="w-5 h-5" />
-              {note.versions && note.versions.length > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 px-1 bg-amber-500 text-white text-[9px] font-bold rounded-full min-w-3.5 text-center leading-tight">
-                  {note.versions.length}
-                </span>
-              )}
-            </button>
-
-            {/* Markdown Preview Button */}
-            {!isList && (
-              <button
-                type="button"
-                onClick={() => setIsPreviewMode(!isPreviewMode)}
-                className={`p-2 rounded-full transition-colors ${
-                  isPreviewMode
-                    ? 'text-amber-600 bg-amber-100 dark:bg-amber-950/60 dark:text-amber-400'
-                    : 'text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-black/10'
-                }`}
-                title={isPreviewMode ? 'Switch to Edit mode' : 'Preview markdown rendering (tables, links, etc.)'}
-              >
-                {isPreviewMode ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-              </button>
-            )}
-
-            {/* Copy Note URL Button */}
-            <button
-              type="button"
-              onClick={handleCopyNoteUrl}
-              className="p-2 rounded-full text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-black/10 transition-colors"
-              title={`Copy note full URL (${typeof window !== 'undefined' ? window.location.origin : ''}/note/${note.id})`}
-            >
-              {copiedUrlToast ? <Check className="w-5 h-5 text-emerald-500" /> : <Link2 className="w-5 h-5" />}
-            </button>
-
-            {/* Copy Note Title & Content Button */}
-            <button
-              type="button"
-              onClick={handleCopyTitleAndContent}
-              className="p-2 rounded-full text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-black/10 transition-colors"
-              title="Copy note title and content"
-            >
-              {copiedContentToast ? <Check className="w-5 h-5 text-emerald-500" /> : <ClipboardCopy className="w-5 h-5" />}
-            </button>
-
-            {/* Share Note Button */}
             <button
               type="button"
               onClick={() => {
@@ -1783,37 +1807,194 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
                   drawings,
                 });
               }}
-              className="p-2 rounded-full text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-black/10 transition-colors"
-              title="Share note (Short link & images)"
+              className="hidden sm:inline-flex items-center gap-1 px-2 py-1 rounded-md text-[12.5px] font-medium text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-white hover:bg-black/[0.05] dark:hover:bg-white/[0.07] transition-colors cursor-pointer"
+              title="Share note"
             >
-              <Share2 className="w-5 h-5" />
+              <span>Share</span>
             </button>
 
-            {/* Print Note Button */}
-            <button
-              type="button"
-              onClick={handlePrint}
-              className="p-2 rounded-full text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-black/10 transition-colors"
-              title="Print note"
-            >
-              <Printer className="w-5 h-5" />
-            </button>
-
-            {/* Pin Note Button */}
             <button
               type="button"
               onClick={() => setIsPinned(!isPinned)}
-              className={`p-2 rounded-full transition-colors ${
+              className={`p-1.5 rounded-md transition-colors cursor-pointer ${
                 isPinned
-                  ? 'text-amber-500 hover:bg-black/10'
-                  : 'text-stone-400 hover:bg-black/10'
+                  ? 'text-amber-500 bg-amber-500/10 hover:bg-amber-500/15'
+                  : 'text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-black/[0.05] dark:hover:bg-white/[0.07]'
               }`}
               title={isPinned ? 'Unpin note' : 'Pin note'}
             >
-              <Pin className={`w-5 h-5 ${isPinned ? 'fill-current' : ''}`} />
+              <Pin className={`w-4 h-4 ${isPinned ? 'fill-current' : ''}`} />
+            </button>
+
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                noteActionsRef.current?.openMoreMenu(e.currentTarget);
+              }}
+              className="p-1.5 rounded-md text-stone-500 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white hover:bg-black/[0.05] dark:hover:bg-white/[0.07] transition-colors cursor-pointer"
+              title="Page options, menus & toolbars"
+            >
+              <MoreHorizontal className="w-4 h-4" />
+            </button>
+
+            <button
+              type="button"
+              onClick={handleSaveAndClose}
+              className="ml-0.5 px-2.5 py-1 text-xs font-medium rounded-md text-stone-700 dark:text-stone-200 hover:bg-black/[0.06] dark:hover:bg-white/[0.08] transition-colors cursor-pointer whitespace-nowrap"
+              title={fullPage ? 'Close & Save' : 'Done'}
+            >
+              {fullPage ? 'Close & Save' : 'Done'}
             </button>
           </div>
         </div>
+
+        {/* Classic Toolbars (Hidden by default in clean Notion mode; toggle via /toolbar or ••• menu) */}
+        {showClassicToolbars && (
+          <div className="px-3.5 sm:px-6 py-2 border-b border-black/[0.06] dark:border-white/[0.07] space-y-2 bg-black/[0.015] dark:bg-white/[0.015] shrink-0">
+            <div className="flex flex-wrap items-center gap-1.5">
+              {category ? (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-stone-100 dark:bg-stone-800 text-stone-800 dark:text-stone-200 border border-stone-200 dark:border-stone-700">
+                  <button
+                    type="button"
+                    onClick={(e) => noteActionsRef.current?.openCategoryPicker(e.currentTarget)}
+                    className="flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <span>{categoryObj?.icon || '📁'}</span>
+                    <span>{category}</span>
+                  </button>
+                  <button type="button" onClick={() => handleCategoryChange(null)} title="Remove category">
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={(e) => noteActionsRef.current?.openCategoryPicker(e.currentTarget)}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 border border-stone-200 dark:border-stone-700 cursor-pointer"
+                >
+                  <Folder className="w-3.5 h-3.5" />
+                  <span>+ Category</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={(e) => noteActionsRef.current?.openLabelPicker(e.currentTarget)}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 border border-stone-200 dark:border-stone-700 cursor-pointer"
+              >
+                <Tag className="w-3.5 h-3.5" />
+                <span>+ Label</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={async () => {
+                  const nextHub = !isHub;
+                  setIsHub(nextHub);
+                  if (nextHub) setShowSubpages(true);
+                  await updateNote(note.id, {
+                    isHub: nextHub,
+                    noteType: nextHub ? 'notion' : (note.noteType || 'default'),
+                  });
+                }}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors cursor-pointer ${
+                  isHub
+                    ? 'bg-amber-500/15 border-amber-500/40 text-amber-800 dark:text-amber-300'
+                    : 'bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-600 dark:text-stone-300 border-stone-200 dark:border-stone-700'
+                }`}
+              >
+                <Home className={`w-3.5 h-3.5 ${isHub ? 'text-amber-500' : 'text-stone-400'}`} />
+                <span>{isHub ? 'Hub ✓' : 'Make Hub'}</span>
+              </button>
+
+              {!isThisNoteStopwatchActive && (
+                <button
+                  type="button"
+                  onClick={() => startReadingStopwatch(note.id, title, category)}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/25 cursor-pointer"
+                >
+                  <Timer className="w-3.5 h-3.5" />
+                  <span>Start Reading</span>
+                  {noteReadingStats.totalSeconds > 0 && (
+                    <span className="text-[10px] font-mono">{formatReadingDuration(noteReadingStats.totalSeconds)}</span>
+                  )}
+                </button>
+              )}
+
+              {noteReadingStats.totalSeconds > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setIsEditingReadingTime(true)}
+                  className="p-1 text-stone-400 hover:text-emerald-600 rounded-full"
+                  title="Edit reading time stats"
+                >
+                  <Edit2 className="w-3.5 h-3.5" />
+                </button>
+              )}
+
+              <div className="flex items-center gap-1 ml-auto">
+                <button
+                  type="button"
+                  onClick={() => handleExtractToNewNote()}
+                  disabled={!selectedText}
+                  className="p-1.5 rounded-full text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 disabled:opacity-40"
+                  title="Extract highlighted text to new note"
+                >
+                  <FilePlus className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+                    if (maxWaitTimerRef.current) clearTimeout(maxWaitTimerRef.current);
+                    await performAutoSnapshot('Snapshot before viewing history');
+                    const latestNote = notes.find((n) => n.id === note.id) || note;
+                    setVersionHistoryNote(latestNote);
+                  }}
+                  className="p-1.5 rounded-full text-stone-400 hover:text-stone-700 dark:hover:text-stone-200"
+                  title="Version history"
+                >
+                  <History className="w-4 h-4" />
+                </button>
+                {!isList && (
+                  <button
+                    type="button"
+                    onClick={() => setIsPreviewMode(!isPreviewMode)}
+                    className="p-1.5 rounded-full text-stone-400 hover:text-stone-700 dark:hover:text-stone-200"
+                    title="Toggle markdown preview"
+                  >
+                    {isPreviewMode ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={handleCopyNoteUrl}
+                  className="p-1.5 rounded-full text-stone-400 hover:text-stone-700 dark:hover:text-stone-200"
+                  title="Copy note URL"
+                >
+                  {copiedUrlToast ? <Check className="w-4 h-4 text-emerald-500" /> : <Link2 className="w-4 h-4" />}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCopyTitleAndContent}
+                  className="p-1.5 rounded-full text-stone-400 hover:text-stone-700 dark:hover:text-stone-200"
+                  title="Copy title & content"
+                >
+                  {copiedContentToast ? <Check className="w-4 h-4 text-emerald-500" /> : <ClipboardCopy className="w-4 h-4" />}
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePrint}
+                  className="p-1.5 rounded-full text-stone-400 hover:text-stone-700 dark:hover:text-stone-200"
+                  title="Print note"
+                >
+                  <Printer className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Note Body or Locked Category Prompt */}
         {isCategoryLocked && categoryObj ? (
@@ -1861,11 +2042,44 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
           </div>
         ) : (
           <>
-            <div className="px-3.5 sm:px-6 py-2.5 sm:py-3 overflow-y-auto flex-1 flex flex-col justify-between space-y-4">
-            <div className="space-y-4">
-              {/* 1. Notion-style Sub-pages list (Shown whenever note has subpages or is in Notion mode) */}
-              {isNotionPage && (
-                <div className="mb-2">
+            <div className="overflow-y-auto flex-1 flex flex-col">
+              <div
+                className={`w-full flex-1 flex flex-col justify-between space-y-5 ${
+                  fullPage
+                    ? 'max-w-[760px] mx-auto px-5 sm:px-10 py-6 sm:py-10'
+                    : 'px-4 sm:px-7 py-5 sm:py-6'
+                }`}
+              >
+            <div className="space-y-3">
+              {/* Clean Notion Page Title */}
+              <div className="flex items-start gap-2.5">
+                {(isHub || categoryObj?.icon) && (
+                  <span className="text-2xl sm:text-3xl leading-none select-none shrink-0 mt-1">
+                    {isHub ? '🏠' : categoryObj?.icon}
+                  </span>
+                )}
+                <textarea
+                  placeholder="Untitled"
+                  value={title}
+                  rows={1}
+                  onChange={(e) => {
+                    setTitle(e.target.value);
+                    e.target.style.height = 'auto';
+                    e.target.style.height = `${e.target.scrollHeight}px`;
+                  }}
+                  ref={(el) => {
+                    if (el) {
+                      el.style.height = 'auto';
+                      el.style.height = `${el.scrollHeight}px`;
+                    }
+                  }}
+                  className="w-full bg-transparent text-stone-900 dark:text-stone-100 placeholder:text-stone-300 dark:placeholder:text-stone-600 outline-none resize-none leading-tight overflow-hidden block font-bold text-2xl sm:text-[34px] tracking-[-0.025em]"
+                />
+              </div>
+
+              {/* 1. Notion-style Sub-pages list (Right under title cleanly when sub-pages exist or toggled) */}
+              {(childNoteIds.length > 0 || showSubpages) && (
+                <div className="pt-0.5 pb-1">
                   <NotionSubpagesSection
                     parentNoteId={note.id}
                     childNoteIds={childNoteIds}
@@ -1878,6 +2092,7 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
                       setEditingNote(childNote);
                     }}
                     category={category}
+                    autoOpenAddSignal={subpagesAddSignal}
                   />
                 </div>
               )}
@@ -2042,11 +2257,21 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
                 </div>
               )}
 
-              {/* 3. Written Note / Rich Text Editor / Markdown - ALWAYS directly editable and mixed in! */}
-              {(!isList || isNotionPage || content.trim()) && (
-                <div className={isNotionPage || isList ? 'pt-2 border-t border-black/5 dark:border-white/5' : ''}>
+              {/* 3. Written Note / Rich Text Editor / Markdown */}
+              {(!isList || showSubpages || childNoteIds.length > 0 || content.trim()) && (
+                <div className={isList ? 'pt-2 border-t border-black/5 dark:border-white/5' : ''}>
                   {isPreviewMode ? (
-                    <div className="min-h-[140px] py-1 text-stone-800 dark:text-stone-200 leading-relaxed overflow-x-auto">
+                    <div className="min-h-[140px] py-1 text-stone-800 dark:text-stone-200 leading-relaxed overflow-x-auto space-y-2">
+                      <div className="flex items-center justify-between text-[11px] text-stone-400 dark:text-stone-500 pb-1 border-b border-black/[0.05] dark:border-white/[0.06]">
+                        <span>Markdown Preview</span>
+                        <button
+                          type="button"
+                          onClick={() => setIsPreviewMode(false)}
+                          className="font-medium text-stone-600 dark:text-stone-300 hover:underline cursor-pointer"
+                        >
+                          Back to editor
+                        </button>
+                      </div>
                       <MarkdownRenderer
                         content={content}
                         onOpenLinkedNote={async (titleOrId) => {
@@ -2063,12 +2288,27 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
                       ref={editorRef}
                       content={content}
                       onChange={setContent}
-                      placeholder="Take a note, add thoughts, or type [[ to link another note…"
-                      minHeightClass={fullPage ? 'min-h-[340px]' : (isNotionPage ? 'min-h-[140px]' : 'min-h-[240px]')}
-                      autoFocus={!isNotionPage && !isList}
+                      placeholder="Press / to insert blocks"
+                      minHeightClass={fullPage ? 'min-h-[380px]' : 'min-h-[240px]'}
+                      autoFocus={!isList && !showSubpages && childNoteIds.length === 0}
                       listenWindowPaste={true}
                       currentNoteId={note.id}
                       defaultCategoryForNewLink={category}
+                      availableSlashActions={availableNoteSlashActions}
+                      slashContextFlags={{
+                        isList,
+                        isFormattingOpen,
+                        isHub,
+                        isPreviewMode,
+                        isPinned,
+                        isArchived: note.isArchived,
+                        isEncrypted: note.isEncrypted,
+                        showSubpages,
+                        showConnections: showConnectionsPanel,
+                        category,
+                        labelsCount: labels.length,
+                      }}
+                      onSlashNoteAction={handleSlashNoteAction}
                       onOpenMentionedNote={async (titleOrId) => {
                         const found = await resolveNoteByTitleOrId(titleOrId);
                         if (found) {
@@ -2096,113 +2336,148 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
               )}
             </div>
 
-          {/* Structured Connections Neighborhood, Prev/Next Stepper & Suggestions */}
-          <NoteConnectionsPanel
-            note={currentNoteForConnections}
-            ancestors={ancestors}
-            outgoing={outgoing}
-            backlinks={backlinks}
-            prevNotes={prevNotes}
-            nextNotes={nextNotes}
-            sources={sources}
-            onNavigateToNote={async (targetId) => {
-              await saveCurrentNote('Auto snapshot before following link');
-              const targetNote = await getNoteById(targetId);
-              if (targetNote) setEditingNote(targetNote);
-            }}
-            onOpenLinkModal={(defaultRole) => {
-              setLinkModalRole(defaultRole);
-              setShowLinkModal(true);
-            }}
-            onDisconnect={async (targetId, role) => {
-              await saveCurrentNote('Auto snapshot before unlinking');
-              await disconnectNotes(note.id, targetId, role || 'all');
-              const fresh = await getNoteById(note.id);
-              if (fresh) {
-                setContent(fresh.content || '');
-                setLinkedNoteIds(fresh.linkedNoteIds || []);
-                setConnections(fresh.connections || []);
-                setChildNoteIds(fresh.childNoteIds || []);
-                if (lastSnapshottedRef.current) {
-                  lastSnapshottedRef.current.content = (fresh.content || '').trim();
+          {/* Structured Connections Neighborhood (Expanded in classic mode or when toggled via /connections; quiet summary strip when clean) */}
+          {(showClassicToolbars || showConnectionsPanel) ? (
+            <NoteConnectionsPanel
+              note={currentNoteForConnections}
+              ancestors={ancestors}
+              outgoing={outgoing}
+              backlinks={backlinks}
+              prevNotes={prevNotes}
+              nextNotes={nextNotes}
+              sources={sources}
+              onNavigateToNote={async (targetId) => {
+                await saveCurrentNote('Auto snapshot before following link');
+                const targetNote = await getNoteById(targetId);
+                if (targetNote) setEditingNote(targetNote);
+              }}
+              onOpenLinkModal={(defaultRole) => {
+                setLinkModalRole(defaultRole);
+                setShowLinkModal(true);
+              }}
+              onDisconnect={async (targetId, role) => {
+                await saveCurrentNote('Auto snapshot before unlinking');
+                await disconnectNotes(note.id, targetId, role || 'all');
+                const fresh = await getNoteById(note.id);
+                if (fresh) {
+                  setContent(fresh.content || '');
+                  setLinkedNoteIds(fresh.linkedNoteIds || []);
+                  setConnections(fresh.connections || []);
+                  setChildNoteIds(fresh.childNoteIds || []);
+                  if (lastSnapshottedRef.current) {
+                    lastSnapshottedRef.current.content = (fresh.content || '').trim();
+                  }
                 }
-              }
-            }}
-            onConnectSuggested={async (targetNote, role) => {
-              await saveCurrentNote('Auto snapshot before connecting note');
-              await connectNotes(note.id, targetNote.id, role);
-              if (role !== 'part_of') {
-                setLinkedNoteIds((prev) => Array.from(new Set([...prev, targetNote.id])));
-                setConnections((prev) => {
-                  const filtered = prev.filter(
-                    (c) => !(c.targetId === targetNote.id && c.role === role)
-                  );
-                  return [...filtered, { targetId: targetNote.id, role, createdAt: Date.now() }];
-                });
-              }
-            }}
-            onOpenInMap={async () => {
-              await saveCurrentNote('Auto snapshot before opening map');
-              openInKnowledgeMap(note.id);
-            }}
-          />
-
-          {/* Chips & Timestamp */}
-          <div className="pt-2">
-            <div className="flex flex-wrap items-center gap-1.5 mb-2">
-              {reminder && (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-300">
-                  <Bell className="w-3.5 h-3.5" />
-                  {new Date(reminder).toLocaleDateString([], {
-                    month: 'short',
-                    day: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
+              }}
+              onConnectSuggested={async (targetNote, role) => {
+                await saveCurrentNote('Auto snapshot before connecting note');
+                await connectNotes(note.id, targetNote.id, role);
+                if (role !== 'part_of') {
+                  setLinkedNoteIds((prev) => Array.from(new Set([...prev, targetNote.id])));
+                  setConnections((prev) => {
+                    const filtered = prev.filter(
+                      (c) => !(c.targetId === targetNote.id && c.role === role)
+                    );
+                    return [...filtered, { targetId: targetNote.id, role, createdAt: Date.now() }];
+                  });
+                }
+              }}
+              onOpenInMap={async () => {
+                await saveCurrentNote('Auto snapshot before opening map');
+                openInKnowledgeMap(note.id);
+              }}
+            />
+          ) : totalConnectionsCount > 0 ? (
+            <div className="pt-3 border-t border-black/[0.05] dark:border-white/[0.06] flex items-center flex-wrap gap-1.5 text-xs text-stone-400 dark:text-stone-500">
+              {[...outgoing, ...backlinks, ...nextNotes, ...sources]
+                .filter((item, idx, arr) => arr.findIndex((x) => x.id === item.id) === idx)
+                .slice(0, 6)
+                .map((linked) => (
                   <button
+                    key={linked.id}
                     type="button"
-                    onClick={() => setReminder(null)}
-                    className="hover:text-red-500 ml-1"
+                    onClick={async () => {
+                      await saveCurrentNote('Auto snapshot before following link');
+                      const targetNote = await getNoteById(linked.id);
+                      if (targetNote) setEditingNote(targetNote);
+                    }}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-black/[0.03] dark:bg-white/[0.05] hover:bg-black/[0.07] dark:hover:bg-white/[0.09] text-stone-600 dark:text-stone-300 transition-colors cursor-pointer max-w-[180px]"
                   >
-                    <X className="w-3 h-3" />
+                    <Link2 className="w-3 h-3 text-stone-400 shrink-0" />
+                    <span className="truncate">{linked.title || 'Untitled'}</span>
                   </button>
-                </span>
+                ))}
+              <button
+                type="button"
+                onClick={() => setShowConnectionsPanel(true)}
+                className="ml-auto text-[11px] text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 transition-colors cursor-pointer"
+              >
+                {totalConnectionsCount} {totalConnectionsCount === 1 ? 'connection' : 'connections'} · Details
+              </button>
+            </div>
+          ) : null}
+
+          {/* Active Reminder & Classic Metadata Footer */}
+          {(reminder || showClassicToolbars) && (
+            <div className="pt-2">
+              {reminder && (
+                <div className="flex flex-wrap items-center gap-1.5 mb-2">
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-medium bg-blue-500/10 text-blue-700 dark:text-blue-300">
+                    <Bell className="w-3.5 h-3.5" />
+                    {new Date(reminder).toLocaleDateString([], {
+                      month: 'short',
+                      day: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                    <button
+                      type="button"
+                      onClick={() => setReminder(null)}
+                      className="hover:text-red-500 ml-1"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                </div>
+              )}
+
+              {showClassicToolbars && (
+                <div className="text-[11px] text-stone-400 dark:text-stone-500 flex items-center justify-between gap-2 flex-wrap pt-1">
+                  <div className="flex items-center gap-1.5 font-mono text-[11px] bg-black/5 dark:bg-white/5 px-2.5 py-1 rounded-md border border-black/5 dark:border-white/5 max-w-full min-w-0">
+                    <Link2 className="w-3 h-3 text-stone-400 shrink-0" />
+                    <span className="truncate min-w-0 flex-1 sm:flex-initial sm:max-w-[340px] text-stone-600 dark:text-stone-400 select-all">
+                      {typeof window !== 'undefined' ? `${window.location.origin}/note/${note.id}` : `/note/${note.id}`}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleCopyNoteUrl}
+                      className="hover:text-stone-900 dark:hover:text-stone-100 ml-1 font-sans text-[10px] font-semibold text-stone-600 dark:text-stone-300 hover:underline shrink-0"
+                    >
+                      {copiedUrlToast ? 'Copied!' : 'Copy'}
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-2.5 sm:gap-3 flex-wrap">
+                    <div
+                      className="flex items-center gap-1.5 text-stone-500 dark:text-stone-400 select-none"
+                      title={`${noteTextStats.words.toLocaleString()} words, ${noteTextStats.characters.toLocaleString()} characters`}
+                    >
+                      <span>{noteTextStats.words.toLocaleString()} {noteTextStats.words === 1 ? 'word' : 'words'}</span>
+                      <span className="opacity-40">•</span>
+                      <span>{noteTextStats.characters.toLocaleString()} {noteTextStats.characters === 1 ? 'character' : 'characters'}</span>
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      Edited {new Date(note.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </div>
+                  </div>
+                </div>
               )}
             </div>
-
-            <div className="text-[11px] text-stone-400 dark:text-stone-500 flex items-center justify-between gap-2 flex-wrap pt-1">
-              <div className="flex items-center gap-1.5 font-mono text-[11px] bg-black/5 dark:bg-white/5 px-2.5 py-1 rounded-md border border-black/5 dark:border-white/5 max-w-full min-w-0">
-                <Link2 className="w-3 h-3 text-stone-400 shrink-0" />
-                <span className="truncate min-w-0 flex-1 sm:flex-initial sm:max-w-[340px] text-stone-600 dark:text-stone-400 select-all">
-                  {typeof window !== 'undefined' ? `${window.location.origin}/note/${note.id}` : `/note/${note.id}`}
-                </span>
-                <button
-                  type="button"
-                  onClick={handleCopyNoteUrl}
-                  className="hover:text-stone-900 dark:hover:text-stone-100 ml-1 font-sans text-[10px] font-semibold text-stone-600 dark:text-stone-300 hover:underline shrink-0"
-                >
-                  {copiedUrlToast ? 'Copied!' : 'Copy'}
-                </button>
-              </div>
-
-              <div className="flex items-center gap-2.5 sm:gap-3 flex-wrap">
-                <div
-                  className="flex items-center gap-1.5 text-stone-500 dark:text-stone-400 select-none"
-                  title={`${noteTextStats.words.toLocaleString()} words, ${noteTextStats.characters.toLocaleString()} characters`}
-                >
-                  <span>{noteTextStats.words.toLocaleString()} {noteTextStats.words === 1 ? 'word' : 'words'}</span>
-                  <span className="opacity-40">•</span>
-                  <span>{noteTextStats.characters.toLocaleString()} {noteTextStats.characters === 1 ? 'character' : 'characters'}</span>
-                </div>
-
-                <div className="flex items-center gap-1">
-                  <Clock className="w-3 h-3" />
-                  Edited {new Date(note.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </div>
+          )}
               </div>
             </div>
-          </div>
-        </div>
 
         {/* Google Keep Authentic Formatting Bar (H1, H2, Aa, B, I, U, Lists, Clear) */}
         {!isList && isFormattingOpen && (
@@ -2214,9 +2489,15 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
           </div>
         )}
 
-        {/* Footer toolbar */}
-        <div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-5 py-2.5 sm:py-3.5 pb-[max(0.6rem,env(safe-area-inset-bottom))] border-t border-black/5 dark:border-white/5 bg-black/2 dark:bg-white/2 shrink-0 relative">
-          <div className="w-full sm:w-auto sm:flex-1 min-w-0">
+        {/* Footer toolbar (hidden in clean Notion mode unless trashed or classic toolbars toggled on; portals remain mounted cleanly) */}
+        <div
+          className={
+            showClassicToolbars || note.isTrash
+              ? 'flex flex-wrap items-center justify-between gap-2 px-3 sm:px-5 py-2.5 sm:py-3.5 pb-[max(0.6rem,env(safe-area-inset-bottom))] border-t border-black/5 dark:border-white/5 bg-black/2 dark:bg-white/2 shrink-0 relative'
+              : 'contents'
+          }
+        >
+          <div className={showClassicToolbars || note.isTrash ? 'w-full sm:w-auto sm:flex-1 min-w-0' : 'contents'}>
             <NoteActions
               ref={noteActionsRef}
               note={{
@@ -2232,6 +2513,10 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
                 category,
               }}
               isTrash={note.isTrash}
+              hideInlineBar={!showClassicToolbars && !note.isTrash}
+              showClassicToolbars={showClassicToolbars}
+              onToggleClassicToolbars={handleToggleClassicToolbars}
+              onStartDrawing={onOpenDrawingModal ? () => onOpenDrawingModal(note.id) : undefined}
               hideInlinePrint={true}
               onColorChange={setColor}
               onThemeChange={setTheme}
@@ -2320,50 +2605,54 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
             />
           </div>
 
-          <div className="flex items-center justify-between sm:justify-end gap-1.5 w-full sm:w-auto shrink-0 ml-auto pt-1.5 sm:pt-0 border-t sm:border-t-0 border-black/5 dark:border-white/5">
-            <div className="flex items-center gap-1">
+          {(showClassicToolbars || note.isTrash) && (
+            <div className="flex items-center justify-between sm:justify-end gap-1.5 w-full sm:w-auto shrink-0 ml-auto pt-1.5 sm:pt-0 border-t sm:border-t-0 border-black/5 dark:border-white/5">
+              {showClassicToolbars && (
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setIsDateCompileModalOpen(true);
+                    }}
+                    className="p-1.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10 text-stone-600 dark:text-stone-300 transition-colors shrink-0"
+                    title="Create note from date range (Today, 7d, 14d, 30d...)"
+                  >
+                    <CalendarRange className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setIsNotionTemplateModalOpen(true);
+                    }}
+                    className="p-1.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10 text-amber-600 dark:text-amber-400 hover:text-amber-700 transition-colors shrink-0"
+                    title="Notion Template Hub (Today's Notes, Days, Per Keyword)"
+                  >
+                    <Sparkles className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handlePrint}
+                    className="px-2.5 sm:px-3 py-1.5 text-xs sm:text-sm font-medium rounded-lg text-stone-700 dark:text-stone-300 hover:bg-black/5 dark:hover:bg-white/10 active:bg-black/10 dark:active:bg-white/15 flex items-center gap-1.5 transition-colors shrink-0"
+                    title="Print note"
+                  >
+                    <Printer className="w-4 h-4" />
+                    <span>Print</span>
+                  </button>
+                </div>
+              )}
               <button
                 type="button"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setIsDateCompileModalOpen(true);
-                }}
-                className="p-1.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10 text-stone-600 dark:text-stone-300 transition-colors shrink-0"
-                title="Create note from date range (Today, 7d, 14d, 30d...)"
+                onClick={handleSaveAndClose}
+                className="px-3.5 sm:px-5 py-1.5 text-xs sm:text-sm font-medium rounded-lg text-stone-800 dark:text-stone-200 hover:bg-black/5 dark:hover:bg-white/10 active:bg-black/10 dark:active:bg-white/15 transition-colors shrink-0 cursor-pointer whitespace-nowrap"
               >
-                <CalendarRange className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setIsNotionTemplateModalOpen(true);
-                }}
-                className="p-1.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10 text-amber-600 dark:text-amber-400 hover:text-amber-700 transition-colors shrink-0"
-                title="Notion Template Hub (Today's Notes, Days, Per Keyword)"
-              >
-                <Sparkles className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                onClick={handlePrint}
-                className="px-2.5 sm:px-3 py-1.5 text-xs sm:text-sm font-medium rounded-lg text-stone-700 dark:text-stone-300 hover:bg-black/5 dark:hover:bg-white/10 active:bg-black/10 dark:active:bg-white/15 flex items-center gap-1.5 transition-colors shrink-0"
-                title="Print note"
-              >
-                <Printer className="w-4 h-4" />
-                <span>Print</span>
+                {fullPage ? 'Close & Save' : 'Close'}
               </button>
             </div>
-            <button
-              type="button"
-              onClick={handleSaveAndClose}
-              className="px-3.5 sm:px-5 py-1.5 text-xs sm:text-sm font-medium rounded-lg text-stone-800 dark:text-stone-200 hover:bg-black/5 dark:hover:bg-white/10 active:bg-black/10 dark:active:bg-white/15 transition-colors shrink-0 cursor-pointer whitespace-nowrap"
-            >
-              {fullPage ? 'Close & Save' : 'Close'}
-            </button>
-          </div>
+          )}
         </div>
       </>
     )}

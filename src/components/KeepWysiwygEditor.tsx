@@ -20,6 +20,14 @@ import Placeholder from '@tiptap/extension-placeholder';
 import Image from '@tiptap/extension-image';
 import { Table, TableRow, TableHeader, TableCell } from '@tiptap/extension-table';
 import { KeepFormattingBar } from './KeepFormattingBar';
+import { SlashCommandMenu } from './SlashCommandMenu';
+import {
+  filterSlashCommands,
+  SlashAnchorRect,
+  SlashCommandItem,
+  SlashContextFlags,
+  SlashNoteActionId,
+} from '@/lib/slashCommands';
 import { GoogleKeepFormatCommand, convertMarkdownToHtml, convertHtmlToMarkdown } from '@/lib/formatUtils';
 import { KeepMediaExtension } from '@/lib/keepMediaExtension';
 import { DataviewExtension } from '@/lib/dataviewExtension';
@@ -57,6 +65,10 @@ export interface KeepWysiwygEditorProps {
   defaultCategoryForNewLink?: string | null;
   onOpenMentionedNote?: (noteIdOrTitle: string) => void;
   onNoteMentionSelected?: (targetNote: Note, role: NoteConnectionRole) => void;
+  enableSlashMenu?: boolean;
+  availableSlashActions?: SlashNoteActionId[];
+  slashContextFlags?: SlashContextFlags;
+  onSlashNoteAction?: (actionId: SlashNoteActionId, anchorRect: SlashAnchorRect) => void;
 }
 
 interface MentionPopupState {
@@ -64,6 +76,13 @@ interface MentionPopupState {
   query: string;
   range: { from: number; to: number };
   coords: { top: number; left: number; placeAbove: boolean };
+}
+
+interface SlashPopupState {
+  isOpen: boolean;
+  query: string;
+  range: { from: number; to: number };
+  coords: SlashAnchorRect;
 }
 
 export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwygEditorProps>(
@@ -81,6 +100,10 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
       defaultCategoryForNewLink,
       onOpenMentionedNote,
       onNoteMentionSelected,
+      enableSlashMenu = true,
+      availableSlashActions,
+      slashContextFlags,
+      onSlashNoteAction,
     },
     ref
   ) => {
@@ -96,6 +119,7 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
     const onChangeRef = useRef(onChange);
     const onOpenMentionedNoteRef = useRef(onOpenMentionedNote);
     const onNoteMentionSelectedRef = useRef(onNoteMentionSelected);
+    const onSlashNoteActionRef = useRef(onSlashNoteAction);
 
     useEffect(() => {
       onChangeRef.current = onChange;
@@ -108,6 +132,10 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
     useEffect(() => {
       onNoteMentionSelectedRef.current = onNoteMentionSelected;
     }, [onNoteMentionSelected]);
+
+    useEffect(() => {
+      onSlashNoteActionRef.current = onSlashNoteAction;
+    }, [onSlashNoteAction]);
 
     // [[ Wiki-Link Live Autocomplete Popup State
     const [mentionPopup, setMentionPopup] = useState<MentionPopupState | null>(null);
@@ -131,6 +159,57 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
     useEffect(() => {
       mentionSelectedIndexRef.current = mentionSelectedIndex;
     }, [mentionSelectedIndex]);
+
+    // / Slash Command Menu State
+    const [slashPopup, setSlashPopup] = useState<SlashPopupState | null>(null);
+    const [slashSelectedIndex, setSlashSelectedIndex] = useState<number>(0);
+
+    const slashPopupRef = useRef<SlashPopupState | null>(null);
+    const slashSelectedIndexRef = useRef<number>(0);
+    const slashCandidatesRef = useRef<SlashCommandItem[]>([]);
+    const executeSlashRef = useRef<(item: SlashCommandItem) => void>(() => {});
+
+    useEffect(() => {
+      slashPopupRef.current = slashPopup;
+    }, [slashPopup]);
+
+    useEffect(() => {
+      slashSelectedIndexRef.current = slashSelectedIndex;
+    }, [slashSelectedIndex]);
+
+    const supportedNoteActionsSet = useMemo(() => {
+      const s = new Set<SlashNoteActionId>(availableSlashActions || []);
+      s.add('wiki-link');
+      return s;
+    }, [availableSlashActions]);
+
+    const slashCandidates = useMemo(() => {
+      if (!slashPopup?.isOpen) return [];
+      return filterSlashCommands(slashPopup.query, supportedNoteActionsSet, slashContextFlags);
+    }, [slashPopup?.isOpen, slashPopup?.query, supportedNoteActionsSet, slashContextFlags]);
+
+    useEffect(() => {
+      slashCandidatesRef.current = slashCandidates;
+      setSlashSelectedIndex((prev) =>
+        slashCandidates.length === 0 ? 0 : Math.min(prev, slashCandidates.length - 1)
+      );
+    }, [slashCandidates]);
+
+    useEffect(() => {
+      setSlashSelectedIndex(0);
+    }, [slashPopup?.query, slashPopup?.isOpen]);
+
+    // Close floating slash menu when clicking outside
+    useEffect(() => {
+      if (!slashPopup?.isOpen) return;
+      const handleOutsideMouseDown = (e: MouseEvent) => {
+        const target = e.target as HTMLElement | null;
+        if (target?.closest?.('[data-slash-menu="true"]')) return;
+        setSlashPopup(null);
+      };
+      document.addEventListener('mousedown', handleOutsideMouseDown);
+      return () => document.removeEventListener('mousedown', handleOutsideMouseDown);
+    }, [slashPopup?.isOpen]);
 
     // Fetch live DB matches when [[ popup is open
     useEffect(() => {
@@ -286,6 +365,175 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
         coords: { top, left, placeAbove },
       });
     }, []);
+
+    const evaluateSlashTrigger = useCallback(
+      (activeEditor: Editor) => {
+        if (!enableSlashMenu || !activeEditor.isFocused) {
+          if (slashPopupRef.current) setSlashPopup(null);
+          return;
+        }
+        const { selection } = activeEditor.state;
+        if (!selection.empty) {
+          if (slashPopupRef.current) setSlashPopup(null);
+          return;
+        }
+        const { $from } = selection;
+        if ($from.parent.type.name === 'codeBlock') {
+          if (slashPopupRef.current) setSlashPopup(null);
+          return;
+        }
+        const textBefore = $from.parent.textBetween(0, $from.parentOffset, '\n', '\uFFFC');
+        if (/\[\[([^\]\n\uFFFC]{0,60})$/.test(textBefore)) {
+          if (slashPopupRef.current) setSlashPopup(null);
+          return;
+        }
+
+        const slashMatch = textBefore.match(/(?:^|\s)(\/([^\n\/\uFFFC]{0,28}))$/);
+        if (!slashMatch) {
+          if (slashPopupRef.current) setSlashPopup(null);
+          return;
+        }
+
+        const query = slashMatch[2];
+        // Dismiss immediately if user typed "/ " (e.g. prose separator "yes / no")
+        if (query.startsWith(' ')) {
+          if (slashPopupRef.current) setSlashPopup(null);
+          return;
+        }
+
+        const rangeFrom = $from.pos - slashMatch[1].length;
+        const rangeTo = $from.pos;
+
+        let coords: SlashAnchorRect = {
+          left: 48,
+          right: 60,
+          top: 120,
+          bottom: 142,
+        };
+        try {
+          const c = activeEditor.view.coordsAtPos($from.pos);
+          coords = {
+            left: c.left,
+            right: c.right,
+            top: c.top,
+            bottom: c.bottom,
+          };
+        } catch {
+          // ignore coords errors
+        }
+
+        setSlashPopup({
+          isOpen: true,
+          query,
+          range: { from: rangeFrom, to: rangeTo },
+          coords,
+        });
+      },
+      [enableSlashMenu]
+    );
+
+    const executeSlashCommand = useCallback(
+      (item: SlashCommandItem) => {
+        const activeEditor = editorInstanceRef.current;
+        const popup = slashPopupRef.current;
+        if (!activeEditor || !popup) return;
+
+        const anchorRect = popup.coords;
+        const { from, to } = popup.range;
+        setSlashPopup(null);
+        slashPopupRef.current = null;
+
+        if (item.id === 'wiki-link') {
+          activeEditor
+            .chain()
+            .focus()
+            .deleteRange({ from, to })
+            .insertContent('[[')
+            .run();
+          onChangeRef.current(activeEditor.getHTML());
+          evaluateMentionTrigger(activeEditor);
+          return;
+        }
+
+        if (item.kind === 'note') {
+          activeEditor.chain().focus().deleteRange({ from, to }).run();
+          onChangeRef.current(activeEditor.getHTML());
+          onSlashNoteActionRef.current?.(item.id as SlashNoteActionId, anchorRect);
+          return;
+        }
+
+        const chain = activeEditor.chain().focus().deleteRange({ from, to });
+        switch (item.id) {
+          case 'text':
+            chain.clearNodes().setParagraph().run();
+            break;
+          case 'h1':
+            chain.toggleHeading({ level: 1 }).run();
+            break;
+          case 'h2':
+            chain.toggleHeading({ level: 2 }).run();
+            break;
+          case 'h3':
+            chain.toggleHeading({ level: 3 }).run();
+            break;
+          case 'h4':
+            chain.toggleHeading({ level: 4 }).run();
+            break;
+          case 'bullet-list':
+            chain.toggleBulletList().run();
+            break;
+          case 'number-list':
+            chain.toggleOrderedList().run();
+            break;
+          case 'task-list':
+            chain.toggleTaskList().run();
+            break;
+          case 'quote':
+            chain.toggleBlockquote().run();
+            break;
+          case 'divider':
+            chain.setHorizontalRule().run();
+            break;
+          case 'code-block':
+            chain.toggleCodeBlock().run();
+            break;
+          case 'table':
+            chain.insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
+            break;
+          case 'dataview':
+            chain
+              .insertContent({
+                type: 'dataview',
+                attrs: {
+                  query: 'NOTION\nWHERE !isArchived\nSORT updatedAt DESC\nLIMIT 10',
+                },
+              })
+              .run();
+            break;
+          case 'bold':
+            chain.toggleBold().run();
+            break;
+          case 'italic':
+            chain.toggleItalic().run();
+            break;
+          case 'underline':
+            chain.toggleUnderline().run();
+            break;
+          case 'inline-code':
+            chain.toggleCode().run();
+            break;
+          case 'clear-format':
+            chain.unsetAllMarks().clearNodes().run();
+            break;
+        }
+        onChangeRef.current(activeEditor.getHTML());
+      },
+      [evaluateMentionTrigger]
+    );
+
+    useEffect(() => {
+      executeSlashRef.current = executeSlashCommand;
+    }, [executeSlashCommand]);
 
     // Convert any raw markdown to proper HTML for initial Tiptap load
     const initialHtml = convertMarkdownToHtml(content);
@@ -549,9 +797,11 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
       onUpdate: ({ editor }) => {
         onChangeRef.current(editor.getHTML());
         evaluateMentionTrigger(editor);
+        evaluateSlashTrigger(editor);
       },
       onSelectionUpdate: ({ editor }) => {
         evaluateMentionTrigger(editor);
+        evaluateSlashTrigger(editor);
       },
       editorProps: {
         attributes: {
@@ -566,6 +816,7 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
 
             if (event.key === 'Escape') {
               event.preventDefault();
+              event.stopPropagation();
               setMentionPopup(null);
               return true;
             }
@@ -593,6 +844,43 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
               if (hasCreateOption && idx === cands.length) {
                 event.preventDefault();
                 createAndLinkRef.current(activePopup.query);
+                return true;
+              }
+            }
+          }
+
+          const activeSlash = slashPopupRef.current;
+          if (activeSlash?.isOpen) {
+            const cands = slashCandidatesRef.current;
+            const totalItems = cands.length;
+
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              event.stopPropagation();
+              setSlashPopup(null);
+              slashPopupRef.current = null;
+              return true;
+            }
+            if (event.key === 'ArrowDown') {
+              if (totalItems > 0) {
+                event.preventDefault();
+                setSlashSelectedIndex((prev) => (prev + 1) % totalItems);
+              }
+              return true;
+            }
+            if (event.key === 'ArrowUp') {
+              if (totalItems > 0) {
+                event.preventDefault();
+                setSlashSelectedIndex((prev) => (prev - 1 + totalItems) % totalItems);
+              }
+              return true;
+            }
+            if (event.key === 'Enter' || event.key === 'Tab') {
+              const idx = slashSelectedIndexRef.current;
+              const target = cands[idx] || cands[0];
+              if (target) {
+                event.preventDefault();
+                executeSlashRef.current(target);
                 return true;
               }
             }
@@ -828,11 +1116,30 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
           </div>
         )}
 
+        {/* / Slash Command Floating Menu */}
+        {slashPopup?.isOpen && !mentionPopup?.isOpen && (
+          <SlashCommandMenu
+            query={slashPopup.query}
+            items={slashCandidates}
+            selectedIndex={slashSelectedIndex}
+            coords={slashPopup.coords}
+            flags={slashContextFlags}
+            onSelect={executeSlashCommand}
+            onHoverIndex={setSlashSelectedIndex}
+            onClose={() => {
+              setSlashPopup(null);
+              slashPopupRef.current = null;
+              editor?.commands.focus();
+            }}
+          />
+        )}
+
         {/* [[ Wiki-Link Live Autocomplete Portal */}
         {typeof document !== 'undefined' &&
           mentionPopup?.isOpen &&
           createPortal(
             <div
+              data-mention-menu="true"
               onMouseDown={(e) => {
                 e.preventDefault();
                 e.stopPropagation();

@@ -18,7 +18,16 @@ import {
   Folder,
   Tag,
   Home,
+  MoreHorizontal,
 } from 'lucide-react';
+import {
+  getClassicToolbarsServerSnapshot,
+  getClassicToolbarsSnapshot,
+  SlashAnchorRect,
+  SlashNoteActionId,
+  subscribeClassicToolbars,
+  toggleClassicToolbarsPreference,
+} from '@/lib/slashCommands';
 import { useKeep } from '@/context/KeepContext';
 import { NoteActions, NoteActionsHandle } from './NoteActions';
 import { KeepFormattingBar } from './KeepFormattingBar';
@@ -88,11 +97,22 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
   const [isNotionMode, setIsNotionMode] = useState(false);
   const [tempNoteId, setTempNoteId] = useState<string>(() => 'note-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6));
   const [showLinkModal, setShowLinkModal] = useState(false);
+  const [linkModalRole, setLinkModalRole] = useState<NoteConnectionRole>('related');
   const [isFormattingOpen, setIsFormattingOpen] = useState(false);
   const [isEncrypted, setIsEncrypted] = useState(false);
   const [encryptionPassword, setEncryptionPassword] = useState('');
   const [encryptionHint, setEncryptionHint] = useState('');
   const [showEncryptModal, setShowEncryptModal] = useState(false);
+  const [subpagesAddSignal, setSubpagesAddSignal] = useState(0);
+  const showClassicToolbars = React.useSyncExternalStore(
+    subscribeClassicToolbars,
+    getClassicToolbarsSnapshot,
+    getClassicToolbarsServerSnapshot
+  );
+
+  const handleToggleClassicToolbars = React.useCallback(() => {
+    toggleClassicToolbarsPreference();
+  }, []);
 
   // Sync category with active category filter or defaultCategory when collapsed
   React.useEffect(() => {
@@ -161,7 +181,9 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
         target.closest('.keep-sheet-anim') ||
         target.closest('[role="dialog"]') ||
         target.closest('.keep-modal') ||
-        target.closest('[data-portal="true"]')
+        target.closest('[data-portal="true"]') ||
+        target.closest('[data-slash-menu="true"]') ||
+        target.closest('[data-mention-menu="true"]')
       ) {
         return;
       }
@@ -474,6 +496,135 @@ const handleImportMhtml = async (file: File) => {
     editorRef.current?.handleFormat(cmd);
   };
 
+  const availableCreateSlashActions = React.useMemo<SlashNoteActionId[]>(() => {
+    const actions: SlashNoteActionId[] = [
+      'wiki-link',
+      'subpage',
+      'toggle-subpages',
+      'link-note',
+      'file-hub',
+      'next-note',
+      'source-note',
+      'toggle-hub',
+      'image',
+      'extract-url',
+      'import-mhtml',
+      'notion-template',
+      'date-digest',
+      'category',
+      'label',
+      'color',
+      'reminder',
+      'checklist-mode',
+      'formatting-toolbar',
+      'encrypt',
+      'pin',
+      'print',
+      'close',
+    ];
+    if (onOpenDrawingModal) {
+      actions.push('drawing');
+    }
+    return actions;
+  }, [onOpenDrawingModal]);
+
+  const handleSlashNoteAction = async (actionId: SlashNoteActionId, anchorRect: SlashAnchorRect) => {
+    switch (actionId) {
+      case 'subpage':
+        setIsNotionMode(true);
+        setSubpagesAddSignal((n) => n + 1);
+        break;
+      case 'toggle-subpages':
+        setIsNotionMode((v) => !v);
+        break;
+      case 'link-note':
+        setLinkModalRole('related');
+        setShowLinkModal(true);
+        break;
+      case 'file-hub':
+        setLinkModalRole('part_of');
+        setShowLinkModal(true);
+        break;
+      case 'next-note':
+        setLinkModalRole('next');
+        setShowLinkModal(true);
+        break;
+      case 'source-note':
+        setLinkModalRole('source');
+        setShowLinkModal(true);
+        break;
+      case 'toggle-hub': {
+        const next = !isHub;
+        setIsHub(next);
+        if (next) setIsNotionMode(true);
+        break;
+      }
+      case 'image':
+        noteActionsRef.current?.triggerImageUpload();
+        break;
+      case 'drawing':
+        onOpenDrawingModal?.();
+        break;
+      case 'extract-url':
+        setIsExtractUrlModalOpen(true);
+        break;
+      case 'import-mhtml':
+        noteActionsRef.current?.triggerMhtmlUpload();
+        break;
+      case 'notion-template':
+        setIsNotionTemplateModalOpen(true);
+        break;
+      case 'date-digest':
+        setIsDateCompileModalOpen(true);
+        break;
+      case 'category':
+        noteActionsRef.current?.openCategoryPicker(anchorRect);
+        break;
+      case 'label':
+        noteActionsRef.current?.openLabelPicker(anchorRect);
+        break;
+      case 'color':
+        noteActionsRef.current?.openColorPicker(anchorRect);
+        break;
+      case 'reminder':
+        noteActionsRef.current?.openReminderPicker(anchorRect);
+        break;
+      case 'checklist-mode':
+        setIsList((v) => !v);
+        break;
+      case 'formatting-toolbar':
+        setIsFormattingOpen((v) => !v);
+        break;
+      case 'encrypt':
+        setShowEncryptModal(true);
+        break;
+      case 'pin':
+        setIsPinned((v) => !v);
+        break;
+      case 'print':
+        printNote(
+          {
+            id: 'draft',
+            title,
+            content,
+            isList,
+            todos,
+            color,
+            theme,
+            labels,
+            category,
+            images,
+            drawings,
+          } as Note,
+          categories
+        );
+        break;
+      case 'close':
+        await handleSaveAndClose();
+        break;
+    }
+  };
+
   const colorClasses = getNoteColorClasses(color, theme);
 
   if (!isExpanded) {
@@ -481,9 +632,9 @@ const handleImportMhtml = async (file: File) => {
       <div className="w-full max-w-2xl mx-auto mb-5 sm:mb-8 px-2.5 sm:px-4">
         <div
           onClick={() => setIsExpanded(true)}
-          className="flex items-center justify-between px-3.5 sm:px-4 py-2.5 sm:py-3 bg-white dark:bg-[#202124] rounded-xl sm:rounded-2xl keep-elevation-1 border border-stone-200 dark:border-stone-700/80 cursor-text hover:keep-elevation-2 transition-all text-stone-500 dark:text-stone-400"
+          className="flex items-center justify-between px-3.5 sm:px-4 py-2.5 sm:py-3 bg-white dark:bg-[#202124] rounded-xl sm:rounded-2xl keep-elevation-1 border border-black/[0.08] dark:border-white/[0.08] cursor-text hover:keep-elevation-2 transition-all text-stone-500 dark:text-stone-400"
         >
-          <span className="font-medium text-sm">Take a note…</span>
+          <span className="font-normal text-sm">Take a note, or type / inside…</span>
           <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
             <button
               type="button"
@@ -748,6 +899,7 @@ const handleImportMhtml = async (file: File) => {
                   setEditingNote(child);
                 }}
                 category={category}
+                autoOpenAddSignal={subpagesAddSignal}
               />
             </div>
           )}
@@ -847,17 +999,29 @@ const handleImportMhtml = async (file: File) => {
 
           {/* 3. Written Note / Rich Text Editor / Markdown - always directly editable */}
           {(!isList || isNotionMode || content.trim() || childNoteIds.length > 0) && (
-            <div className={(isNotionMode || childNoteIds.length > 0 || isList) ? 'pt-2 border-t border-black/5 dark:border-white/5' : ''}>
+            <div className={isList ? 'pt-2 border-t border-black/5 dark:border-white/5' : ''}>
               <KeepWysiwygEditor
                 ref={editorRef}
                 content={content}
                 onChange={setContent}
-                placeholder="Take a note, add thoughts, or type [[ to link another note…"
+                placeholder="Press / to insert blocks"
                 minHeightClass={(isNotionMode || childNoteIds.length > 0) ? 'min-h-[80px]' : 'min-h-[100px]'}
                 autoFocus={!isNotionMode && !isList}
                 listenWindowPaste={!editingNote}
                 currentNoteId={tempNoteId}
                 defaultCategoryForNewLink={category}
+                availableSlashActions={availableCreateSlashActions}
+                slashContextFlags={{
+                  isList,
+                  isFormattingOpen,
+                  isHub,
+                  isPinned,
+                  isEncrypted,
+                  showSubpages: isNotionMode,
+                  category,
+                  labelsCount: labels.length,
+                }}
+                onSlashNoteAction={handleSlashNoteAction}
                 onNoteMentionSelected={(target, role) => {
                   if (role === 'part_of') {
                     setParentHubId(target.id);
@@ -875,211 +1039,292 @@ const handleImportMhtml = async (file: File) => {
             </div>
           )}
 
-          {/* Quick Category, Labels & Reminder chips (Optimized for Mobile & Desktop) */}
-          <div className="flex flex-wrap items-center gap-1.5 mt-3 pt-1 border-t border-black/5 dark:border-white/5">
-            {/* Category Chip or "+ Category" button */}
-            {category ? (
-              <span
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-stone-100 dark:bg-stone-800 text-stone-800 dark:text-stone-200 border border-stone-200 dark:border-stone-700 shadow-2xs group transition-all"
-              >
+          {/* Active Metadata Pills (Clean Notion style: only shown when set or classic toolbars active) */}
+          {(showClassicToolbars || category || labels.length > 0 || isHub || reminder || isEncrypted) && (
+            <div className="flex flex-wrap items-center gap-1.5 mt-2 pt-2 border-t border-black/5 dark:border-white/5">
+              {category ? (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-medium bg-black/[0.04] dark:bg-white/[0.07] text-stone-700 dark:text-stone-200 group">
+                  <button
+                    type="button"
+                    onClick={(e) => noteActionsRef.current?.openCategoryPicker(e.currentTarget)}
+                    className="flex items-center gap-1 hover:opacity-80 cursor-pointer"
+                    title="Change category"
+                  >
+                    <span>{categories.find((c) => c.name === category)?.icon || '📁'}</span>
+                    <span>{category}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCategory(null)}
+                    className="hover:opacity-75 ml-0.5 rounded-full p-0.5 cursor-pointer"
+                    title="Remove category"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              ) : showClassicToolbars ? (
                 <button
                   type="button"
                   onClick={(e) => noteActionsRef.current?.openCategoryPicker(e.currentTarget)}
-                  className="flex items-center gap-1 hover:opacity-80 cursor-pointer"
-                  title="Change category"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 border border-stone-200 dark:border-stone-700 cursor-pointer"
                 >
-                  <span>{categories.find((c) => c.name === category)?.icon || '📁'}</span>
-                  <span>{category}</span>
+                  <Folder className="w-3.5 h-3.5 text-stone-500 dark:text-stone-400" />
+                  <span>+ Category</span>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setCategory(null)}
-                  className="hover:opacity-75 ml-0.5 rounded-full p-0.5 hover:bg-black/10 dark:hover:bg-white/10 transition-colors cursor-pointer"
-                  title="Remove category"
+              ) : null}
+
+              {labels.map((lbl) => (
+                <span
+                  key={lbl}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium bg-black/[0.04] dark:bg-white/[0.07] text-stone-700 dark:text-stone-200"
                 >
-                  <X className="w-3 h-3" />
-                </button>
-              </span>
-            ) : (
-              <button
-                type="button"
-                onClick={(e) => noteActionsRef.current?.openCategoryPicker(e.currentTarget)}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 border border-stone-200 dark:border-stone-700 transition-colors cursor-pointer"
-                title="Add category"
-              >
-                <Folder className="w-3.5 h-3.5 text-stone-500 dark:text-stone-400" />
-                <span>+ Category</span>
-              </button>
-            )}
+                  <span className="text-stone-400">#</span>
+                  <span>{lbl}</span>
+                  <button
+                    type="button"
+                    onClick={() => handleToggleLabel(lbl)}
+                    className="hover:text-red-500 ml-0.5 cursor-pointer"
+                    title="Remove label"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              ))}
 
-            {/* Labels Chips */}
-            {labels.map((lbl) => (
-              <span
-                key={lbl}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-stone-100 dark:bg-stone-800 text-stone-800 dark:text-stone-200 border border-stone-200 dark:border-stone-700 shadow-2xs"
-              >
-                <span className="text-stone-400 dark:text-stone-500 font-semibold">#</span>
-                <span>{lbl}</span>
-                <button
-                  type="button"
-                  onClick={() => handleToggleLabel(lbl)}
-                  className="hover:text-red-500 ml-0.5 rounded-full p-0.5 hover:bg-black/10 dark:hover:bg-white/10 transition-colors cursor-pointer"
-                  title="Remove label"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              </span>
-            ))}
+              {showClassicToolbars && (
+                <>
+                  <button
+                    type="button"
+                    onClick={(e) => noteActionsRef.current?.openLabelPicker(e.currentTarget)}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 border border-stone-200 dark:border-stone-700 cursor-pointer"
+                  >
+                    <Tag className="w-3.5 h-3.5 text-stone-500 dark:text-stone-400" />
+                    <span>+ Label</span>
+                  </button>
 
-            {/* "+ Label" button - always accessible with 1 tap */}
-            <button
-              type="button"
-              onClick={(e) => noteActionsRef.current?.openLabelPicker(e.currentTarget)}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 border border-stone-200 dark:border-stone-700 transition-colors cursor-pointer"
-              title="Add label"
-            >
-              <Tag className="w-3.5 h-3.5 text-stone-500 dark:text-stone-400" />
-              <span>+ Label</span>
-            </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = !isHub;
+                      setIsHub(next);
+                      if (next) setIsNotionMode(true);
+                    }}
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors cursor-pointer ${
+                      isHub
+                        ? 'bg-amber-500/15 border-amber-500/40 text-amber-800 dark:text-amber-300'
+                        : 'bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-600 dark:text-stone-300 border-stone-200 dark:border-stone-700'
+                    }`}
+                  >
+                    <Home className={`w-3.5 h-3.5 ${isHub ? 'text-amber-500' : 'text-stone-400'}`} />
+                    <span>{isHub ? 'Hub ✓' : 'Make Hub'}</span>
+                  </button>
+                </>
+              )}
 
-            <button
-              type="button"
-              onClick={() => {
-                const next = !isHub;
-                setIsHub(next);
-                if (next) setIsNotionMode(true);
-              }}
-              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors cursor-pointer ${
-                isHub
-                  ? 'bg-amber-500/15 border-amber-500/40 text-amber-800 dark:text-amber-300'
-                  : 'bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-600 dark:text-stone-300 border-stone-200 dark:border-stone-700'
-              }`}
-              title="Make this new note a Knowledge Hub"
-            >
-              <Home className={`w-3.5 h-3.5 ${isHub ? 'text-amber-500' : 'text-stone-400'}`} />
-              <span>{isHub ? 'Hub ✓' : 'Make Hub'}</span>
-            </button>
+              {isHub && !showClassicToolbars && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium bg-amber-500/12 text-amber-700 dark:text-amber-300">
+                  <span>🏠 Hub</span>
+                  <button type="button" onClick={() => setIsHub(false)} className="hover:text-red-500 ml-0.5 cursor-pointer">
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              )}
 
-            {reminder && (
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-stone-100 text-stone-800 dark:bg-stone-800 dark:text-stone-200 border border-stone-200 dark:border-stone-700 shadow-2xs">
-                <span>⏰ {new Date(reminder).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
-                <button
-                  type="button"
-                  onClick={() => setReminder(null)}
-                  className="hover:text-red-500 ml-0.5 rounded-full p-0.5 hover:bg-black/10 dark:hover:bg-white/10 transition-colors cursor-pointer"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              </span>
-            )}
+              {reminder && (
+                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-medium bg-blue-500/10 text-blue-700 dark:text-blue-300">
+                  <span>⏰ {new Date(reminder).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                  <button type="button" onClick={() => setReminder(null)} className="hover:text-red-500 ml-0.5 cursor-pointer">
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              )}
 
-            {isEncrypted && (
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-stone-100 text-stone-800 dark:bg-stone-800 dark:text-stone-200 border border-stone-200 dark:border-stone-700 shadow-2xs">
-                <Lock className="w-3 h-3 text-stone-500 dark:text-stone-400" />
-                <span>AES-256 Protected</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsEncrypted(false);
-                    setEncryptionPassword('');
-                    setEncryptionHint('');
-                  }}
-                  className="hover:text-red-500 ml-0.5 rounded-full p-0.5 hover:bg-black/10 dark:hover:bg-white/10 transition-colors cursor-pointer"
-                  title="Remove encryption"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              </span>
-            )}
-          </div>
+              {isEncrypted && (
+                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-medium bg-amber-500/12 text-amber-700 dark:text-amber-300">
+                  <Lock className="w-3 h-3" />
+                  <span>Encrypted</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsEncrypted(false);
+                      setEncryptionPassword('');
+                      setEncryptionHint('');
+                    }}
+                    className="hover:text-red-500 ml-0.5 cursor-pointer"
+                    title="Remove encryption"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
-        {/* Google Keep Authentic Formatting Bar (H1, H2, Aa, B, I, U, Clear) */}
+        {/* Google Keep Authentic Formatting Bar (shown if toggled via /toolbar or •••) */}
         {!isList && isFormattingOpen && (
           <div className="px-2.5 sm:px-4 py-1.5 border-t border-black/5 dark:border-white/5 bg-black/2 dark:bg-white/2">
             <KeepFormattingBar onFormat={handleFormatText} />
           </div>
         )}
 
-        {/* Footer toolbar */}
-        <div className="flex items-center justify-between px-2 sm:px-3 py-2 border-t border-black/5 dark:border-white/5 gap-1 relative z-20">
-          <NoteActions
-            ref={noteActionsRef}
-            note={{ title, content, todos, color, theme, isList, labels, reminder, category, isEncrypted }}
-            onColorChange={setColor}
-            onThemeChange={setTheme}
-            onSelectCategory={setCategory}
-            onAddImage={handleAddImage}
-            onImportMhtml={handleImportMhtml}
-            onInsertDataview={handleInsertDataview}
-            onExtractUrl={() => setIsExtractUrlModalOpen(true)}
-            onToggleChecklist={() => setIsList(!isList)}
-            onToggleSubpages={() => setIsNotionMode(!isNotionMode)}
-            hasSubpages={isNotionMode || childNoteIds.length > 0}
-            onAddReminder={(r) => setReminder(r)}
-            onToggleLabel={handleToggleLabel}
-            onPrint={() => {
-              printNote(
-                {
-                  id: 'draft',
-                  title,
-                  content,
-                  isList,
-                  todos,
-                  color,
-                  theme,
-                  labels,
-                  category,
-                  images,
-                  drawings,
-                } as Note,
-                categories
-              );
-            }}
-            onLinkNote={() => setShowLinkModal(true)}
-            onEncrypt={() => setShowEncryptModal(true)}
-            showFormattingToggle={!isList}
-            isFormattingOpen={isFormattingOpen}
-            onToggleFormatting={() => setIsFormattingOpen(!isFormattingOpen)}
-            menuPlacement="bottom"
-            menuAlign="left"
-          />
+        {/* Footer */}
+        <div className="flex items-center justify-between px-3 py-2 border-t border-black/[0.05] dark:border-white/[0.06] gap-2 relative z-20">
+          {showClassicToolbars ? (
+            <NoteActions
+              ref={noteActionsRef}
+              note={{ title, content, todos, color, theme, isList, labels, reminder, category, isEncrypted }}
+              hideInlineBar={false}
+              showClassicToolbars={showClassicToolbars}
+              onToggleClassicToolbars={handleToggleClassicToolbars}
+              onStartDrawing={onOpenDrawingModal}
+              onColorChange={setColor}
+              onThemeChange={setTheme}
+              onSelectCategory={setCategory}
+              onAddImage={handleAddImage}
+              onImportMhtml={handleImportMhtml}
+              onInsertDataview={handleInsertDataview}
+              onExtractUrl={() => setIsExtractUrlModalOpen(true)}
+              onToggleChecklist={() => setIsList(!isList)}
+              onToggleSubpages={() => setIsNotionMode(!isNotionMode)}
+              hasSubpages={isNotionMode || childNoteIds.length > 0}
+              onAddReminder={(r) => setReminder(r)}
+              onToggleLabel={handleToggleLabel}
+              onPrint={() => {
+                printNote(
+                  {
+                    id: 'draft',
+                    title,
+                    content,
+                    isList,
+                    todos,
+                    color,
+                    theme,
+                    labels,
+                    category,
+                    images,
+                    drawings,
+                  } as Note,
+                  categories
+                );
+              }}
+              onLinkNote={() => {
+                setLinkModalRole('related');
+                setShowLinkModal(true);
+              }}
+              onEncrypt={() => setShowEncryptModal(true)}
+              showFormattingToggle={!isList}
+              isFormattingOpen={isFormattingOpen}
+              onToggleFormatting={() => setIsFormattingOpen(!isFormattingOpen)}
+              menuPlacement="bottom"
+              menuAlign="left"
+            />
+          ) : (
+            <div className="flex items-center gap-1.5">
+              <NoteActions
+                ref={noteActionsRef}
+                note={{ title, content, todos, color, theme, isList, labels, reminder, category, isEncrypted }}
+                hideInlineBar={true}
+                showClassicToolbars={showClassicToolbars}
+                onToggleClassicToolbars={handleToggleClassicToolbars}
+                onStartDrawing={onOpenDrawingModal}
+                onColorChange={setColor}
+                onThemeChange={setTheme}
+                onSelectCategory={setCategory}
+                onAddImage={handleAddImage}
+                onImportMhtml={handleImportMhtml}
+                onInsertDataview={handleInsertDataview}
+                onExtractUrl={() => setIsExtractUrlModalOpen(true)}
+                onToggleChecklist={() => setIsList(!isList)}
+                onToggleSubpages={() => setIsNotionMode(!isNotionMode)}
+                hasSubpages={isNotionMode || childNoteIds.length > 0}
+                onAddReminder={(r) => setReminder(r)}
+                onToggleLabel={handleToggleLabel}
+                onPrint={() => {
+                  printNote(
+                    {
+                      id: 'draft',
+                      title,
+                      content,
+                      isList,
+                      todos,
+                      color,
+                      theme,
+                      labels,
+                      category,
+                      images,
+                      drawings,
+                    } as Note,
+                    categories
+                  );
+                }}
+                onLinkNote={() => {
+                  setLinkModalRole('related');
+                  setShowLinkModal(true);
+                }}
+                onEncrypt={() => setShowEncryptModal(true)}
+                showFormattingToggle={!isList}
+                isFormattingOpen={isFormattingOpen}
+                onToggleFormatting={() => setIsFormattingOpen(!isFormattingOpen)}
+                menuPlacement="bottom"
+                menuAlign="right"
+              />
+              <span className="text-[11.5px] text-stone-400 dark:text-stone-500 hidden sm:inline">
+                Type <code className="font-mono text-[11px]">/</code> for blocks &amp; menus
+              </span>
+            </div>
+          )}
 
-          <div className="flex items-center gap-1.5 shrink-0">
-            <button
-              type="button"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setIsDateCompileModalOpen(true);
-              }}
-              onMouseDown={(e) => {
-                e.stopPropagation();
-              }}
-              className="p-1.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10 text-stone-600 dark:text-stone-300 transition-colors"
-              title="Create note from date range (Today, 7d, 14d, 30d...)"
-            >
-              <CalendarRange className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setIsNotionTemplateModalOpen(true);
-              }}
-              onMouseDown={(e) => {
-                e.stopPropagation();
-              }}
-              className="p-1.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10 text-amber-600 dark:text-amber-400 hover:text-amber-700 transition-colors"
-              title="Notion Template Hub (Today's Notes, Days, Per Keyword)"
-            >
-              <Sparkles className="w-4 h-4" />
-            </button>
+          <div className="flex items-center gap-1 shrink-0 ml-auto">
+            {showClassicToolbars && (
+              <>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setIsDateCompileModalOpen(true);
+                  }}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  className="p-1.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10 text-stone-600 dark:text-stone-300 transition-colors"
+                  title="Create note from date range (Today, 7d, 14d, 30d...)"
+                >
+                  <CalendarRange className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setIsNotionTemplateModalOpen(true);
+                  }}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  className="p-1.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10 text-amber-600 dark:text-amber-400 transition-colors"
+                  title="Notion Template Hub"
+                >
+                  <Sparkles className="w-4 h-4" />
+                </button>
+              </>
+            )}
+
+            {!showClassicToolbars && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  noteActionsRef.current?.openMoreMenu(e.currentTarget);
+                }}
+                className="p-1.5 rounded-md text-stone-500 hover:text-stone-900 dark:text-stone-400 dark:hover:text-white hover:bg-black/[0.05] dark:hover:bg-white/[0.08] transition-colors cursor-pointer"
+                title="More menus & options"
+              >
+                <MoreHorizontal className="w-4 h-4" />
+              </button>
+            )}
+
             <button
               type="button"
               onClick={handleSaveAndClose}
-              className="px-4 py-1.5 text-sm font-medium rounded-lg hover:bg-black/10 dark:hover:bg-white/10 text-stone-800 dark:text-stone-200 transition-colors"
+              className="px-3.5 py-1 text-xs sm:text-sm font-medium rounded-md hover:bg-black/[0.06] dark:hover:bg-white/[0.08] text-stone-700 dark:text-stone-200 transition-colors cursor-pointer"
             >
               Close
             </button>
@@ -1092,6 +1337,7 @@ const handleImportMhtml = async (file: File) => {
         currentCategory={category}
         notes={notes}
         isOpen={showLinkModal}
+        initialRole={linkModalRole}
         onClose={() => setShowLinkModal(false)}
         onSelectNote={(target, role: NoteConnectionRole) => {
           if (role === 'part_of') {

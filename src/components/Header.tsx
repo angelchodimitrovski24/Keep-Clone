@@ -70,7 +70,8 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
         e.key === '/' &&
         document.activeElement?.tagName !== 'INPUT' &&
         document.activeElement?.tagName !== 'TEXTAREA' &&
-        !(document.activeElement as HTMLElement)?.isContentEditable
+        !(document.activeElement as HTMLElement)?.isContentEditable &&
+        !(document.activeElement as HTMLElement)?.closest?.('[contenteditable="true"]')
       ) {
         e.preventDefault();
         searchInputRef.current?.focus();

@@ -809,6 +809,17 @@ export function KeepProvider({
     }
   }, []);
 
+  const mergePagedNotes = useCallback((prev: Note[], freshNotes: Note[]): Note[] => {
+    const prevById = new Map(prev.map((n) => [n.id, n]));
+    return freshNotes.map((dbNote) => {
+      const existing = prevById.get(dbNote.id);
+      if (existing && (existing.updatedAt || 0) > (dbNote.updatedAt || 0)) {
+        return existing;
+      }
+      return dbNote;
+    });
+  }, []);
+
   // Refresh current visible page slice and metadata
   const refreshNotesList = useCallback(async () => {
     try {
@@ -821,7 +832,7 @@ export function KeepProvider({
         pageSize,
         hideSubnotes: hideSubnotesFromFeed,
       });
-      setNotes(res.notes);
+      setNotes((prev) => mergePagedNotes(prev, res.notes));
       setTotalNotesCount(res.totalCount);
       setTotalPages(res.totalPages);
       if (currentPage > res.totalPages && res.totalPages >= 1) {
@@ -840,7 +851,7 @@ export function KeepProvider({
     } catch (err) {
       console.warn('refreshNotesList error:', err);
     }
-  }, [currentFilter, selectedCategory, selectedLabel, searchQuery, currentPage, pageSize, hideSubnotesFromFeed, categories, refreshStructureData]);
+  }, [currentFilter, selectedCategory, selectedLabel, searchQuery, currentPage, pageSize, hideSubnotesFromFeed, categories, refreshStructureData, mergePagedNotes]);
 
   // Auto-fetch paged notes slice whenever navigation, search, or pagination changes
   useEffect(() => {
@@ -856,7 +867,7 @@ export function KeepProvider({
         hideSubnotes: hideSubnotesFromFeed,
       })
         .then((res) => {
-          setNotes(res.notes);
+          setNotes((prev) => mergePagedNotes(prev, res.notes));
           setTotalNotesCount(res.totalCount);
           setTotalPages(res.totalPages);
         })
@@ -864,7 +875,7 @@ export function KeepProvider({
     }, searchQuery ? 120 : 0);
 
     return () => clearTimeout(timer);
-  }, [currentFilter, selectedCategory, selectedLabel, searchQuery, currentPage, pageSize, hideSubnotesFromFeed, isLoading]);
+  }, [currentFilter, selectedCategory, selectedLabel, searchQuery, currentPage, pageSize, hideSubnotesFromFeed, isLoading, mergePagedNotes]);
 
   // Database stats and benchmark runner
   const refreshDatabaseStats = useCallback(async () => {
@@ -1160,7 +1171,7 @@ export function KeepProvider({
         ...target,
         ...updates,
         versions: newVersions,
-        updatedAt: Date.now(),
+        updatedAt: Math.max(Date.now(), (target.updatedAt || 0) + 1),
       };
 
       const staysInView = noteMatchesCurrentView(updated);

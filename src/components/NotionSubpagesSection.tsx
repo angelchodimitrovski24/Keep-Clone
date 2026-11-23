@@ -23,6 +23,7 @@ interface NotionSubpagesSectionProps {
   onChangeChildIds: (newIds: string[]) => void;
   onOpenChildNote: (note: Note) => void;
   category?: string | null;
+  autoOpenAddSignal?: number;
 }
 
 export const NotionSubpagesSection: React.FC<NotionSubpagesSectionProps> = ({
@@ -31,6 +32,7 @@ export const NotionSubpagesSection: React.FC<NotionSubpagesSectionProps> = ({
   onChangeChildIds,
   onOpenChildNote,
   category,
+  autoOpenAddSignal = 0,
 }) => {
   const { notes, addNote, updateNote, getChildNotes } = useKeep();
   const [newSubpageTitle, setNewSubpageTitle] = useState('');
@@ -45,6 +47,17 @@ export const NotionSubpagesSection: React.FC<NotionSubpagesSectionProps> = ({
 
   const bottomInputRef = useRef<HTMLInputElement>(null);
   const insertInputRef = useRef<HTMLInputElement>(null);
+
+  React.useEffect(() => {
+    if (autoOpenAddSignal <= 0) return;
+    const t = setTimeout(() => {
+      setIsAddingActive(true);
+      requestAnimationFrame(() => {
+        bottomInputRef.current?.focus();
+      });
+    }, 30);
+    return () => clearTimeout(t);
+  }, [autoOpenAddSignal]);
 
   // Directly fetch child notes from IndexedDB to guarantee they are never missing due to pagination
   const [dbChildNotes, setDbChildNotes] = useState<Note[]>([]);
@@ -83,12 +96,11 @@ export const NotionSubpagesSection: React.FC<NotionSubpagesSectionProps> = ({
     }
 
     if (parentNoteId) {
-      const extras = [...dbChildNotes, ...notes].filter(
-        (n) => n.parentNoteId === parentNoteId && !n.isTrash && !seen.has(n.id)
-      );
-      for (const ex of extras) {
-        seen.add(ex.id);
-        list.push(ex);
+      for (const ex of [...dbChildNotes, ...notes]) {
+        if (ex.parentNoteId === parentNoteId && !ex.isTrash && !seen.has(ex.id)) {
+          seen.add(ex.id);
+          list.push(ex);
+        }
       }
     }
     return list;
@@ -154,7 +166,7 @@ export const NotionSubpagesSection: React.FC<NotionSubpagesSectionProps> = ({
       } else {
         updated = [...childNoteIds, created.id];
       }
-      onChangeChildIds(updated);
+      await onChangeChildIds(Array.from(new Set(updated)));
     }
   };
 
@@ -175,28 +187,48 @@ export const NotionSubpagesSection: React.FC<NotionSubpagesSectionProps> = ({
     }
   };
 
+  const isSubmittingRef = useRef(false);
+  const lastSubmittedRef = useRef<{ title: string; at: number } | null>(null);
+
   const handleBottomSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (bottomSelectedIndex >= 0 && bottomSelectedIndex < bottomMatches.length) {
-      const selected = bottomMatches[bottomSelectedIndex];
+    if (isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
+    try {
+      if (bottomSelectedIndex >= 0 && bottomSelectedIndex < bottomMatches.length) {
+        const selected = bottomMatches[bottomSelectedIndex];
+        setNewSubpageTitle('');
+        setBottomSelectedIndex(-1);
+        await handleAttachExistingNote(selected);
+        setTimeout(() => {
+          bottomInputRef.current?.focus();
+        }, 50);
+        return;
+      }
+
+      const rawVal = bottomInputRef.current?.value ?? newSubpageTitle;
+      const titleToCreate = rawVal.trim();
+      if (!titleToCreate) return;
+      const now = Date.now();
+      if (
+        lastSubmittedRef.current &&
+        lastSubmittedRef.current.title === titleToCreate &&
+        now - lastSubmittedRef.current.at < 800
+      ) {
+        return;
+      }
+      lastSubmittedRef.current = { title: titleToCreate, at: now };
+      if (bottomInputRef.current) bottomInputRef.current.value = '';
       setNewSubpageTitle('');
       setBottomSelectedIndex(-1);
-      await handleAttachExistingNote(selected);
+      await handleCreateSubpage(titleToCreate);
       setTimeout(() => {
         bottomInputRef.current?.focus();
       }, 50);
-      return;
+    } finally {
+      isSubmittingRef.current = false;
     }
-
-    if (!newSubpageTitle.trim()) return;
-    const titleToCreate = newSubpageTitle.trim();
-    setNewSubpageTitle('');
-    setBottomSelectedIndex(-1);
-    await handleCreateSubpage(titleToCreate);
-    setTimeout(() => {
-      bottomInputRef.current?.focus();
-    }, 50);
   };
 
   const handleInsertSubmit = async (e: React.FormEvent) => {
@@ -241,51 +273,55 @@ export const NotionSubpagesSection: React.FC<NotionSubpagesSectionProps> = ({
   };
 
   return (
-    <div className="w-full my-2 select-none">
-      {/* Notion Database / Sub-pages View Switcher Header */}
-      <div className="flex items-center justify-between mb-2.5 pb-1 text-xs">
-        <div className="flex items-center gap-1 bg-stone-100 dark:bg-stone-800/60 p-0.5 rounded-lg border border-black/[0.05] dark:border-white/[0.05]">
-          <button
-            type="button"
-            onClick={() => setViewMode('list')}
-            className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium transition-colors ${
-              viewMode === 'list'
-                ? 'bg-white dark:bg-[#2c2c2c] text-stone-900 dark:text-stone-100 shadow-2xs font-semibold'
-                : 'text-stone-500 hover:text-stone-800 dark:hover:text-stone-200'
-            }`}
-            title="List view"
-          >
-            <Rows className="w-3.5 h-3.5" />
-            <span>List</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setViewMode('gallery')}
-            className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium transition-colors ${
-              viewMode === 'gallery'
-                ? 'bg-white dark:bg-[#2c2c2c] text-amber-600 dark:text-amber-400 shadow-2xs font-semibold'
-                : 'text-stone-500 hover:text-stone-800 dark:hover:text-stone-200'
-            }`}
-            title="Gallery view"
-          >
-            <LayoutGrid className="w-3.5 h-3.5" />
-            <span>Gallery</span>
-          </button>
-        </div>
+    <div className="w-full my-1 select-none group/subpages">
+      {/* Subtle hover-revealed sub-pages controls (always shown in gallery mode) */}
+      {(childNotes.length > 0 || viewMode === 'gallery') && (
+        <div
+          className={`flex items-center justify-end gap-1.5 text-[11px] transition-opacity duration-150 ${
+            viewMode === 'gallery' || isAddingActive
+              ? 'opacity-100 mb-2'
+              : 'opacity-100 sm:opacity-0 sm:group-hover/subpages:opacity-100 sm:focus-within:opacity-100 -mt-1 mb-1'
+          }`}
+        >
+          <div className="flex items-center gap-0.5 bg-black/[0.03] dark:bg-white/[0.04] p-0.5 rounded-md">
+            <button
+              type="button"
+              onClick={() => setViewMode('list')}
+              className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] transition-colors ${
+                viewMode === 'list'
+                  ? 'bg-white dark:bg-[#2c2c2c] text-stone-800 dark:text-stone-100 shadow-2xs font-medium'
+                  : 'text-stone-400 hover:text-stone-700 dark:hover:text-stone-200'
+              }`}
+              title="List view"
+            >
+              <Rows className="w-3 h-3" />
+              <span>List</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('gallery')}
+              className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] transition-colors ${
+                viewMode === 'gallery'
+                  ? 'bg-white dark:bg-[#2c2c2c] text-stone-800 dark:text-stone-100 shadow-2xs font-medium'
+                  : 'text-stone-400 hover:text-stone-700 dark:hover:text-stone-200'
+              }`}
+              title="Gallery view"
+            >
+              <LayoutGrid className="w-3 h-3" />
+              <span>Gallery</span>
+            </button>
+          </div>
 
-        <div className="flex items-center gap-2">
-          {/* Link Existing Note Button */}
           <button
             type="button"
             onClick={() => setIsLinkModalOpen(true)}
-            className="inline-flex items-center gap-1 text-xs font-medium text-stone-500 dark:text-stone-400 hover:text-amber-600 dark:hover:text-amber-400 transition-colors px-2 py-1 rounded-md hover:bg-black/[0.03] dark:hover:bg-white/[0.05]"
+            className="inline-flex items-center gap-1 text-[11px] text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 transition-colors px-1.5 py-0.5 rounded hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
             title="Search and link an existing note"
           >
-            <Link2 className="w-3.5 h-3.5" />
+            <Link2 className="w-3 h-3" />
             <span>Link existing</span>
           </button>
 
-          {/* New Page Button */}
           <button
             type="button"
             onClick={() => {
@@ -294,62 +330,28 @@ export const NotionSubpagesSection: React.FC<NotionSubpagesSectionProps> = ({
                 bottomInputRef.current?.focus();
               }, 50);
             }}
-            className="inline-flex items-center gap-1 text-xs font-medium text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 transition-colors px-2 py-1 rounded-md hover:bg-black/[0.03] dark:hover:bg-white/[0.05]"
+            className="inline-flex items-center gap-1 text-[11px] text-stone-500 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 transition-colors px-1.5 py-0.5 rounded hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
           >
-            <Plus className="w-3.5 h-3.5" />
+            <Plus className="w-3 h-3" />
             <span>New page</span>
           </button>
         </div>
-      </div>
-
-      {/* Empty State when no sub-pages exist */}
-      {childNotes.length === 0 && !isAddingActive && insertAfterIndex === null && (
-        <div className="py-5 px-4 my-2 text-center rounded-xl border border-dashed border-stone-300 dark:border-stone-700/80 bg-black/[0.015] dark:bg-white/[0.02]">
-          <FileText className="w-6 h-6 mx-auto mb-1.5 text-stone-400 dark:text-stone-500 opacity-60" />
-          <p className="text-xs font-semibold text-stone-700 dark:text-stone-300">
-            No sub-pages yet
-          </p>
-          <p className="text-[11px] text-stone-400 dark:text-stone-500 mt-0.5 max-w-sm mx-auto">
-            Add a sub-page below or link existing notes to build your Notion hierarchy.
-          </p>
-          <div className="mt-3 flex items-center justify-center gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setIsAddingActive(true);
-                setTimeout(() => bottomInputRef.current?.focus(), 50);
-              }}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-stone-900 hover:bg-stone-800 text-white dark:bg-stone-100 dark:hover:bg-white dark:text-stone-900 font-semibold text-xs transition-colors shadow-2xs cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>New sub-page</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setIsLinkModalOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-stone-200/80 hover:bg-stone-300 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200 font-medium text-xs transition-colors cursor-pointer"
-            >
-              <Link2 className="w-3.5 h-3.5" />
-              <span>Link existing note</span>
-            </button>
-          </div>
-        </div>
       )}
 
-      {/* ================= LIST VIEW (Matching the user screenshot) ================= */}
+      {/* ================= LIST VIEW (Clean Notion style) ================= */}
       {viewMode === 'list' ? (
         <div className="space-y-0.5">
           {childNotes.map((subNote, index) => (
             <React.Fragment key={subNote.id}>
               <div
                 onClick={() => onOpenChildNote(subNote)}
-                className="group relative flex items-center justify-between py-1.5 px-2 -mx-2 rounded-md hover:bg-black/[0.04] dark:hover:bg-[#252525] active:bg-black/[0.06] dark:active:bg-[#2c2c2c] cursor-pointer transition-colors"
+                className="group relative flex items-center justify-between py-1 px-1.5 -mx-1.5 rounded-md hover:bg-black/[0.04] dark:hover:bg-white/[0.05] active:bg-black/[0.06] cursor-pointer transition-colors"
               >
                 {/* Left side: Gutter (+ and :: on hover) + Page Icon + Title */}
                 <div className="flex items-center gap-2 min-w-0 flex-1">
-                  {/* Left Gutter: + and :: shown only on hover */}
+                  {/* Left Gutter: + and :: floated in left margin so page icon stays flush with Title/prose */}
                   <div
-                    className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 -ml-1 text-stone-400 dark:text-stone-500"
+                    className="hidden sm:flex items-center gap-0.5 sm:absolute sm:-left-9 sm:top-1/2 sm:-translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 text-stone-400 dark:text-stone-500"
                     onClick={(e) => e.stopPropagation()}
                   >
                     <button
@@ -385,9 +387,9 @@ export const NotionSubpagesSection: React.FC<NotionSubpagesSectionProps> = ({
                   </span>
 
                   {/* Page Title */}
-                  <span className="text-[14.5px] font-normal text-stone-800 dark:text-stone-100 truncate tracking-[-0.01em]">
+                  <span className="text-[14.5px] font-medium text-stone-800 dark:text-stone-100 truncate tracking-[-0.01em] underline decoration-stone-300 dark:decoration-stone-600 underline-offset-[4px]">
                     {subNote.title || (
-                      <span className="text-stone-400 dark:text-stone-500 italic">Untitled</span>
+                      <span className="text-stone-400 dark:text-stone-500 italic no-underline">Untitled</span>
                     )}
                   </span>
                 </div>
@@ -453,6 +455,9 @@ export const NotionSubpagesSection: React.FC<NotionSubpagesSectionProps> = ({
                             );
                           }
                         } else if (e.key === 'Escape') {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          e.nativeEvent.stopImmediatePropagation();
                           setInsertAfterIndex(null);
                           setInlineTitle('');
                           setInlineSelectedIndex(-1);
@@ -604,9 +609,10 @@ export const NotionSubpagesSection: React.FC<NotionSubpagesSectionProps> = ({
         </div>
       )}
 
-      {/* Quick-add Row at bottom of list */}
-      <div className="pt-2">
-        {isAddingActive ? (
+      {/* Quick-add Row (always quiet on resting Notion page with existing children; visible when empty or adding) */}
+      {(isAddingActive || childNotes.length === 0) && (
+        <div className="pt-1">
+          {isAddingActive ? (
           <div className="relative">
             <form
               onSubmit={handleBottomSubmit}
@@ -640,6 +646,9 @@ export const NotionSubpagesSection: React.FC<NotionSubpagesSectionProps> = ({
                       );
                     }
                   } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.nativeEvent.stopImmediatePropagation();
                     setIsAddingActive(false);
                     setNewSubpageTitle('');
                     setBottomSelectedIndex(-1);
@@ -754,7 +763,7 @@ export const NotionSubpagesSection: React.FC<NotionSubpagesSectionProps> = ({
             )}
           </div>
         ) : (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <button
               type="button"
               onClick={() => {
@@ -763,14 +772,23 @@ export const NotionSubpagesSection: React.FC<NotionSubpagesSectionProps> = ({
                   bottomInputRef.current?.focus();
                 }, 50);
               }}
-              className="flex-1 text-left flex items-center gap-2 py-1.5 px-2 -mx-2 rounded-md text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-black/[0.03] dark:hover:bg-white/[0.05] transition-colors text-[14px]"
+              className="text-left inline-flex items-center gap-1.5 py-1 px-1.5 -mx-1.5 rounded-md text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-black/[0.03] dark:hover:bg-white/[0.05] transition-colors text-[13.5px]"
             >
-              <Plus className="w-4 h-4" />
-              <span>Add a page...</span>
+              <Plus className="w-3.5 h-3.5" />
+              <span>Add a page</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsLinkModalOpen(true)}
+              className="text-left inline-flex items-center gap-1.5 py-1 px-1.5 rounded-md text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-black/[0.03] dark:hover:bg-white/[0.05] transition-colors text-[12.5px]"
+            >
+              <Link2 className="w-3.5 h-3.5" />
+              <span>Link existing</span>
             </button>
           </div>
         )}
       </div>
+      )}
 
       {/* Full Link Note Search Dialog */}
       <LinkNoteModal

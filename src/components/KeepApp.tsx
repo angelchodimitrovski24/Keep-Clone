@@ -278,7 +278,13 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
 
   const activeTabNote = useMemo(() => {
     if (!activeTabId) return null;
-    return notes.find((n) => n.id === activeTabId) || (editingNote?.id === activeTabId ? editingNote : null);
+    const fromList = notes.find((n) => n.id === activeTabId);
+    if (editingNote?.id === activeTabId) {
+      if (!fromList || (editingNote.updatedAt || 0) >= (fromList.updatedAt || 0)) {
+        return editingNote;
+      }
+    }
+    return fromList || null;
   }, [activeTabId, notes, editingNote]);
 
   const handleExtractedUrl = async (result: ExtractUrlResult, insertMode?: boolean) => {
