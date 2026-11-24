@@ -21,7 +21,9 @@ import { getNoteColorClasses } from '@/lib/constants';
 import { NoteActions } from './NoteActions';
 import { useKeep } from '@/context/KeepContext';
 import { MarkdownRenderer } from './MarkdownRenderer';
-import { toggleMarkdownCheckbox, resolveLocalMediaUrl } from '@/lib/formatUtils';
+import { toggleMarkdownCheckbox } from '@/lib/formatUtils';
+import { findBalancedDivEndIndex } from '@/lib/imageGalleryUtils';
+import { ImageGalleryGrid } from './ImageGalleryGrid';
 import { copyFilesToLocalFolder } from '@/lib/localPaste';
 import { isNoteUnlockedInSession, getUnlockedNote, lockNoteInSession } from '@/lib/encryptionSession';
 import { UnlockNoteModal } from './UnlockNoteModal';
@@ -271,7 +273,25 @@ const NoteCardComponent: React.FC<NoteCardProps> = ({
   const cardPreviewContent = useMemo(() => {
     if (!activeNote.content) return '';
     if (activeNote.content.length <= 2500) return activeNote.content;
-    return activeNote.content.slice(0, 2500) + '\n\n*(Click note to view full content...)*';
+
+    let cutIdx = 2500;
+    // Keep any data-keep-gallery block that starts before cutIdx intact (within a safe bound)
+    const galleryMatch = activeNote.content.slice(0, cutIdx).match(/<div\b[^>]*data-keep-gallery=["']true["'][^>]*>/i);
+    if (galleryMatch && galleryMatch.index !== undefined) {
+      const endIdx = findBalancedDivEndIndex(activeNote.content, galleryMatch.index);
+      if (endIdx !== -1 && endIdx <= 12000) {
+        cutIdx = Math.max(cutIdx, endIdx);
+      }
+    }
+
+    // Avoid slicing mid-HTML tag
+    const lastOpen = activeNote.content.lastIndexOf('<', cutIdx);
+    const lastClose = activeNote.content.lastIndexOf('>', cutIdx);
+    if (lastOpen > lastClose) {
+      cutIdx = lastOpen;
+    }
+
+    return activeNote.content.slice(0, cutIdx) + '\n\n*(Click note to view full content...)*';
   }, [activeNote.content]);
 
   return (
@@ -391,22 +411,13 @@ const NoteCardComponent: React.FC<NoteCardProps> = ({
           <>
             {/* Render Images / Drawings */}
             {headerImages && headerImages.length > 0 && (
-              <div
-                className={`grid gap-0.5 bg-black/5 ${
-                  activeNote.images.length === 1 ? 'grid-cols-1' : 'grid-cols-2'
-                }`}
-              >
-                {headerImages.slice(0, 4).map((img, idx) => (
-                  <div key={idx} className="relative aspect-video max-h-48 overflow-hidden">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={resolveLocalMediaUrl(img)}
-                      alt="attachment"
-                      className="w-full h-full object-cover"
-                      loading="lazy"
-                    />
-                  </div>
-                ))}
+              <div className="p-1.5 pb-0 bg-black/[0.03] dark:bg-white/[0.03] overflow-hidden rounded-t-2xl">
+                <ImageGalleryGrid
+                  images={headerImages.map((img) => ({ src: img, alt: 'attachment' }))}
+                  variant="card"
+                  maxVisible={4}
+                  interactive={false}
+                />
               </div>
             )}
 
@@ -541,6 +552,7 @@ const NoteCardComponent: React.FC<NoteCardProps> = ({
                 }`}>
                   <MarkdownRenderer
                     content={cardPreviewContent}
+                    variant="card"
                     onOpenLinkedNote={handleOpenLinkedNote}
                     onToggleCheckbox={(idx, checked) => {
                       const updated = toggleMarkdownCheckbox(activeNote.content, idx, checked);

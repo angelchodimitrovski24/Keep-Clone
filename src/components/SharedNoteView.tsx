@@ -18,16 +18,16 @@ import {
   Eye,
   CheckSquare,
   Square,
-  X,
-  Maximize2,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { SharedNoteData, TodoItem } from '@/types/note';
 import { getNoteColorClasses } from '@/lib/constants';
 import { NoteThemeArtwork } from './NoteThemeArtwork';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { ImageGalleryGrid } from './ImageGalleryGrid';
+import { ImageGalleryLightbox } from './ImageGalleryLightbox';
 import { saveNoteToDB } from '@/lib/db';
-import { resolveLocalMediaUrl, copyNoteToClipboard } from '@/lib/formatUtils';
+import { copyNoteToClipboard } from '@/lib/formatUtils';
 
 interface SharedNoteViewProps {
   note: SharedNoteData;
@@ -40,7 +40,7 @@ export const SharedNoteView: React.FC<SharedNoteViewProps> = ({ note, shortId })
   const [isSaved, setIsSaved] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isDark, setIsDark] = useState(false);
-  const [activeImage, setActiveImage] = useState<string | null>(null);
+  const [activeDrawingIdx, setActiveDrawingIdx] = useState<number | null>(null);
   const [todos, setTodos] = useState<TodoItem[]>(note.todos || []);
 
   const fullShareUrl = typeof window !== 'undefined'
@@ -320,45 +320,29 @@ export const SharedNoteView: React.FC<SharedNoteViewProps> = ({ note, shortId })
             {/* Image Gallery */}
             {note.images && note.images.length > 0 && (
               <section className="relative z-10 mb-8" aria-label="Attached images">
-                <div
-                  className={`grid gap-3 ${
-                    note.images.length === 1
-                      ? 'grid-cols-1'
-                      : note.images.length === 2
-                      ? 'grid-cols-1 sm:grid-cols-2'
-                      : 'grid-cols-2 sm:grid-cols-3'
-                  }`}
-                >
-                  {note.images.map((imgUrl, index) => (
-                    <div
-                      key={index}
-                      onClick={() => setActiveImage(imgUrl)}
-                      className="group relative cursor-pointer overflow-hidden rounded-2xl border border-black/10 dark:border-white/10 bg-black/5 dark:bg-white/5 aspect-auto max-h-96 flex items-center justify-center hover:opacity-95 transition-all shadow-xs"
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={resolveLocalMediaUrl(imgUrl)}
-                        alt={`Note visual ${index + 1}`}
-                        className="w-full h-full object-cover max-h-96 group-hover:scale-102 transition-transform duration-200"
-                        loading="lazy"
-                      />
-                      <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
-                        <Maximize2 className="w-6 h-6 drop-shadow-md" />
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                <ImageGalleryGrid
+                  images={note.images.map((imgUrl, index) => ({
+                    src: imgUrl,
+                    alt: `Note visual ${index + 1}`,
+                  }))}
+                  variant="full"
+                  interactive={true}
+                />
               </section>
             )}
 
             {/* Drawings Gallery */}
             {note.drawings && note.drawings.length > 0 && (
               <section className="relative z-10 mb-8" aria-label="Attached drawings">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {note.drawings.map((d) => (
+                <div
+                  className={`grid gap-3 ${
+                    note.drawings.length === 1 ? 'grid-cols-1' : 'grid-cols-2'
+                  }`}
+                >
+                  {note.drawings.map((d, dIdx) => (
                     <div
                       key={d.id}
-                      onClick={() => setActiveImage(d.dataUrl)}
+                      onClick={() => setActiveDrawingIdx(dIdx)}
                       className="cursor-pointer overflow-hidden rounded-2xl border border-black/10 dark:border-white/10 bg-white/70 dark:bg-stone-900/70 p-2 shadow-xs hover:opacity-95 transition-all"
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -465,28 +449,17 @@ export const SharedNoteView: React.FC<SharedNoteViewProps> = ({ note, shortId })
           )}
         </main>
 
-        {/* Fullscreen Image Lightbox Modal */}
-        {activeImage && (
-          <div
-            onClick={() => setActiveImage(null)}
-            className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-150"
-          >
-            <button
-              type="button"
-              onClick={() => setActiveImage(null)}
-              className="absolute top-4 right-4 p-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
-              title="Close image"
-            >
-              <X className="w-6 h-6" />
-            </button>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={activeImage}
-              alt="Enlarged note preview"
-              onClick={(e) => e.stopPropagation()}
-              className="max-w-full max-h-[90vh] object-contain rounded-2xl shadow-2xl"
-            />
-          </div>
+        {/* Fullscreen Drawing Lightbox Modal */}
+        {activeDrawingIdx !== null && note.drawings && note.drawings.length > 0 && (
+          <ImageGalleryLightbox
+            images={note.drawings.map((d, i) => ({
+              src: d.dataUrl,
+              alt: `Hand drawing ${i + 1}`,
+            }))}
+            initialIndex={activeDrawingIdx}
+            isOpen={true}
+            onClose={() => setActiveDrawingIdx(null)}
+          />
         )}
       </div>
     </div>

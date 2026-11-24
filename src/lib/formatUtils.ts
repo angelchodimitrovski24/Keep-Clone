@@ -1,5 +1,11 @@
 import { renderMarkdownTablesInHtml, isTableSeparatorLine, convertTableLinesToHtml } from './tableUtils';
 import { getMediaBlobUrl, getSyncLocalMediaFolder } from './localPaste';
+import {
+  buildGalleryHtmlBlock,
+  extractImageItemsFromHtml,
+  findBalancedDivEndIndex,
+  groupConsecutiveImagesInHtml,
+} from './imageGalleryUtils';
 
 export type GoogleKeepFormatCommand =
   | 'h1'
@@ -537,7 +543,32 @@ export function convertMarkdownToHtml(content: string): string {
     return `\n\n${addProtected(`<pre><code>${clean.trim()}</code></pre>`)}\n\n`;
   });
 
-  // 3.5. Protect existing note-mention chips and inline subpage blocks so HTML list/paragraph normalization never strips their attributes
+  // 3.5. Protect existing note-mention chips, inline subpage blocks, and image gallery blocks so HTML list/paragraph normalization never strips their attributes
+  {
+    const galleryStartRe = /<div\b[^>]*data-keep-gallery=["']true["'][^>]*>/gi;
+    let gMatch: RegExpExecArray | null;
+    let out = '';
+    let cursor = 0;
+    while ((gMatch = galleryStartRe.exec(text)) !== null) {
+      const startIdx = gMatch.index;
+      if (startIdx < cursor) continue;
+      const endIdx = findBalancedDivEndIndex(text, startIdx);
+      if (endIdx === -1) continue;
+      const rawGalleryBlock = text.slice(startIdx, endIdx);
+      const galleryImgs = extractImageItemsFromHtml(rawGalleryBlock);
+      out += text.slice(cursor, startIdx);
+      if (galleryImgs.length > 0) {
+        out += `\n\n${addProtected(buildGalleryHtmlBlock(galleryImgs))}\n\n`;
+      }
+      cursor = endIdx;
+      galleryStartRe.lastIndex = endIdx;
+    }
+    if (cursor > 0) {
+      out += text.slice(cursor);
+      text = out;
+    }
+  }
+
   text = text.replace(
     /<div\b([^>]*data-keep-subpage=["']true["'][^>]*)>([\s\S]*?)<\/div>/gi,
     (_m, attrs, inner) => {
@@ -919,6 +950,7 @@ export function convertMarkdownToHtml(content: string): string {
   }
 
   let finalHtml = renderMarkdownTablesInHtml(renderMarkdownImagesInString(result));
+  finalHtml = groupConsecutiveImagesInHtml(finalHtml);
   if (
     finalHtml.includes('data-keep-subpage="true"') &&
     /data-keep-subpage="true"[^>]*>[^<]*<\/div>\s*$/i.test(finalHtml)

@@ -739,9 +739,47 @@ export function getWebExportStyles(): string {
     /* Images */
     .keep-export-images-banner {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      grid-template-columns: 1fr;
       gap: 10px;
       margin-bottom: 24px;
+    }
+
+    .keep-export-images-banner:has(> :nth-child(2)) {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    @media (min-width: 640px) {
+      .keep-export-images-banner:has(> :nth-child(2)) {
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      }
+    }
+
+    .keep-image-gallery-block {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      margin: 1em 0;
+    }
+
+    .keep-image-gallery-block[data-count="3"] {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    @media (min-width: 640px) {
+      .keep-image-gallery-block[data-count="4"],
+      .keep-image-gallery-block:not([data-count="2"]):not([data-count="3"]) {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+    }
+
+    .keep-image-gallery-block img {
+      width: 100%;
+      height: 100%;
+      aspect-ratio: 4 / 3;
+      object-fit: cover;
+      margin: 0;
+      border-radius: 10px;
+      border: 1px solid var(--border-color);
     }
 
     .keep-export-img, .note-body img {

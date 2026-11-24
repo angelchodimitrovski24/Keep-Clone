@@ -67,6 +67,11 @@ function getBlockLabel(node: ProseMirrorNode): string {
   if (node.type.name === 'subpageBlock') {
     return String(node.attrs?.noteTitle || 'Sub-page');
   }
+  if (node.type.name === 'imageGallery') {
+    const count = Array.isArray(node.attrs?.images) ? node.attrs.images.length : 0;
+    return `Image gallery (${count})`;
+  }
+  if (node.type.name === 'image') return 'Image';
   if (node.type.name === 'horizontalRule') return 'Divider';
   if (node.type.name === 'table') return 'Table';
   if (node.type.name === 'keepMedia') return 'Attachment';

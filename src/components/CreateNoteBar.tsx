@@ -34,7 +34,8 @@ import { KeepFormattingBar } from './KeepFormattingBar';
 import { KeepWysiwygEditor, KeepWysiwygEditorHandle } from './KeepWysiwygEditor';
 import { NoteColor, NoteBackgroundTheme, TodoItem, NoteDrawing, Note, NoteConnection, NoteConnectionRole } from '@/types/note';
 import { getNoteColorClasses } from '@/lib/constants';
-import { GoogleKeepFormatCommand, resolveLocalMediaUrl } from '@/lib/formatUtils';
+import { GoogleKeepFormatCommand } from '@/lib/formatUtils';
+import { ImageGalleryGrid } from './ImageGalleryGrid';
 import { extractClipboardPayload, copyFilesToLocalFolder } from '@/lib/localPaste';
 import { renderMarkdownTablesInHtml } from '@/lib/tableUtils';
 import { convertHtmlToMarkdown } from '@/lib/formatUtils';
@@ -833,20 +834,14 @@ const handleImportMhtml = async (file: File) => {
         <NoteThemeArtwork theme={theme} />
         {/* Attached Images */}
         {images.length > 0 && (
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-1 p-2 bg-black/5 rounded-t-2xl overflow-hidden">
-            {images.map((img, idx) => (
-              <div key={idx} className="relative group rounded-lg overflow-hidden max-h-48">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={resolveLocalMediaUrl(img)} alt="Attachment" className="w-full h-full object-cover" />
-                <button
-                  type="button"
-                  onClick={() => setImages((prev) => prev.filter((_, i) => i !== idx))}
-                  className="absolute top-1 right-1 p-1 bg-black/60 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            ))}
+          <div className="p-2 bg-black/[0.03] dark:bg-white/[0.03] rounded-t-2xl overflow-hidden border-b border-black/[0.05] dark:border-white/[0.06]">
+            <ImageGalleryGrid
+              images={images.map((img) => ({ src: img, alt: 'Attachment' }))}
+              variant="editor"
+              editable={true}
+              interactive={true}
+              onRemoveImage={(idx) => setImages((prev) => prev.filter((_, i) => i !== idx))}
+            />
           </div>
         )}
 

@@ -31,6 +31,8 @@ import {
 } from '@/lib/slashCommands';
 import { GoogleKeepFormatCommand, convertMarkdownToHtml, convertHtmlToMarkdown } from '@/lib/formatUtils';
 import { KeepMediaExtension } from '@/lib/keepMediaExtension';
+import { ImageGalleryExtension } from '@/lib/imageGalleryExtension';
+import { GalleryImageItem } from '@/lib/imageGalleryUtils';
 import { DataviewExtension } from '@/lib/dataviewExtension';
 import { NoteMentionExtension } from '@/lib/noteMentionExtension';
 import { SubpageBlockExtension } from '@/lib/subpageBlockExtension';
@@ -1004,21 +1006,39 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
           if (savedFiles.length > 0 && activeEditor) {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const nodesToInsert: any[] = [];
+            const imageBatch: GalleryImageItem[] = [];
 
-            for (const file of savedFiles) {
-              if (file.isImage) {
+            const flushImageBatch = () => {
+              if (imageBatch.length >= 2) {
+                nodesToInsert.push({
+                  type: 'imageGallery',
+                  attrs: { images: [...imageBatch] },
+                });
+                nodesToInsert.push({ type: 'paragraph' });
+              } else if (imageBatch.length === 1) {
+                const single = imageBatch[0];
                 nodesToInsert.push({
                   type: 'image',
                   attrs: {
-                    src: file.serveUrl,
-                    alt: file.fileName,
-                    title: file.savedPath,
+                    src: single.src,
+                    alt: single.alt,
+                    title: single.title,
                   },
                 });
-                nodesToInsert.push({
-                  type: 'paragraph',
+                nodesToInsert.push({ type: 'paragraph' });
+              }
+              imageBatch.length = 0;
+            };
+
+            for (const file of savedFiles) {
+              if (file.isImage) {
+                imageBatch.push({
+                  src: file.serveUrl,
+                  alt: file.fileName,
+                  title: file.savedPath,
                 });
               } else {
+                flushImageBatch();
                 nodesToInsert.push({
                   type: 'keepMedia',
                   attrs: {
@@ -1035,6 +1055,7 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
                 });
               }
             }
+            flushImageBatch();
 
             activeEditor.chain().focus().insertContent(nodesToInsert).run();
             emitChange(activeEditor.getHTML());
@@ -1198,13 +1219,25 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
         TaskItem.configure({
           nested: true,
         }),
-        Image.configure({
+        Image.extend({
+          addAttributes() {
+            return {
+              ...this.parent?.(),
+              ungrouped: {
+                default: false,
+                parseHTML: (el) => el.getAttribute('data-ungrouped') === 'true',
+                renderHTML: (attrs) => (attrs.ungrouped ? { 'data-ungrouped': 'true' } : {}),
+              },
+            };
+          },
+        }).configure({
           inline: false,
           allowBase64: true,
           HTMLAttributes: {
             class: 'rounded-xl max-h-96 w-auto my-2 border border-black/10 dark:border-white/10 shadow-xs cursor-pointer',
           },
         }),
+        ImageGalleryExtension,
         KeepMediaExtension,
         DataviewExtension,
         NoteMentionExtension.configure({
@@ -1248,11 +1281,11 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
           class: `w-full ${minHeightClass} outline-none text-stone-800 dark:text-stone-200 leading-relaxed`,
         },
         handleKeyDown: (view, event) => {
-          // Guard NodeSelection on subpageBlock so Enter or typing "/" moves to a paragraph below instead of overwriting the subpage
+          // Guard NodeSelection on subpageBlock/imageGallery so Enter or typing moves to a paragraph below instead of overwriting
           const sel = view.state.selection;
           if (
             sel instanceof NodeSelection &&
-            sel.node?.type.name === 'subpageBlock'
+            (sel.node?.type.name === 'subpageBlock' || sel.node?.type.name === 'imageGallery')
           ) {
             if (
               event.key === 'Enter' ||
@@ -1591,7 +1624,7 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
           className="flex-1 py-1 cursor-text relative"
           onClick={(e) => {
             const target = e.target as HTMLElement | null;
-            if (target?.closest?.('[data-keep-subpage="true"], [data-note-mention="true"], [data-block-drag-handle="true"]')) {
+            if (target?.closest?.('[data-keep-subpage="true"], [data-note-mention="true"], [data-block-drag-handle="true"], [data-keep-gallery-ui="true"]')) {
               return;
             }
             editor?.commands.focus();

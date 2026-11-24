@@ -51,7 +51,8 @@ import { KeepWysiwygEditor, KeepWysiwygEditorHandle } from './KeepWysiwygEditor'
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { useKeep } from '@/context/KeepContext';
 import { renderMarkdownTablesInHtml } from '@/lib/tableUtils';
-import { GoogleKeepFormatCommand, resolveLocalMediaUrl, copyNoteToClipboard } from '@/lib/formatUtils';
+import { GoogleKeepFormatCommand, copyNoteToClipboard } from '@/lib/formatUtils';
+import { ImageGalleryGrid } from './ImageGalleryGrid';
 import { extractClipboardPayload, copyFilesToLocalFolder } from '@/lib/localPaste';
 import { EncryptNoteModal } from './EncryptNoteModal';
 import { LinkNoteModal } from './LinkNoteModal';
@@ -323,6 +324,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
   } | null>(null);
 
   const activeNoteIdRef = useRef<string | null>(null);
+  const isEditorDirtyRef = useRef(false);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const maxWaitTimerRef = useRef<NodeJS.Timeout | null>(null);
   const lastRestoredVerIdRef = useRef<string | null>(null);
@@ -477,6 +479,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
         setAutoSnapshotStatus('idle');
 
         activeNoteIdRef.current = note.id;
+        isEditorDirtyRef.current = false;
         lastSnapshottedRef.current = {
           title: initTitle.trim(),
           content: initContent.trim(),
@@ -503,6 +506,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
           latestVer.changeSummary?.startsWith('Restored version')
         ) {
           lastRestoredVerIdRef.current = latestVer.id;
+          isEditorDirtyRef.current = false;
           setTitle(latestVer.title || '');
           setContent(latestVer.content || '');
           setTodos(latestVer.todos ? JSON.parse(JSON.stringify(latestVer.todos)) : []);
@@ -634,7 +638,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
     async (reason?: string) => {
       if (!note || activeNoteIdRef.current !== note.id) return;
 
-      const rawContent = editorRef.current?.getHTML() || content;
+      const rawContent = isEditorDirtyRef.current ? (editorRef.current?.getHTML() || content) : content;
       const latestContent = renderMarkdownTablesInHtml(rawContent);
       const trimmedTitle = title.trim();
       const trimmedContent = latestContent.trim();
@@ -810,7 +814,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
   useEffect(() => {
     if (!isOpen || !note || activeNoteIdRef.current !== note.id) return;
 
-    const rawContent = editorRef.current?.getHTML() || content;
+    const rawContent = isEditorDirtyRef.current ? (editorRef.current?.getHTML() || content) : content;
     const latestContent = renderMarkdownTablesInHtml(rawContent);
     const trimmedTitle = title.trim();
     const trimmedContent = latestContent.trim();
@@ -915,7 +919,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
       await stopAndSaveReadingStopwatch();
     }
 
-    const rawContent = editorRef.current?.getHTML() || content;
+    const rawContent = isEditorDirtyRef.current ? (editorRef.current?.getHTML() || content) : content;
     const latestContent = renderMarkdownTablesInHtml(rawContent);
     const trimmedTitle = title.trim();
     const trimmedContent = latestContent.trim();
@@ -1650,26 +1654,31 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
         <NoteThemeArtwork theme={theme} isModal={true} />
         {/* Images Gallery */}
         {headerImages.length > 0 && (
-          <div className="grid grid-cols-2 gap-1 p-2 bg-black/5 max-h-36 sm:max-h-60 overflow-y-auto shrink-0">
-            {headerImages.map((img, idx) => (
-              <div key={idx} className="relative group rounded-lg overflow-hidden max-h-32 sm:max-h-48">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={resolveLocalMediaUrl(img)} alt="Attachment" className="w-full h-full object-cover" />
-                <button
-                  type="button"
-                  onClick={() => setImages((prev) => prev.filter((_, i) => i !== idx))}
-                  className="absolute top-1 right-1 p-1 bg-black/60 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            ))}
+          <div className="p-2 sm:p-3 bg-black/[0.03] dark:bg-white/[0.03] max-h-56 sm:max-h-80 overflow-y-auto shrink-0 border-b border-black/[0.05] dark:border-white/[0.06]">
+            <ImageGalleryGrid
+              images={headerImages.map((img) => ({ src: img, alt: 'Attachment' }))}
+              variant="editor"
+              editable={true}
+              interactive={true}
+              onRemoveImage={(idx) => {
+                const targetImg = headerImages[idx];
+                setImages((prev) => {
+                  const pos = prev.indexOf(targetImg);
+                  if (pos === -1) return prev.filter((_, i) => i !== idx);
+                  return prev.filter((_, i) => i !== pos);
+                });
+              }}
+            />
           </div>
         )}
 
         {/* Drawings Gallery */}
         {drawings.length > 0 && (
-          <div className="grid grid-cols-2 gap-1 p-2 bg-black/5 max-h-48 overflow-y-auto shrink-0">
+          <div
+            className={`grid gap-1.5 p-2 bg-black/5 max-h-48 overflow-y-auto shrink-0 ${
+              drawings.length === 1 ? 'grid-cols-1' : 'grid-cols-2'
+            }`}
+          >
             {drawings.map((d, idx) => (
               <div key={d.id} className="relative group rounded-lg overflow-hidden bg-white max-h-40">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -1677,7 +1686,7 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
                 <button
                   type="button"
                   onClick={() => setDrawings((prev) => prev.filter((_, i) => i !== idx))}
-                  className="absolute top-1 right-1 p-1 bg-black/60 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                  className="absolute top-1 right-1 p-1 bg-black/60 rounded-full text-white opacity-90 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -2456,7 +2465,10 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
                     <KeepWysiwygEditor
                       ref={editorRef}
                       content={content}
-                      onChange={setContent}
+                      onChange={(nextHtml) => {
+                        isEditorDirtyRef.current = true;
+                        setContent(nextHtml);
+                      }}
                       placeholder="Press / to insert blocks"
                       minHeightClass={fullPage ? 'min-h-[380px]' : 'min-h-[240px]'}
                       autoFocus={!isList && !showSubpages && childNoteIds.length === 0}

@@ -1,6 +1,7 @@
 import { Note, Category } from '@/types/note';
 import { resolveLocalMediaUrl, renderMarkdownImagesInString } from './formatUtils';
 import { renderMarkdownTablesInHtml } from './tableUtils';
+import { groupConsecutiveImagesInHtml } from './imageGalleryUtils';
 
 /**
  * Generates clean, printer-friendly HTML and opens the browser print dialog
@@ -38,6 +39,7 @@ export function printNote(note: Partial<Note>, categories: Category[] = []): voi
     let content = note.content;
     content = renderMarkdownImagesInString(content);
     content = renderMarkdownTablesInHtml(content);
+    content = groupConsecutiveImagesInHtml(content);
     bodyHtml = `<div class="note-body-content">${content}</div>`;
   }
 
@@ -178,6 +180,23 @@ export function printNote(note: Partial<Note>, categories: Category[] = []): voi
         table th {
           background-color: #f9fafb;
           font-weight: 600;
+        }
+        .keep-image-gallery-block {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 8px;
+          margin: 12px 0;
+        }
+        .keep-image-gallery-block[data-count="3"] {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+        .keep-image-gallery-block img {
+          width: 100%;
+          height: 180px;
+          object-fit: cover;
+          border-radius: 6px;
+          border: 1px solid #e5e7eb;
+          page-break-inside: avoid;
         }
         .footer-brand {
           margin-top: 32px;

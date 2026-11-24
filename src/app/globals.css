@@ -314,8 +314,8 @@ body {
   margin: 0.85rem 0;
 }
 
-.ProseMirror img,
-.keep-rendered img {
+.ProseMirror img:not(.keep-gallery-img),
+.keep-rendered img:not(.keep-gallery-img) {
   display: block;
   max-height: 22rem;
   width: auto;
@@ -323,6 +323,38 @@ body {
   border-radius: 0.75rem;
   margin: 0.5rem 0;
   object-fit: contain;
+}
+
+.keep-card-rendered img:not(.keep-gallery-img) {
+  max-height: 12rem;
+}
+
+.keep-image-gallery-block {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.375rem;
+  margin: 0.5rem 0;
+  width: 100%;
+}
+
+.keep-image-gallery-block[data-count="3"] {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+@media (min-width: 640px) {
+  .keep-image-gallery-block[data-count="4"],
+  .keep-image-gallery-block:not([data-count="2"]):not([data-count="3"]) {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.keep-image-gallery-block img {
+  width: 100%;
+  height: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  margin: 0;
+  border-radius: 0.65rem;
 }
 
 /* Static rendered preview styles */
