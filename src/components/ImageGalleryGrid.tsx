@@ -63,7 +63,7 @@ export const ImageGalleryGrid: React.FC<ImageGalleryGridProps> = ({
   images,
   variant = 'full',
   maxVisible,
-  interactive = variant !== 'card',
+  interactive = variant !== 'card' || images.length >= 2,
   editable = false,
   onImageClick,
   onRemoveImage,
@@ -197,6 +197,7 @@ export const ImageGalleryGrid: React.FC<ImageGalleryGridProps> = ({
                 src={resolvedSrc}
                 alt={img.alt || `Image ${idx + 1}`}
                 loading="lazy"
+                draggable={false}
                 onError={() => {
                   if (img.title && !fallbackTitleKeys[tileKey]) {
                     setFallbackTitleKeys((prev) => ({ ...prev, [tileKey]: true }));
@@ -213,7 +214,7 @@ export const ImageGalleryGrid: React.FC<ImageGalleryGridProps> = ({
 
               {/* Overflow +N Overlay on Cards */}
               {isOverflowTile && (
-                <div className="absolute inset-0 bg-black/55 backdrop-blur-[1px] flex items-center justify-center text-white font-bold text-base sm:text-lg tracking-tight pointer-events-none">
+                <div className="absolute inset-0 bg-black/55 group-hover/tile:bg-black/45 transition-colors backdrop-blur-[1px] flex items-center justify-center text-white font-bold text-base sm:text-lg tracking-tight pointer-events-none">
                   +{hiddenCount}
                 </div>
               )}
@@ -292,13 +293,18 @@ export const ImageGalleryGrid: React.FC<ImageGalleryGridProps> = ({
 
       {/* Built-in Interactive Lightbox */}
       {interactive && !onImageClick && (
-        <ImageGalleryLightbox
-          images={images}
-          initialIndex={lightboxIndex ?? 0}
-          isOpen={lightboxIndex !== null}
-          onClose={() => setLightboxIndex(null)}
-          onDeleteIndex={editable && onRemoveImage ? onRemoveImage : undefined}
-        />
+        <div
+          onClick={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <ImageGalleryLightbox
+            images={images}
+            initialIndex={lightboxIndex ?? 0}
+            isOpen={lightboxIndex !== null}
+            onClose={() => setLightboxIndex(null)}
+            onDeleteIndex={editable && onRemoveImage ? onRemoveImage : undefined}
+          />
+        </div>
       )}
     </div>
   );

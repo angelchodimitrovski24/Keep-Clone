@@ -1068,7 +1068,8 @@ export const NoteModal: React.FC<NoteModalProps> = ({
           document.querySelector('[data-slash-menu="true"]') ||
           document.querySelector('[data-mention-menu="true"]') ||
           document.querySelector('[data-subpage-menu="true"]') ||
-          document.querySelector('[data-portal="true"]')
+          document.querySelector('[data-portal="true"]') ||
+          document.querySelector('[data-keep-gallery-lightbox="true"]')
         );
         const hasOpenSubModal =
           showEncryptModal ||

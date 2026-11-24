@@ -302,7 +302,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(
                   images={seg.images}
                   variant={variant}
                   maxVisible={variant === 'card' ? 4 : undefined}
-                  interactive={variant !== 'card'}
+                  interactive={variant !== 'card' || seg.images.length >= 2}
                 />
               );
             }

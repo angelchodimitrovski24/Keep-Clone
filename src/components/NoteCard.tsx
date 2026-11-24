@@ -416,7 +416,7 @@ const NoteCardComponent: React.FC<NoteCardProps> = ({
                   images={headerImages.map((img) => ({ src: img, alt: 'attachment' }))}
                   variant="card"
                   maxVisible={4}
-                  interactive={false}
+                  interactive={headerImages.length >= 2}
                 />
               </div>
             )}

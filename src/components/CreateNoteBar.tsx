@@ -191,7 +191,9 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
         target.closest('[data-portal="true"]') ||
         target.closest('[data-slash-menu="true"]') ||
         target.closest('[data-mention-menu="true"]') ||
-        target.closest('[data-subpage-menu="true"]')
+        target.closest('[data-subpage-menu="true"]') ||
+        target.closest('[data-keep-gallery-lightbox="true"]') ||
+        target.closest('[data-keep-gallery-ui="true"]')
       ) {
         return;
       }

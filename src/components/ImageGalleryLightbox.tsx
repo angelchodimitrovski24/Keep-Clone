@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { X, ChevronLeft, ChevronRight, Download, Trash2 } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, Download, Trash2, ExternalLink } from 'lucide-react';
 import { GalleryImageItem } from '@/lib/imageGalleryUtils';
 import { resolveLocalMediaUrl } from '@/lib/formatUtils';
 
@@ -54,14 +54,17 @@ const ImageGalleryLightboxInner: React.FC<Omit<ImageGalleryLightboxProps, 'isOpe
       if (e.key === 'Escape') {
         e.preventDefault();
         e.stopPropagation();
+        e.stopImmediatePropagation();
         onClose();
       } else if (e.key === 'ArrowLeft') {
         e.preventDefault();
         e.stopPropagation();
+        e.stopImmediatePropagation();
         goPrev();
       } else if (e.key === 'ArrowRight') {
         e.preventDefault();
         e.stopPropagation();
+        e.stopImmediatePropagation();
         goNext();
       }
     };
@@ -102,6 +105,7 @@ const ImageGalleryLightboxInner: React.FC<Omit<ImageGalleryLightboxProps, 'isOpe
   const content = (
     <div
       data-keep-gallery-ui="true"
+      data-keep-gallery-lightbox="true"
       role="dialog"
       aria-modal="true"
       aria-label="Image gallery viewer"
@@ -146,6 +150,18 @@ const ImageGalleryLightboxInner: React.FC<Omit<ImageGalleryLightboxProps, 'isOpe
         </div>
 
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          {mainSrc && !mainSrc.startsWith('data:') && (
+            <a
+              href={mainSrc}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="p-2 rounded-full bg-white/10 hover:bg-white/20 active:bg-white/25 text-white transition-colors"
+              title="Open image in new tab"
+            >
+              <ExternalLink className="w-4 h-4 sm:w-5 sm:h-5" />
+            </a>
+          )}
+
           {mainSrc && (
             <a
               href={mainSrc}
@@ -210,6 +226,7 @@ const ImageGalleryLightboxInner: React.FC<Omit<ImageGalleryLightboxProps, 'isOpe
         <img
           src={mainSrc}
           alt={displayName}
+          draggable={false}
           onClick={(e) => e.stopPropagation()}
           onError={() => {
             if (activeItem?.title && !failedTitleFallbackKeys[activeKey]) {
