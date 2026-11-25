@@ -277,14 +277,14 @@ export const NotesGrid: React.FC<NotesGridProps> = ({
       <div className="w-full">
         {renderBanner('max-w-3xl mx-auto')}
 
-        {/* Top Paging Info Bar if multiple pages */}
+        {/* Top Paging Info Bar if multiple pages (hidden on small screens) */}
         {totalPages > 1 && (
-          <div className="max-w-3xl mx-auto flex items-center justify-between pb-3 mb-3 border-b border-stone-200 dark:border-stone-800 text-xs text-stone-500">
+          <div className="hidden md:flex max-w-3xl mx-auto items-center justify-between pb-3 mb-3 border-b border-stone-200 dark:border-stone-800 text-xs text-stone-500">
             <span>
               Showing <strong className="text-stone-800 dark:text-stone-200">{startIndex + 1}–{endIndex}</strong> of{' '}
               <strong className="text-stone-800 dark:text-stone-200">{totalNotesCount}</strong> notes
             </span>
-            <span>Page {currentPage} of {totalPages} (20 per page)</span>
+            <span>Page {currentPage} of {totalPages} ({pageSize} per page)</span>
           </div>
         )}
 
@@ -410,15 +410,15 @@ export const NotesGrid: React.FC<NotesGridProps> = ({
         </div>
       )}
 
-      {/* Top Page Status Indicator when multiple pages */}
+      {/* Top Page Status Indicator when multiple pages (hidden on small screens) */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-between pb-3 mb-4 px-2 text-xs text-stone-500 border-b border-stone-200/60 dark:border-stone-800/60">
+        <div className="hidden md:flex items-center justify-between pb-3 mb-4 px-2 text-xs text-stone-500 border-b border-stone-200/60 dark:border-stone-800/60">
           <span className="flex items-center gap-1.5">
             Showing <strong className="text-stone-800 dark:text-stone-200">{startIndex + 1}–{endIndex}</strong> of{' '}
             <strong className="text-stone-800 dark:text-stone-200">{totalNotesCount}</strong> notes
           </span>
           <div className="flex items-center gap-3">
-            <span className="hidden sm:inline">Page {currentPage} of {totalPages} (20 notes/page)</span>
+            <span className="hidden md:inline">Page {currentPage} of {totalPages} ({pageSize} notes/page)</span>
             <div className="flex items-center gap-1">
               <button
                 type="button"

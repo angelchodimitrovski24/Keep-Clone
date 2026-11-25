@@ -74,8 +74,8 @@ export const NoteTabsBar: React.FC<NoteTabsBarProps> = ({
   };
 
   return (
-    <div className="w-full bg-stone-100/90 dark:bg-[#1f2022] border-b border-stone-200 dark:border-stone-800 px-2 sm:px-4 pt-1.5 flex items-center justify-between gap-2 overflow-x-auto no-scrollbar shrink-0 select-none">
-      <div className="flex items-center gap-1 min-w-0">
+    <div className="w-full bg-stone-100/90 dark:bg-[#1f2022] border-b border-stone-200 dark:border-stone-800 px-2 sm:px-4 pt-1.5 flex items-center gap-1.5 overflow-hidden shrink-0 select-none">
+      <div className="flex items-center gap-1 min-w-0 overflow-x-auto no-scrollbar">
         {/* Main View Tab (e.g. All Notes, Calendar, etc.) */}
         <button
           type="button"
@@ -141,16 +141,19 @@ export const NoteTabsBar: React.FC<NoteTabsBarProps> = ({
           );
         })}
 
-        {/* Open New Note Tab Button (+) */}
-        <button
-          type="button"
-          onClick={onNewNoteTab}
-          className="p-1.5 rounded-lg text-stone-500 hover:text-stone-800 dark:hover:text-stone-200 hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
-          title="New note in new tab"
-        >
-          <Plus className="w-3.5 h-3.5" />
-        </button>
       </div>
+
+      {/* New Note Button (+) - Always visible and opens a new note */}
+      <button
+        type="button"
+        onClick={onNewNoteTab}
+        className="inline-flex items-center gap-1 px-2.5 py-1 mb-1 rounded-lg bg-amber-500 hover:bg-amber-600 active:scale-95 text-stone-950 text-xs font-semibold transition-all shrink-0 cursor-pointer shadow-2xs whitespace-nowrap"
+        title="New note"
+        aria-label="New note"
+      >
+        <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+        <span>New note</span>
+      </button>
     </div>
   );
 };

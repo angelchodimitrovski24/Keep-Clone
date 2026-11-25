@@ -146,77 +146,75 @@ export const NotionNotesList: React.FC<NotionNotesListProps> = ({
   };
 
   return (
-    <div className="w-full max-w-3xl mx-auto px-3 sm:px-6 py-4 animate-in fade-in duration-150">
+    <div className="w-full max-w-3xl mx-auto px-1 sm:px-6 py-2 sm:py-4 animate-in fade-in duration-150">
       {/* Top Notion-style Breadcrumb */}
-      <div className="flex items-center gap-1.5 text-xs text-stone-400 dark:text-stone-500 mb-3 select-none">
-        <span>Workspace</span>
-        <span>/</span>
+      <div className="flex items-center gap-1.5 text-xs text-stone-400 dark:text-stone-500 mb-2 sm:mb-3 select-none">
         <span className="text-stone-600 dark:text-stone-300 font-medium truncate">
           {viewInfo.breadcrumb}
         </span>
       </div>
 
       {/* Big Notion Page Title Header */}
-      <div className="mb-6 pb-2 border-b border-black/[0.06] dark:border-white/[0.08]">
-        <div className="flex items-center gap-3 mb-2">
-          <span className="text-3xl sm:text-4xl leading-none select-none">{viewInfo.icon}</span>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-stone-900 dark:text-stone-100">
+      <div className="mb-4 sm:mb-6 pb-3 border-b border-black/[0.06] dark:border-white/[0.08]">
+        <div className="flex items-center gap-2.5 sm:gap-3 mb-2">
+          <span className="text-2xl sm:text-4xl leading-none select-none">{viewInfo.icon}</span>
+          <h1 className="text-xl sm:text-3xl font-bold tracking-tight text-stone-900 dark:text-stone-100">
             {viewInfo.title}
           </h1>
         </div>
 
         {/* View Mode Switcher Pill (Notion-style) */}
-        <div className="flex items-center justify-between gap-3 pt-2">
-          <div className="inline-flex items-center gap-1 p-0.5 rounded-lg bg-black/[0.04] dark:bg-white/[0.06] text-xs font-medium text-stone-600 dark:text-stone-300">
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
+          <div className="inline-flex items-center gap-0.5 sm:gap-1 p-0.5 rounded-lg bg-black/[0.04] dark:bg-white/[0.06] text-xs font-medium text-stone-600 dark:text-stone-300 overflow-x-auto no-scrollbar max-w-full">
             <button
               type="button"
               onClick={() => setLayoutMode('notion')}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white dark:bg-[#202124] text-stone-900 dark:text-stone-100 shadow-xs"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white dark:bg-[#202124] text-stone-900 dark:text-stone-100 shadow-xs whitespace-nowrap shrink-0"
               title="Notion Page List"
             >
-              <FileText className="w-3.5 h-3.5 text-amber-500" />
+              <FileText className="w-3.5 h-3.5 text-amber-500 shrink-0" />
               <span>Notion List</span>
             </button>
             <button
               type="button"
               onClick={() => setLayoutMode('grid')}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md hover:text-stone-900 dark:hover:text-stone-100 transition-colors"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md hover:text-stone-900 dark:hover:text-stone-100 transition-colors whitespace-nowrap shrink-0"
               title="Gallery / Grid View"
             >
-              <LayoutGrid className="w-3.5 h-3.5" />
+              <LayoutGrid className="w-3.5 h-3.5 shrink-0" />
               <span>Gallery</span>
             </button>
             <button
               type="button"
               onClick={() => setLayoutMode('list')}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md hover:text-stone-900 dark:hover:text-stone-100 transition-colors"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md hover:text-stone-900 dark:hover:text-stone-100 transition-colors whitespace-nowrap shrink-0"
               title="List View"
             >
-              <Rows className="w-3.5 h-3.5" />
+              <Rows className="w-3.5 h-3.5 shrink-0" />
               <span>Cards</span>
             </button>
             <button
               type="button"
               onClick={() => setLayoutMode('map')}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md hover:text-stone-900 dark:hover:text-stone-100 transition-colors"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md hover:text-stone-900 dark:hover:text-stone-100 transition-colors whitespace-nowrap shrink-0"
               title="Knowledge Map View"
             >
-              <Compass className="w-3.5 h-3.5 text-amber-500" />
+              <Compass className="w-3.5 h-3.5 text-amber-500 shrink-0" />
               <span>Map</span>
             </button>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <button
               type="button"
               onClick={() => setIsNotionTemplateModalOpen(true)}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-400 transition-colors"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-400 transition-colors whitespace-nowrap shrink-0"
               title="Create Notion Template Hub (Today, Days, Keyword)"
             >
-              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+              <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
               <span>Use Template</span>
             </button>
-            <span className="text-xs text-stone-400 dark:text-stone-500 select-none">
+            <span className="text-xs text-stone-400 dark:text-stone-500 select-none whitespace-nowrap shrink-0">
               {notes.length} {notes.length === 1 ? 'note' : 'notes'}
             </span>
           </div>

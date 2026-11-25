@@ -84,14 +84,25 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const pendingNoteIdRef = useRef<string | null>(initialNoteId || null);
+  const prevSearchQueryRef = useRef<string>(searchQuery);
   const [noteNotFoundId, setNoteNotFoundId] = useState<string | null>(null);
   const [openTabIds, setOpenTabIds] = useState<string[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const [tabNotesById, setTabNotesById] = useState<Record<string, Note>>({});
 
-  // When search query is entered, reset active note tab to display search results in grid
+  // Start with sidebar collapsed on mobile/tablet viewports
   useEffect(() => {
-    if (searchQuery.trim() && activeTabId) {
+    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+      const id = window.setTimeout(() => setSidebarOpen(false), 0);
+      return () => window.clearTimeout(id);
+    }
+  }, []);
+
+  // When search query changes to non-empty, reset active note tab to display search results in grid
+  useEffect(() => {
+    const prev = prevSearchQueryRef.current;
+    prevSearchQueryRef.current = searchQuery;
+    if (searchQuery !== prev && searchQuery.trim() && activeTabId) {
       setActiveTabId(null);
       setEditingNote(null);
     }
@@ -243,7 +254,10 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
       content: '',
     });
     setTabNotesById((prev) => ({ ...prev, [newNote.id]: newNote }));
-    openNoteInTab(newNote.id);
+    setOpenTabIds((prev) => (prev.includes(newNote.id) ? prev : [...prev, newNote.id]));
+    setActiveTabId(newNote.id);
+    setEditingNote(newNote);
+    setNoteNotFoundId(null);
   };
 
   // Synchronize editingNote with browser URL address bar asynchronously outside React render
@@ -458,11 +472,13 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
                 {/* Category Filter Pills */}
                 <CategoryPillsBar />
 
-                {/* Note Composer (visible in Notes and Category views when not in Map mode) */}
+                {/* Note Composer (hidden on small screens; use + New note button instead) */}
                 {(currentFilter === 'notes' || currentFilter === 'category') && layoutMode !== 'map' && (
-                  <CreateNoteBar
-                    onOpenDrawingModal={() => setIsDrawingModalOpen(true, null)}
-                  />
+                  <div className="hidden md:block">
+                    <CreateNoteBar
+                      onOpenDrawingModal={() => setIsDrawingModalOpen(true, null)}
+                    />
+                  </div>
                 )}
 
                 {/* Notes Grid Display */}

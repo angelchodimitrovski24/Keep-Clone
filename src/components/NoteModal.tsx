@@ -291,6 +291,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
   };
 
   const editorRef = useRef<KeepWysiwygEditorHandle | null>(null);
+  const titleInputRef = useRef<HTMLTextAreaElement | null>(null);
 
   const isThisNoteStopwatchActive = Boolean(note && activeStopwatch && activeStopwatch.noteId === note.id);
   const noteReadingStats = useMemo(
@@ -480,6 +481,12 @@ export const NoteModal: React.FC<NoteModalProps> = ({
 
         activeNoteIdRef.current = note.id;
         isEditorDirtyRef.current = false;
+
+        if (!initTitle && !initContent && !isCategoryLocked) {
+          setTimeout(() => {
+            titleInputRef.current?.focus();
+          }, 30);
+        }
         lastSnapshottedRef.current = {
           title: initTitle.trim(),
           content: initContent.trim(),
@@ -2207,6 +2214,7 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
                     e.target.style.height = `${e.target.scrollHeight}px`;
                   }}
                   ref={(el) => {
+                    titleInputRef.current = el;
                     if (el) {
                       el.style.height = 'auto';
                       el.style.height = `${el.scrollHeight}px`;
