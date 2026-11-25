@@ -4,7 +4,6 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useKeep } from '@/context/KeepContext';
 import { Header } from '@/components/Header';
 import { Sidebar } from '@/components/Sidebar';
-import { CreateNoteBar } from '@/components/CreateNoteBar';
 import { NotesGrid } from '@/components/NotesGrid';
 import { NoteModal } from '@/components/NoteModal';
 import { NoteTabsBar } from '@/components/NoteTabsBar';
@@ -471,15 +470,6 @@ export function KeepApp({ initialNoteId }: KeepAppProps) {
               <>
                 {/* Category Filter Pills */}
                 <CategoryPillsBar />
-
-                {/* Note Composer (hidden on small screens; use + New note button instead) */}
-                {(currentFilter === 'notes' || currentFilter === 'category') && layoutMode !== 'map' && (
-                  <div className="hidden md:block">
-                    <CreateNoteBar
-                      onOpenDrawingModal={() => setIsDrawingModalOpen(true, null)}
-                    />
-                  </div>
-                )}
 
                 {/* Notes Grid Display */}
                 <NotesGrid
