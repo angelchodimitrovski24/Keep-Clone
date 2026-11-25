@@ -230,13 +230,13 @@ export const NotionNotesList: React.FC<NotionNotesListProps> = ({
             <React.Fragment key={note.id}>
               <div
                 onClick={() => onSelectNote(note)}
-                className="group relative flex items-center justify-between px-2 py-1.5 rounded-lg hover:bg-black/[0.04] dark:hover:bg-white/[0.06] active:bg-black/[0.08] dark:active:bg-white/[0.1] transition-colors cursor-pointer"
+                className="group relative flex items-start sm:items-center justify-between px-2 py-1.5 rounded-lg hover:bg-black/[0.04] dark:hover:bg-white/[0.06] active:bg-black/[0.08] dark:active:bg-white/[0.1] transition-colors cursor-pointer"
               >
                 {/* Left side: Drag handle, Icon, Title */}
-                <div className="flex items-center gap-2 min-w-0 flex-1">
+                <div className="flex items-start sm:items-center gap-2 min-w-0 flex-1">
                   {/* Drag Grip Handle on hover */}
                   <span
-                    className="opacity-0 group-hover:opacity-40 hover:opacity-100 text-stone-400 dark:text-stone-500 transition-opacity p-0.5 -ml-1 cursor-grab"
+                    className="hidden sm:inline-flex opacity-0 group-hover:opacity-40 hover:opacity-100 text-stone-400 dark:text-stone-500 transition-opacity p-0.5 -ml-1 cursor-grab"
                     title="Drag to reorder"
                     onClick={(e) => e.stopPropagation()}
                   >
@@ -244,12 +244,12 @@ export const NotionNotesList: React.FC<NotionNotesListProps> = ({
                   </span>
 
                   {/* Notion Page Icon */}
-                  <span className="text-stone-400 dark:text-stone-400 shrink-0 group-hover:text-stone-600 dark:group-hover:text-stone-200 transition-colors">
+                  <span className="mt-0.5 sm:mt-0 text-stone-400 dark:text-stone-400 shrink-0 group-hover:text-stone-600 dark:group-hover:text-stone-200 transition-colors">
                     <FileText className="w-4 h-4" />
                   </span>
 
                   {/* Note Title */}
-                  <span className="text-[14.5px] font-normal text-stone-800 dark:text-stone-200 tracking-[-0.01em] truncate group-hover:text-stone-950 dark:group-hover:text-white">
+                  <span className="text-[14.5px] font-normal text-stone-800 dark:text-stone-200 tracking-[-0.01em] whitespace-normal break-words leading-snug sm:leading-normal sm:truncate group-hover:text-stone-950 dark:group-hover:text-white">
                     {note.title || (
                       <span className="text-stone-400 dark:text-stone-500 italic">Untitled</span>
                     )}
@@ -257,7 +257,7 @@ export const NotionNotesList: React.FC<NotionNotesListProps> = ({
 
                   {/* Pinned Indicator badge */}
                   {note.isPinned && (
-                    <span className="shrink-0 text-amber-500">
+                    <span className="mt-1 sm:mt-0 shrink-0 text-amber-500">
                       <Pin className="w-3 h-3 fill-current" />
                     </span>
                   )}
@@ -265,7 +265,7 @@ export const NotionNotesList: React.FC<NotionNotesListProps> = ({
 
                 {/* Right side: Hover Action buttons (Add, Open, More) */}
                 <div
-                  className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-2"
+                  className="hidden sm:flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-2"
                   onClick={(e) => e.stopPropagation()}
                 >
                   {/* Insert below button */}
