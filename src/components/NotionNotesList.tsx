@@ -145,6 +145,16 @@ export const NotionNotesList: React.FC<NotionNotesListProps> = ({
     await handleCreateNote(titleToCreate);
   };
 
+  const sortedNotes = useMemo(() => {
+    if (currentFilter === 'trash' || currentFilter === 'archive') {
+      return notes;
+    }
+    return [...notes].sort((a, b) => {
+      if (Boolean(a.isPinned) !== Boolean(b.isPinned)) return a.isPinned ? -1 : 1;
+      return (b.updatedAt || 0) - (a.updatedAt || 0);
+    });
+  }, [notes, currentFilter]);
+
   return (
     <div className="w-full max-w-3xl mx-auto px-1 sm:px-6 py-2 sm:py-4 animate-in fade-in duration-150">
       {/* Top Notion-style Breadcrumb */}
@@ -223,20 +233,20 @@ export const NotionNotesList: React.FC<NotionNotesListProps> = ({
 
       {/* Notion Page List Rows */}
       <div className="space-y-0.5 select-none">
-        {notes.map((note, index) => {
+        {sortedNotes.map((note, index) => {
           const isMenuOpen = activeMenuNoteId === note.id;
 
           return (
             <React.Fragment key={note.id}>
               <div
                 onClick={() => onSelectNote(note)}
-                className="group relative flex items-start sm:items-center justify-between px-2 py-1.5 rounded-lg hover:bg-black/[0.04] dark:hover:bg-white/[0.06] active:bg-black/[0.08] dark:active:bg-white/[0.1] transition-colors cursor-pointer"
+                className="group relative flex items-start justify-between px-2 py-1.5 rounded-lg hover:bg-black/[0.04] dark:hover:bg-white/[0.06] active:bg-black/[0.08] dark:active:bg-white/[0.1] transition-colors cursor-pointer"
               >
                 {/* Left side: Drag handle, Icon, Title */}
-                <div className="flex items-start sm:items-center gap-2 min-w-0 flex-1">
+                <div className="flex items-start gap-2 min-w-0 flex-1">
                   {/* Drag Grip Handle on hover */}
                   <span
-                    className="hidden sm:inline-flex opacity-0 group-hover:opacity-40 hover:opacity-100 text-stone-400 dark:text-stone-500 transition-opacity p-0.5 -ml-1 cursor-grab"
+                    className="hidden sm:inline-flex mt-0.5 opacity-0 group-hover:opacity-40 hover:opacity-100 text-stone-400 dark:text-stone-500 transition-opacity p-0.5 -ml-1 cursor-grab"
                     title="Drag to reorder"
                     onClick={(e) => e.stopPropagation()}
                   >
@@ -244,12 +254,12 @@ export const NotionNotesList: React.FC<NotionNotesListProps> = ({
                   </span>
 
                   {/* Notion Page Icon */}
-                  <span className="mt-0.5 sm:mt-0 text-stone-400 dark:text-stone-400 shrink-0 group-hover:text-stone-600 dark:group-hover:text-stone-200 transition-colors">
+                  <span className="mt-0.5 text-stone-400 dark:text-stone-400 shrink-0 group-hover:text-stone-600 dark:group-hover:text-stone-200 transition-colors">
                     <FileText className="w-4 h-4" />
                   </span>
 
                   {/* Note Title */}
-                  <span className="text-[14.5px] font-normal text-stone-800 dark:text-stone-200 tracking-[-0.01em] whitespace-normal break-words leading-snug sm:leading-normal sm:truncate group-hover:text-stone-950 dark:group-hover:text-white">
+                  <span className="min-w-0 text-[14.5px] font-normal text-stone-800 dark:text-stone-200 tracking-[-0.01em] whitespace-normal break-words leading-snug group-hover:text-stone-950 dark:group-hover:text-white">
                     {note.title || (
                       <span className="text-stone-400 dark:text-stone-500 italic">Untitled</span>
                     )}
@@ -257,7 +267,7 @@ export const NotionNotesList: React.FC<NotionNotesListProps> = ({
 
                   {/* Pinned Indicator badge */}
                   {note.isPinned && (
-                    <span className="mt-1 sm:mt-0 shrink-0 text-amber-500">
+                    <span className="mt-1 shrink-0 text-amber-500">
                       <Pin className="w-3 h-3 fill-current" />
                     </span>
                   )}

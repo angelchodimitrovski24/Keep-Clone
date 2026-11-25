@@ -842,16 +842,27 @@ export function KeepProvider({
     }, 350);
   }, [refreshStructureData]);
 
+  const sortNotesInView = useCallback((list: Note[], filter: ViewFilter): Note[] => {
+    if (filter === 'trash' || filter === 'archive') {
+      return [...list].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    }
+    return [...list].sort((a, b) => {
+      if (Boolean(a.isPinned) !== Boolean(b.isPinned)) return a.isPinned ? -1 : 1;
+      return (b.updatedAt || 0) - (a.updatedAt || 0);
+    });
+  }, []);
+
   const mergePagedNotes = useCallback((prev: Note[], freshNotes: Note[]): Note[] => {
     const prevById = new Map(prev.map((n) => [n.id, n]));
-    return freshNotes.map((dbNote) => {
+    const merged = freshNotes.map((dbNote) => {
       const existing = prevById.get(dbNote.id);
       if (existing && (existing.updatedAt || 0) > (dbNote.updatedAt || 0)) {
         return existing;
       }
       return dbNote;
     });
-  }, []);
+    return sortNotesInView(merged, currentFilter);
+  }, [sortNotesInView, currentFilter]);
 
   // Refresh current visible page slice and metadata
   const notesListRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1159,13 +1170,14 @@ export function KeepProvider({
         order: now,
       };
 
-      notesRef.current = [newNote, ...notesRef.current.filter((n) => n.id !== newNote.id)];
-      setNotes((prev) => [newNote, ...prev.filter((n) => n.id !== newNote.id)]);
+      const nextNotes = sortNotesInView([newNote, ...notesRef.current.filter((n) => n.id !== newNote.id)], currentFilter);
+      notesRef.current = nextNotes;
+      setNotes((prev) => sortNotesInView([newNote, ...prev.filter((n) => n.id !== newNote.id)], currentFilter));
       await saveNoteToDB(newNote);
       scheduleNotesListRefresh();
       return newNote;
     },
-    [selectedLabel, selectedCategory, defaultCategory, scheduleNotesListRefresh]
+    [selectedLabel, selectedCategory, defaultCategory, scheduleNotesListRefresh, sortNotesInView, currentFilter]
   );
 
   const noteMatchesCurrentView = useCallback(
@@ -1242,7 +1254,7 @@ export function KeepProvider({
         if (!staysInView) {
           return remaining;
         }
-        return [updated, ...remaining];
+        return sortNotesInView([updated, ...remaining], currentFilter);
       });
 
       setEditingNote((prev) => {
@@ -1291,7 +1303,7 @@ export function KeepProvider({
         scheduleStructureRefresh();
       }
     },
-    [notes, editingNote, noteMatchesCurrentView, scheduleNotesListRefresh, scheduleStructureRefresh, hideSubnotesFromFeed, currentFilter]
+    [notes, editingNote, noteMatchesCurrentView, scheduleNotesListRefresh, scheduleStructureRefresh, hideSubnotesFromFeed, currentFilter, sortNotesInView]
   );
 
   const toggleHubNote = useCallback(
@@ -1543,11 +1555,14 @@ export function KeepProvider({
 
   const togglePinNote = useCallback(
     async (id: string) => {
-      const note = notes.find((n) => n.id === id);
+      const note =
+        notes.find((n) => n.id === id) ||
+        (editingNote && editingNote.id === id ? editingNote : undefined) ||
+        (await getNoteByIdFromDB(id));
       if (!note) return;
       await updateNote(id, { isPinned: !note.isPinned, isArchived: false });
     },
-    [notes, updateNote]
+    [notes, editingNote, updateNote]
   );
 
   const toggleArchiveNote = useCallback(

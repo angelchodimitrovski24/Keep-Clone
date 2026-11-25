@@ -300,6 +300,13 @@ export interface PagedNotesResult {
   totalPages: number;
 }
 
+function compareNotesPinnedFirst(a: Note, b: Note): number {
+  const aPinned = Boolean(a.isPinned);
+  const bPinned = Boolean(b.isPinned);
+  if (aPinned !== bPinned) return aPinned ? -1 : 1;
+  return (b.updatedAt || 0) - (a.updatedAt || 0);
+}
+
 function matchesFilterConditions(
   note: Note,
   filter: string,
@@ -529,8 +536,12 @@ export async function getNotesPagedFromDB(params: {
       }
     } catch {}
 
-    // Sort newest first
-    matchedNotes.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    // Sort pinned first (except in trash/archive), then newest first
+    if (filter !== 'trash' && filter !== 'archive') {
+      matchedNotes.sort(compareNotesPinnedFirst);
+    } else {
+      matchedNotes.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    }
 
     const totalCount = matchedNotes.length;
     const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
@@ -543,6 +554,7 @@ export async function getNotesPagedFromDB(params: {
   // 1.5. UNCONNECTED INBOX VIEW (Orphan notes with no Hub, parent, child, or link)
   if (filter === 'unconnected' && q.length === 0) {
     const unconnectedNotes = await getUnconnectedNotesFromDB(5000);
+    unconnectedNotes.sort(compareNotesPinnedFirst);
     const totalCount = unconnectedNotes.length;
     const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
     const effectivePage = Math.min(page, totalPages);
@@ -573,6 +585,7 @@ export async function getNotesPagedFromDB(params: {
       }
       cursor = await cursor.continue();
     }
+    matchedNotes.sort(compareNotesPinnedFirst);
     const totalCount = matchedNotes.length;
     const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
     const effectivePage = Math.min(page, totalPages);
@@ -631,22 +644,56 @@ export async function getNotesPagedFromDB(params: {
   const targetSkip = (effectivePage - 1) * pageSize;
 
   const notes: Note[] = [];
-  let skipped = 0;
-  let cursor = await index.openCursor(null, 'prev');
+  if (filter === 'trash' || filter === 'archive') {
+    let skipped = 0;
+    let cursor = await index.openCursor(null, 'prev');
 
-  while (cursor) {
-    const note = cursor.value;
-    if (matchesFilterConditions(note, filter, category, label)) {
-      if (skipped < targetSkip) {
-        skipped++;
-      } else {
-        notes.push(note);
-        if (notes.length >= pageSize) {
-          break;
+    while (cursor) {
+      const note = cursor.value;
+      if (matchesFilterConditions(note, filter, category, label)) {
+        if (skipped < targetSkip) {
+          skipped++;
+        } else {
+          notes.push(note);
+          if (notes.length >= pageSize) {
+            break;
+          }
         }
       }
+      cursor = await cursor.continue();
     }
-    cursor = await cursor.continue();
+  } else {
+    const pinnedNotes: Note[] = [];
+    const unpinnedNotes: Note[] = [];
+    const maxPinScan = 10000;
+    let scanned = 0;
+    let cursor = await index.openCursor(null, 'prev');
+
+    while (cursor) {
+      scanned++;
+      const note = cursor.value;
+      if (matchesFilterConditions(note, filter, category, label)) {
+        if (note.isPinned) {
+          pinnedNotes.push(note);
+        } else if (unpinnedNotes.length < targetSkip + pageSize) {
+          unpinnedNotes.push(note);
+        }
+      }
+      if (unpinnedNotes.length >= targetSkip + pageSize && scanned >= maxPinScan) {
+        break;
+      }
+      cursor = await cursor.continue();
+    }
+
+    const pinnedCount = pinnedNotes.length;
+    if (targetSkip < pinnedCount) {
+      notes.push(...pinnedNotes.slice(targetSkip, targetSkip + pageSize));
+    }
+    const remainingNeeded = pageSize - notes.length;
+    if (remainingNeeded > 0) {
+      const unpinnedStart = Math.max(0, targetSkip - pinnedCount);
+      notes.push(...unpinnedNotes.slice(unpinnedStart, unpinnedStart + remainingNeeded));
+    }
   }
 
   return {
