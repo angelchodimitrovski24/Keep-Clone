@@ -25,7 +25,7 @@ interface MarkdownRendererProps {
   variant?: 'card' | 'full';
   onToggleCheckbox?: (lineIndex: number, newChecked: boolean) => void;
   onToggleHtmlCheckbox?: (newHtml: string) => void;
-  onOpenLinkedNote?: (noteTitleOrId: string) => void;
+  onOpenLinkedNote?: (noteTitleOrId: string, fallbackTitle?: string) => void;
 }
 
 type RenderSegment =
@@ -207,12 +207,16 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(
       ) as HTMLElement | null;
       if (linkTarget && onOpenLinkedNote) {
         e.stopPropagation();
-        const idOrTitle =
+        const explicitId =
           linkTarget.getAttribute('data-note-id') ||
           linkTarget.getAttribute('data-note-link-id') ||
+          '';
+        const explicitTitle =
           linkTarget.getAttribute('data-note-link-title') ||
-          linkTarget.getAttribute('data-note-title');
-        if (idOrTitle) onOpenLinkedNote(idOrTitle);
+          linkTarget.getAttribute('data-note-title') ||
+          '';
+        const idOrTitle = explicitId || explicitTitle;
+        if (idOrTitle) onOpenLinkedNote(idOrTitle, explicitTitle || undefined);
         return;
       }
 

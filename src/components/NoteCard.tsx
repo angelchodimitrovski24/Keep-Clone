@@ -66,7 +66,7 @@ const NoteCardComponent: React.FC<NoteCardProps> = ({
     openAiChatForNote,
     getChildNotes,
     getNoteById,
-    resolveNoteByTitleOrId,
+    resolveOrCreateLinkedNote,
     connectNotes,
     currentFilter,
   } = useKeep();
@@ -205,11 +205,16 @@ const NoteCardComponent: React.FC<NoteCardProps> = ({
     onClick?.();
   };
 
-  const handleOpenLinkedNote = async (titleOrId: string) => {
-    const found = await resolveNoteByTitleOrId(titleOrId);
-    if (found) {
-      setEditingNote(found);
+  const handleOpenLinkedNote = async (titleOrId: string, fallbackTitle?: string) => {
+    const res = await resolveOrCreateLinkedNote(titleOrId, {
+      fallbackTitle,
+      category: note.category ?? null,
+    });
+    if (!res) return;
+    if (res.created) {
+      await connectNotes(note.id, res.note.id, 'related');
     }
+    setEditingNote(res.note);
   };
 
   const handleToggleTodo = (todoId: string, e: React.MouseEvent) => {

@@ -634,6 +634,13 @@ body {
 .dark .keep-note-chip:hover {
   background-color: rgba(245, 158, 11, 0.28);
 }
+.keep-note-chip.keep-note-chip-unresolved {
+  border-style: dashed;
+  opacity: 0.85;
+}
+.keep-note-chip.keep-note-chip-unresolved:hover {
+  opacity: 1;
+}
 
 /* Interactive Checklist Row Alignment (scales proportionally with --note-font-size) */
 .keep-checklist-control {

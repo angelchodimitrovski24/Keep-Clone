@@ -55,6 +55,7 @@ export interface KeepWysiwygEditorHandle {
   insertLocalFiles: (files: File[], imageUrls?: string[]) => Promise<void>;
   insertContent: (text: string) => void;
   insertNoteMention: (target: { id: string; title: string; role?: NoteConnectionRole }) => void;
+  bindNoteMentionId: (noteTitleOrId: string, resolvedNoteId: string) => boolean;
 }
 
 export interface KeepWysiwygEditorProps {
@@ -68,7 +69,7 @@ export interface KeepWysiwygEditorProps {
   listenWindowPaste?: boolean;
   currentNoteId?: string;
   defaultCategoryForNewLink?: string | null;
-  onOpenMentionedNote?: (noteIdOrTitle: string) => void;
+  onOpenMentionedNote?: (noteIdOrTitle: string, fallbackTitle?: string) => void;
   onNoteMentionSelected?: (targetNote: Note, role: NoteConnectionRole) => void;
   enableSlashMenu?: boolean;
   availableSlashActions?: SlashNoteActionId[];
@@ -131,7 +132,8 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
     const {
       notes,
       addNote,
-      resolveNoteByTitleOrId,
+      resolveOrCreateLinkedNote,
+      connectNotes,
       setEditingNote,
     } = useKeep();
 
@@ -722,6 +724,38 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
       createAndLinkRef.current = createAndLinkFromPopup;
     }, [createAndLinkFromPopup]);
 
+    const bindNoteMentionIdInEditor = useCallback(
+      (noteTitleOrId: string, resolvedNoteId: string): boolean => {
+        const activeEditor = editorInstanceRef.current;
+        if (!activeEditor || !resolvedNoteId) return false;
+        const targetKey = (noteTitleOrId || '').trim().toLowerCase();
+        if (!targetKey) return false;
+
+        let modified = false;
+        const { tr } = activeEditor.state;
+        activeEditor.state.doc.descendants((node, pos) => {
+          if (node.type.name === 'noteMention') {
+            const curId = (node.attrs.noteId || '').trim();
+            const curTitle = (node.attrs.noteTitle || '').trim().toLowerCase();
+            if (!curId && curTitle === targetKey) {
+              tr.setNodeMarkup(pos, undefined, {
+                ...node.attrs,
+                noteId: resolvedNoteId,
+              });
+              modified = true;
+            }
+          }
+        });
+
+        if (modified) {
+          activeEditor.view.dispatch(tr);
+          emitChange(activeEditor.getHTML());
+        }
+        return modified;
+      },
+      [emitChange]
+    );
+
     const evaluateMentionTrigger = useCallback((activeEditor: Editor) => {
       if (!activeEditor.isFocused) {
         return;
@@ -737,6 +771,41 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
         return;
       }
       const textBefore = $from.parent.textBetween(0, $from.parentOffset, '\n', '\uFFFC');
+      const textAfter = $from.parent.textBetween($from.parentOffset, $from.parent.content.size, '\n', '\uFFFC');
+
+      // Handle wrapping existing text when user typed ]] first and then [[ before it
+      if (
+        textBefore.endsWith('[[') &&
+        !textBefore.endsWith('[[[') &&
+        !activeEditor.isActive('code')
+      ) {
+        const afterMatch = textAfter.match(/^([^[\]\n\uFFFC]+)\]\]/);
+        if (afterMatch) {
+          const inner = afterMatch[1];
+          const pipeIdx = inner.indexOf('|');
+          const noteId = pipeIdx !== -1 ? inner.slice(0, pipeIdx).trim() : '';
+          const noteTitle = (pipeIdx !== -1 ? inner.slice(pipeIdx + 1) : inner).trim();
+          if (noteTitle) {
+            const from = $from.pos - 2;
+            const to = $from.pos + afterMatch[0].length;
+            setMentionPopup(null);
+            activeEditor
+              .chain()
+              .focus()
+              .insertContentAt(
+                { from, to },
+                {
+                  type: 'noteMention',
+                  attrs: { noteId, noteTitle, role: 'related' },
+                }
+              )
+              .run();
+            emitChange(activeEditor.getHTML());
+            return;
+          }
+        }
+      }
+
       const match = textBefore.match(/\[\[([^\]\n\uFFFC]{0,60})$/);
       if (!match) {
         if (mentionPopupRef.current) setMentionPopup(null);
@@ -766,7 +835,7 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
         range: { from: rangeFrom, to: rangeTo },
         coords: { top, left, placeAbove },
       });
-    }, []);
+    }, [emitChange]);
 
     const evaluateSlashTrigger = useCallback(
       (activeEditor: Editor) => {
@@ -1143,7 +1212,8 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
             /(?:^|\n)\s*#{1,4}\s+/.test(plainText) ||
             /(?:^|\n)\s*[-*+]\s+\[[ xX]\]/.test(plainText) ||
             /(?:^|\n)\s*[-*+]\s+/.test(plainText) ||
-            (plainText.includes('|') && /\|?\s*:?-+:?\s*\|/.test(plainText)))
+            (plainText.includes('|') && /\|?\s*:?-+:?\s*\|/.test(plainText)) ||
+            /\[\[([^\]|\n]+)(?:\|([^\]\n]+))?\]\]/.test(plainText))
         ) {
           if (activeEditor) {
             nativeEvt.__keepPasteHandled = true;
@@ -1151,7 +1221,10 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
             if ('stopPropagation' in rawEvent) {
               rawEvent.stopPropagation();
             }
-            const html = convertMarkdownToHtml(plainText);
+            let html = convertMarkdownToHtml(plainText);
+            if (!plainText.includes('\n') && /^<p>[\s\S]*<\/p>$/.test(html) && (html.match(/<p>/g) || []).length === 1) {
+              html = html.slice(3, -4);
+            }
             activeEditor.chain().focus().insertContent(html).run();
             emitChange(activeEditor.getHTML());
             return true;
@@ -1241,13 +1314,22 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
         KeepMediaExtension,
         DataviewExtension,
         NoteMentionExtension.configure({
-          onOpenNote: async (noteIdOrTitle) => {
+          onOpenNote: async (noteIdOrTitle, fallbackTitle) => {
             if (onOpenMentionedNoteRef.current) {
-              onOpenMentionedNoteRef.current(noteIdOrTitle);
+              onOpenMentionedNoteRef.current(noteIdOrTitle, fallbackTitle);
               return;
             }
-            const found = await resolveNoteByTitleOrId(noteIdOrTitle);
-            if (found) setEditingNote(found);
+            const res = await resolveOrCreateLinkedNote(noteIdOrTitle, {
+              fallbackTitle,
+              category: defaultCategoryForNewLink !== undefined ? defaultCategoryForNewLink : undefined,
+            });
+            if (res) {
+              bindNoteMentionIdInEditor(fallbackTitle || noteIdOrTitle, res.note.id);
+              if (res.created && currentNoteId) {
+                await connectNotes(currentNoteId, res.note.id, 'related');
+              }
+              setEditingNote(res.note);
+            }
           },
         }),
         SubpageBlockExtension.configure({
@@ -1256,8 +1338,8 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
               onOpenMentionedNoteRef.current(noteIdOrTitle);
               return;
             }
-            const found = await resolveNoteByTitleOrId(noteIdOrTitle);
-            if (found) setEditingNote(found);
+            const res = await resolveOrCreateLinkedNote(noteIdOrTitle);
+            if (res) setEditingNote(res.note);
           },
         }),
         Placeholder.configure({
@@ -1587,9 +1669,10 @@ export const KeepWysiwygEditor = forwardRef<KeepWysiwygEditorHandle, KeepWysiwyg
             .run();
           emitChange(editor.getHTML());
         },
+        bindNoteMentionId: bindNoteMentionIdInEditor,
       }),
       // eslint-disable-next-line react-hooks/exhaustive-deps
-      [editor, processAndInsertFiles, emitChange]
+      [editor, processAndInsertFiles, emitChange, bindNoteMentionIdInEditor]
     );
 
     return (

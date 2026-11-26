@@ -143,6 +143,13 @@ interface KeepContextType {
   setPageSize: (size: number) => void;
   getNoteById: (id: string) => Promise<Note | undefined>;
   resolveNoteByTitleOrId: (titleOrId: string) => Promise<Note | undefined>;
+  resolveOrCreateLinkedNote: (
+    titleOrId: string,
+    options?: {
+      fallbackTitle?: string;
+      category?: string | null;
+    }
+  ) => Promise<{ note: Note; created: boolean } | undefined>;
   getChildNotes: (parentId: string, childNoteIds?: string[]) => Promise<Note[]>;
   refreshNotesList: () => Promise<void>;
   databaseStats: {
@@ -1178,6 +1185,39 @@ export function KeepProvider({
       return newNote;
     },
     [selectedLabel, selectedCategory, defaultCategory, scheduleNotesListRefresh, sortNotesInView, currentFilter]
+  );
+
+  const resolveOrCreateLinkedNote = useCallback(
+    async (
+      titleOrId: string,
+      options?: {
+        fallbackTitle?: string;
+        category?: string | null;
+      }
+    ): Promise<{ note: Note; created: boolean } | undefined> => {
+      const primary = (titleOrId || '').trim();
+      const fallback = (options?.fallbackTitle || '').trim();
+      if (!primary && !fallback) return undefined;
+
+      let found = primary ? await resolveNoteByTitleOrId(primary) : undefined;
+      if (!found && fallback && fallback.toLowerCase() !== primary.toLowerCase()) {
+        found = await resolveNoteByTitleOrId(fallback);
+      }
+      if (found) {
+        return { note: found, created: false };
+      }
+
+      const titleToCreate = fallback || primary;
+      if (!titleToCreate) return undefined;
+
+      const created = await addNote({
+        title: titleToCreate,
+        content: '',
+        category: options?.category !== undefined ? options.category : undefined,
+      });
+      return { note: created, created: true };
+    },
+    [resolveNoteByTitleOrId, addNote]
   );
 
   const noteMatchesCurrentView = useCallback(
@@ -2566,6 +2606,7 @@ export function KeepProvider({
       setPageSize,
       getNoteById,
       resolveNoteByTitleOrId,
+      resolveOrCreateLinkedNote,
       getChildNotes,
       refreshNotesList,
       databaseStats,
@@ -2723,6 +2764,7 @@ export function KeepProvider({
       refreshStructureData,
       getNoteById,
       resolveNoteByTitleOrId,
+      resolveOrCreateLinkedNote,
       getChildNotes,
       refreshNotesList,
       setCurrentFilter,

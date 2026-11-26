@@ -136,7 +136,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
     setIsDateCompileModalOpen,
     openAiChatForNote,
     getNoteById,
-    resolveNoteByTitleOrId,
+    resolveOrCreateLinkedNote,
     connectNotes,
     disconnectNotes,
     openInKnowledgeMap,
@@ -1038,6 +1038,36 @@ export const NoteModal: React.FC<NoteModalProps> = ({
     showSubpages,
     updateNote,
   ]);
+
+  const handleFollowOrCreateWikiLink = useCallback(
+    async (titleOrId: string, fallbackTitle?: string) => {
+      if (!note) return;
+      const res = await resolveOrCreateLinkedNote(titleOrId, {
+        fallbackTitle,
+        category: category || null,
+      });
+      if (!res) return;
+
+      const didBind = editorRef.current?.bindNoteMentionId(
+        fallbackTitle || titleOrId,
+        res.note.id
+      );
+      if (didBind) {
+        isEditorDirtyRef.current = true;
+      }
+
+      await Promise.race([
+        saveCurrentNote('Auto snapshot before following link'),
+        new Promise<void>((resolve) => setTimeout(resolve, 250)),
+      ]);
+
+      if (res.created) {
+        await connectNotes(note.id, res.note.id, 'related');
+      }
+      setEditingNote(res.note);
+    },
+    [note, resolveOrCreateLinkedNote, category, saveCurrentNote, connectNotes, setEditingNote]
+  );
 
   const isClosingRef = useRef(false);
 
@@ -2461,13 +2491,7 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
                       </div>
                       <MarkdownRenderer
                         content={content}
-                        onOpenLinkedNote={async (titleOrId) => {
-                          const found = await resolveNoteByTitleOrId(titleOrId);
-                          if (found) {
-                            await saveCurrentNote('Auto snapshot before following link');
-                            setEditingNote(found);
-                          }
-                        }}
+                        onOpenLinkedNote={handleFollowOrCreateWikiLink}
                       />
                     </div>
                   ) : (
@@ -2555,16 +2579,7 @@ const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
                           noteType: 'notion',
                         });
                       }}
-                      onOpenMentionedNote={async (titleOrId) => {
-                        const found = await resolveNoteByTitleOrId(titleOrId);
-                        if (found) {
-                          await Promise.race([
-                            saveCurrentNote('Auto snapshot before following link'),
-                            new Promise<void>((r) => setTimeout(r, 250)),
-                          ]);
-                          setEditingNote(found);
-                        }
-                      }}
+                      onOpenMentionedNote={handleFollowOrCreateWikiLink}
                       onNoteMentionSelected={async (target, role) => {
                         if (role === 'part_of') {
                           await connectNotes(note.id, target.id, 'part_of');

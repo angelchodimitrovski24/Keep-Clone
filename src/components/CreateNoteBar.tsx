@@ -61,7 +61,7 @@ export const CreateNoteBar: React.FC<CreateNoteBarProps> = ({ onOpenDrawingModal
     notes,
     addNote,
     updateNote,
-    resolveNoteByTitleOrId,
+    resolveOrCreateLinkedNote,
     selectedLabel,
     selectedCategory,
     defaultCategory,
@@ -1078,12 +1078,18 @@ const handleImportMhtml = async (file: File) => {
                   setChildNoteIds(nextChildIds);
                   setContent(updatedHtml);
                 }}
-                onOpenMentionedNote={async (titleOrId) => {
-                  const found = await resolveNoteByTitleOrId(titleOrId);
-                  if (found) {
-                    await handleSaveAndClose();
-                    setEditingNote(found);
+                onOpenMentionedNote={async (titleOrId, fallbackTitle) => {
+                  const res = await resolveOrCreateLinkedNote(titleOrId, {
+                    fallbackTitle,
+                    category: category || null,
+                  });
+                  if (!res) return;
+                  editorRef.current?.bindNoteMentionId(fallbackTitle || titleOrId, res.note.id);
+                  await handleSaveAndClose();
+                  if (res.created) {
+                    await connectNotes(tempNoteId, res.note.id, 'related');
                   }
+                  setEditingNote(res.note);
                 }}
                 onNoteMentionSelected={(target, role) => {
                   if (role === 'part_of') {
